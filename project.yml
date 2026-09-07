@@ -1,0 +1,102 @@
+name: NoteTaker
+options:
+  minimumXcodeGenVersion: 2.46.0
+  deploymentTarget:
+    macOS: "26.0"
+  developmentLanguage: en
+configs:
+  Debug: debug
+  Release: release
+configFiles:
+  Debug: Config/Local.xcconfig
+  Release: Config/Local.xcconfig
+settings:
+  base:
+    ARCHS: arm64
+    CODE_SIGN_STYLE: Manual
+    ENABLE_APP_SANDBOX: NO
+    ENABLE_HARDENED_RUNTIME: YES
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SDKROOT: macosx
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_VERSION: "6.0"
+packages:
+  AudioPipeline:
+    path: Packages/AudioPipeline
+targets:
+  NoteTaker:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: NoteTaker
+    dependencies:
+      - package: AudioPipeline
+    entitlements:
+      path: NoteTaker/Resources/NoteTaker.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+    info:
+      path: NoteTaker/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: NoteTaker
+        CFBundleIdentifier: com.seonwoo.notetaker
+        CFBundleName: NoteTaker
+        LSMinimumSystemVersion: "26.0"
+        NSMicrophoneUsageDescription: NoteTaker needs microphone access to record your voice.
+        NSAudioCaptureUsageDescription: NoteTaker needs system audio access to record meeting audio.
+        NSSpeechRecognitionUsageDescription: NoteTaker uses speech recognition to create transcripts.
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: NoteTaker
+        PRODUCT_BUNDLE_IDENTIFIER: com.seonwoo.notetaker
+        PRODUCT_NAME: NoteTaker
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+  NoteTakerTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: NoteTakerTests
+    dependencies:
+      - target: NoteTaker
+    info:
+      path: NoteTakerTests/Info.plist
+      properties:
+        CFBundleIdentifier: com.seonwoo.notetaker.tests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.seonwoo.notetaker.tests
+        PRODUCT_NAME: NoteTakerTests
+  NoteTakerUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: NoteTakerUITests
+    dependencies:
+      - target: NoteTaker
+    info:
+      path: NoteTakerUITests/Info.plist
+      properties:
+        CFBundleIdentifier: com.seonwoo.notetaker.uitests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.seonwoo.notetaker.uitests
+        PRODUCT_NAME: NoteTakerUITests
+schemes:
+  NoteTaker:
+    build:
+      targets:
+        NoteTaker: all
+        NoteTakerTests: [test]
+        NoteTakerUITests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - NoteTakerTests
+        - NoteTakerUITests
+    run:
+      config: Debug

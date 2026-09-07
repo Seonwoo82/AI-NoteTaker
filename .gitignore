@@ -1,0 +1,40 @@
+.DS_Store
+build/
+*.xcodeproj
+xcuserdata/
+Config/Local.xcconfig
+.omx/
+.superpowers/
+Packages/AudioPipeline/.build/
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.cer
+*.mobileprovision
+*.provisionprofile
+*.key
+*.pem
+
+# Recordings, diagnostics, and generated artifacts
+Recordings/
+*.m4a
+*.wav
+*.aiff
+*.caf
+*.log
+*.xcresult/
+*.dSYM/
+*.app/
+DerivedData/
+.swiftpm/
+.build/
+
+# Private development notes and agent state
+.codex/
+docs/PLAN.md
+docs/superpowers/
+docs/validation/

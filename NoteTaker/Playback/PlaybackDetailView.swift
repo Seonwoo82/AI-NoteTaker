@@ -1,0 +1,183 @@
+import SwiftUI
+
+struct PlaybackDetailView: View {
+    let recording: Recording
+    @Bindable var controller: PlaybackController
+    @Bindable var libraryController: LibraryController
+    @State private var confirmPermanentDelete = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            VStack(spacing: 3) {
+                titleView
+                Text(DateFormat.recordingList.string(from: recording.createdAt))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text(recording.mode.localizedLabel)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 4)
+
+            VStack(spacing: 6) {
+                WaveformView(
+                    peaks: controller.waveformPeaks,
+                    currentTime: controller.currentTime,
+                    duration: controller.duration,
+                    prominence: .primary,
+                    onSeek: { newValue in
+                        Task { await controller.seek(to: newValue) }
+                    }
+                )
+                .frame(height: 148)
+                .accessibilityIdentifier("waveform-view")
+
+                WaveformView(
+                    peaks: controller.waveformPeaks,
+                    currentTime: controller.currentTime,
+                    duration: controller.duration,
+                    prominence: .overview,
+                    onSeek: { newValue in
+                        Task { await controller.seek(to: newValue) }
+                    }
+                )
+                .frame(height: 30)
+                .accessibilityIdentifier("overview-waveform")
+
+                HStack {
+                    Text(DurationFormat.list(controller.currentTime))
+                    Spacer()
+                    Text(DurationFormat.list(controller.duration))
+                }
+                .font(.system(.caption, design: .monospaced))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(timeAccessibilityLabel)
+                .accessibilityIdentifier("playback-time-label")
+            }
+            .frame(maxWidth: 560)
+
+            Spacer(minLength: 0)
+
+            TransportControls(controller: controller)
+                .padding(.top, -18)
+
+            actionBar
+
+            if let errorMessage = controller.errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .accessibilityIdentifier("playback-error")
+            }
+            if let errorMessage = libraryController.errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .accessibilityIdentifier("library-error")
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("playback-detail")
+        .task(id: recording.id) {
+            if controller.selectedRecordingID != recording.id {
+                try? await controller.load(recording: recording)
+            }
+        }
+        .confirmationDialog(
+            String(localized: "Permanently Delete Recording?"),
+            isPresented: $confirmPermanentDelete
+        ) {
+            Button(String(localized: "Delete Permanently"), role: .destructive) {
+                Task { try? await libraryController.confirmPermanentDelete(recording.id) }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "This removes the recording file and metadata. This action cannot be undone."))
+        }
+    }
+
+    private var timeAccessibilityLabel: String {
+        "\(DurationFormat.list(controller.currentTime)) / \(DurationFormat.list(controller.duration))"
+    }
+
+    @ViewBuilder
+    private var titleView: some View {
+        if libraryController.renamingRecordingID == recording.id {
+            TextField(String(localized: "Title"), text: $libraryController.renameDraft)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 17, weight: .medium))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+                .onSubmit {
+                    Task { try? await libraryController.commitRename() }
+                }
+                .onExitCommand {
+                    libraryController.cancelRename()
+                }
+                .onAppear {
+                    libraryController.model.isEditingText = true
+                }
+                .onDisappear {
+                    libraryController.model.isEditingText = false
+                }
+                .accessibilityIdentifier("recording-title-field")
+        } else {
+            Text(recording.title)
+                .font(.system(size: 17, weight: .medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .onTapGesture(count: 2) {
+                    libraryController.beginRename(recording.id)
+                }
+                .accessibilityIdentifier("recording-title-label")
+        }
+    }
+
+    @ViewBuilder
+    private var actionBar: some View {
+        HStack(spacing: 10) {
+            if recording.deletedAt == nil {
+                Button(String(localized: "Rename")) {
+                    libraryController.beginRename(recording.id)
+                }
+                Button(recording.isFavorite ? String(localized: "Remove Favorite") : String(localized: "Favorite")) {
+                    Task { try? await libraryController.toggleFavorite(recording.id) }
+                }
+                ShareLink(
+                    item: libraryController.shareFile(for: recording),
+                    subject: Text(recording.title),
+                    preview: SharePreview(recording.title)
+                ) {
+                    Text(String(localized: "Share"))
+                }
+                Button(String(localized: "Export...")) {
+                    Task { await libraryController.exportSelectedAudio() }
+                }
+                Button(String(localized: "Show in Finder")) {
+                    libraryController.revealSelectedInFinder()
+                }
+                Button(String(localized: "Delete"), role: .destructive) {
+                    Task { try? await libraryController.moveToRecentlyDeleted(recording.id) }
+                }
+            } else {
+                Button(String(localized: "Restore")) {
+                    Task { try? await libraryController.restore(recording.id) }
+                }
+                Button(String(localized: "Delete Permanently"), role: .destructive) {
+                    confirmPermanentDelete = true
+                }
+            }
+        }
+        .font(.system(size: 12))
+        .buttonStyle(.bordered)
+        .disabled(libraryController.model.isEditingText && libraryController.renamingRecordingID != recording.id)
+        .accessibilityIdentifier("detail-action-bar")
+    }
+}

@@ -1,0 +1,519 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Microphone" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "마이크" } } }
+    },
+    "System Audio" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "시스템 오디오" } } }
+    },
+    "Signal detected" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "입력 감지됨" } } }
+    },
+    "No signal" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "입력 없음" } } }
+    },
+    "Default Microphone" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "기본 마이크" } } }
+    },
+    "(Default)" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "(기본)" } } }
+    },
+    "All Recordings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 녹음 항목"
+          }
+        }
+      }
+    },
+    "No Recording Selected" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음 항목 없음"
+          }
+        }
+      }
+    },
+    "New Recording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새로운 녹음"
+          }
+        }
+      }
+    },
+    "Recovered Recording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "복구된 녹음"
+          }
+        }
+      }
+    },
+    "Microphone + System" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크 + 시스템"
+          }
+        }
+      }
+    },
+    "Microphone Only" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크만"
+          }
+        }
+      }
+    },
+    "System Only" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시스템만"
+          }
+        }
+      }
+    },
+    "Your partial recording file was kept. You can retry finishing or recover it on the next launch." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "부분 녹음 파일이 보관되었습니다. 마무리를 다시 시도하거나 다음 실행 시 복구할 수 있습니다."
+          }
+        }
+      }
+    },
+    "Preparing..." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "준비 중..."
+          }
+        }
+      }
+    },
+    "Finishing..." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마무리 중..."
+          }
+        }
+      }
+    },
+    "Recording" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음 중"
+          }
+        }
+      }
+    },
+    "Pausing..." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일시 정지 중..."
+          }
+        }
+      }
+    },
+    "Paused" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일시 정지됨"
+          }
+        }
+      }
+    },
+    "Resuming..." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "재개 중..."
+          }
+        }
+      }
+    },
+    "Ready" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "준비됨"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "완료"
+          }
+        }
+      }
+    },
+    "Pause" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일시 정지"
+          }
+        }
+      }
+    },
+    "Resume" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "재개"
+          }
+        }
+      }
+    },
+    "Recording Error" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "녹음 오류"
+          }
+        }
+      }
+    },
+    "Open Settings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 열기"
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 시도"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "취소"
+          }
+        }
+      }
+    },
+    "Play" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "재생"
+          }
+        }
+      }
+    },
+    "Pause Playback" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "재생 일시 정지"
+          }
+        }
+      }
+    },
+    "Back 15 Seconds" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "15초 뒤로"
+          }
+        }
+      }
+    },
+    "Forward 15 Seconds" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "15초 앞으로"
+          }
+        }
+      }
+    },
+    "Search" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "검색"
+          }
+        }
+      }
+    },
+    "Waveform" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파형"
+          }
+        }
+      }
+    },
+    "Playing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "재생 중"
+          }
+        }
+      }
+    },
+    "Favorites" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "즐겨찾기"
+          }
+        }
+      }
+    },
+    "Recently Deleted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근 삭제된 항목"
+          }
+        }
+      }
+    },
+    "Title" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "제목" } } }
+    },
+    "Rename" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "이름 변경" } } }
+    },
+    "Delete" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "삭제" } } }
+    },
+    "Favorite" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "즐겨찾기" } } }
+    },
+    "Remove Favorite" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "즐겨찾기 해제" } } }
+    },
+    "Share" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "공유" } } }
+    },
+    "Export..." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "내보내기..." } } }
+    },
+    "Show in Finder" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "Finder에서 보기" } } }
+    },
+    "Restore" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "복구" } } }
+    },
+    "Delete Permanently" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "영구 삭제" } } }
+    },
+    "Permanently Delete Recording?" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 항목을 영구 삭제할까요?" } } }
+    },
+    "This removes the recording file and metadata. This action cannot be undone." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 파일과 메타데이터가 삭제되며 되돌릴 수 없습니다." } } }
+    },
+    "No Search Results" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "검색 결과 없음" } } }
+    },
+    "No Recordings" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 항목 없음" } } }
+    },
+    "No Favorites" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "즐겨찾기 없음" } } }
+    },
+    "Recently Deleted is Empty" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "최근 삭제된 항목이 비어 있음" } } }
+    },
+    "%lld days left" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "%lld일 남음" } } }
+    },
+    "Library" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "보관함" } } }
+    },
+    "Playback" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "재생" } } }
+    },
+    "Play/Pause" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "재생/일시 정지" } } }
+    },
+    "Find" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "찾기" } } }
+    },
+    "Capture Mode" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "캡처 모드" } } }
+    },
+    "Refresh Devices" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "장치 새로 고침" } } }
+    },
+    "Levels" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "레벨" } } }
+    },
+    "Microphone Gain" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "마이크 게인" } } }
+    },
+    "System Gain" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "시스템 게인" } } }
+    },
+    "Capture changes are available after the current recording finishes." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "캡처 설정 변경은 현재 녹음이 끝난 뒤 적용할 수 있습니다." } } }
+    },
+    "Library changes are unavailable while recording." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 중에는 보관함을 변경할 수 없습니다." } } }
+    },
+    "Select a recording first." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "먼저 녹음 항목을 선택하세요." } } }
+    },
+    "That recording is no longer available." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "해당 녹음 항목을 더 이상 사용할 수 없습니다." } } }
+    },
+    "A recording with that ID already exists." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "같은 ID의 녹음 항목이 이미 있습니다." } } }
+    },
+    "Enter a title before saving." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장하기 전에 제목을 입력하세요." } } }
+    },
+    "Restore this recording before changing it." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "변경하기 전에 이 녹음 항목을 복구하세요." } } }
+    },
+    "Only recently deleted recordings can be permanently deleted." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "최근 삭제된 녹음 항목만 영구 삭제할 수 있습니다." } } }
+    },
+    "The change could not be saved. The original recording was preserved." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "변경 사항을 저장할 수 없어 원본 녹음 항목을 유지했습니다." } } }
+    },
+    "The recording could not be permanently deleted. Its files were preserved." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 항목을 영구 삭제할 수 없어 파일을 유지했습니다." } } }
+    },
+    "Some expired recordings could not be removed." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "만료된 일부 녹음 항목을 제거할 수 없습니다." } } }
+    }
+  },
+  "version" : "1.0"
+}
