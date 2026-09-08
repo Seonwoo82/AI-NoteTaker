@@ -8,6 +8,7 @@ struct AppServices {
     let audioDeviceProvider: any AudioDeviceProviding
     var aiEnvironment: AIEnvironment? = nil
     var syncSettings: SyncSettings = SyncSettings()
+    var automaticallySyncs = false
 
     static func live() -> AppServices {
         AppServices(
@@ -15,7 +16,8 @@ struct AppServices {
             player: AudioPipelinePlayerEngine(),
             audioDeviceProvider: SystemAudioDeviceProvider(),
             aiEnvironment: .live(),
-            syncSettings: SyncSettings()
+            syncSettings: SyncSettings(),
+            automaticallySyncs: true
         )
     }
 

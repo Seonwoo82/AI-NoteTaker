@@ -1,13 +1,8 @@
 import SwiftUI
 
 struct RootView: View {
-    @State private var model: LibraryAppModel
+    let model: LibraryAppModel
     @State private var showingSettings = false
-    @Environment(\.scenePhase) private var scenePhase
-
-    init(services: AppServices) {
-        _model = State(initialValue: LibraryAppModel(services: services))
-    }
 
     var body: some View {
         @Bindable var model = model
@@ -87,9 +82,6 @@ struct RootView: View {
             AppSettingsView(model: model)
         }
         .task { await model.open() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await model.synchronize() } }
-        }
         .onChange(of: model.selection) { _, _ in model.player.stop() }
         .onChange(of: model.library?.recordings) { old, new in
             model.libraryDidChange(from: old ?? [], to: new ?? [])

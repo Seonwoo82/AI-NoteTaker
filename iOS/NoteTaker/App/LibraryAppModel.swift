@@ -16,6 +16,9 @@ final class LibraryAppModel {
     private(set) var meetingNotes: MeetingNotesService?
     @ObservationIgnored private let aiEnvironment: AIEnvironment
     @ObservationIgnored private let isTesting: Bool
+    @ObservationIgnored private var openingTask: Task<Void, Never>?
+    @ObservationIgnored private let backgroundExecution = SyncBackgroundExecution()
+    private var isForeground = false
     var settingsSection: AppSettingsSection = .ai
     var selection: UUID?
     var filter: LibraryFilter = .all
@@ -56,7 +59,15 @@ final class LibraryAppModel {
     }
 
     func open(paths suppliedPaths: LibraryPaths? = nil) async {
+        if let openingTask { await openingTask.value; return }
         guard library == nil else { return }
+        let task = Task { await self.openLibrary(paths: suppliedPaths) }
+        openingTask = task
+        await task.value
+        openingTask = nil
+    }
+
+    private func openLibrary(paths suppliedPaths: LibraryPaths?) async {
         let arguments = ProcessInfo.processInfo.arguments
         let paths: LibraryPaths
         if let suppliedPaths {
@@ -81,7 +92,50 @@ final class LibraryAppModel {
         meetingNotes = notes
         library = openedLibrary
         _ = await recorder.recoverRecordings(library: openedLibrary)
-        if !isTesting { await synchronize() }
+        if !isTesting {
+            sync.configureAutomaticSync(library: openedLibrary, canSync: { [weak self] in
+                guard let self else { return false }
+                return !self.recorder.isRecording && !self.recorder.isBusy
+            })
+            sync.onSettingsChanged = { [weak self] in
+                guard let self else { return }
+                IOSBackgroundSync.schedule(enabled: self.settings.isEnabled)
+            }
+            sync.setAutomaticSyncActive(isForeground)
+        }
+    }
+
+    func setForeground(_ foreground: Bool) {
+        isForeground = foreground
+        guard !isTesting else { return }
+        sync.setAutomaticSyncActive(foreground)
+        if foreground {
+            sync.requestAutomaticSync()
+        } else {
+            IOSBackgroundSync.schedule(enabled: settings.isEnabled)
+            guard settings.isEnabled else { return }
+            backgroundExecution.begin(operation: { [weak self] in
+                await self?.synchronize()
+            }, onExpiration: { [weak self] in
+                guard let self, !self.isForeground else { return }
+                self.sync.cancelCurrentSync()
+            })
+        }
+    }
+
+    func refreshInBackground() async {
+        guard !isTesting else { return }
+        IOSBackgroundSync.schedule(enabled: settings.isEnabled)
+        await withTaskCancellationHandler {
+            await open()
+            guard !Task.isCancelled else { return }
+            await synchronize()
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self, !self.isForeground else { return }
+                self.sync.cancelCurrentSync()
+            }
+        }
     }
 
     func startRecording() async {

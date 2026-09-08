@@ -69,7 +69,7 @@ struct SyncSettingsView: View {
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     #endif
-                Toggle("Enable Sync", isOn: $enabled).accessibilityIdentifier("sync-enabled")
+                Toggle("Enable Automatic Sync", isOn: $enabled).accessibilityIdentifier("sync-enabled")
             } header: {
                 Text("Cloudflare Connection")
             } footer: {
@@ -93,7 +93,7 @@ struct SyncSettingsView: View {
                 Text(sync.status)
                 if let last = sync.lastSyncedAt {
                     LabeledContent("Last Synced") {
-                        Text(last, format: .dateTime.month().day().hour().minute())
+                        Text(last, format: .dateTime.month().day().hour().minute().second())
                     }
                 }
                 if let message = saveError ?? sync.errorMessage {
@@ -102,7 +102,9 @@ struct SyncSettingsView: View {
                 }
             }
             Section("About Sync") {
-                Text("Sync runs when you open the app, save changes, or choose Sync Now. If both devices edit the same note, the edit with the later device timestamp wins. Keep device clocks set automatically.")
+                Text("Sync checks for changes every 30 seconds while active and after local edits. Failed transfers retry automatically.")
+                    Text("iOS chooses when background refresh runs. Opening the app always checks for updates immediately.")
+                    Text("If both devices edit the same note, the edit with the later device timestamp wins. Keep device clocks set automatically.")
                 Text("Audio uploads are limited to 95 MiB per recording. Deleted notes can be restored from Recently Deleted; their cloud audio is retained.")
                 Text("Recordings, AI minutes, and completed transcripts sync between devices. Set your OpenRouter API key separately on each device.")
             }

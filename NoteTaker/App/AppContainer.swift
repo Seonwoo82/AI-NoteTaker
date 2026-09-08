@@ -67,6 +67,11 @@ struct AppContainer {
             }
         )
 
+        if services.automaticallySyncs {
+            syncCoordinator.configureAutomaticSync(library: library)
+            syncCoordinator.setAutomaticSyncActive(true)
+        }
+
         return AppContainer(
             services: services,
             library: library,

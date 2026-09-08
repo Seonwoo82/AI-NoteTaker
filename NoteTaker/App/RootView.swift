@@ -10,10 +10,6 @@ struct RootView: View {
         Group {
             if let container {
                 WorkspaceSplitView(container: container, columnVisibility: $columnVisibility)
-                .task {
-                    guard container.syncSettings.isEnabled else { return }
-                    await container.syncCoordinator.sync(library: container.library)
-                }
                 .onKeyPress(.space) {
                     guard !container.model.isEditingText else { return .ignored }
                     switch container.session.phase {
@@ -48,7 +44,7 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, let container, container.syncSettings.isEnabled else { return }
-            Task { await container.syncCoordinator.sync(library: container.library) }
+            container.syncCoordinator.requestAutomaticSync()
         }
     }
 }

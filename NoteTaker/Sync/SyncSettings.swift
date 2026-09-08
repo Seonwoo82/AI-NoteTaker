@@ -33,7 +33,9 @@ final class SyncSettings {
     }
 
     func configuration() throws -> SyncConfiguration {
-        try enabledConfiguration()
+        // A background launch can precede the first available Keychain read.
+        if isEnabled && token.isEmpty { token = try tokenStore.loadToken() ?? "" }
+        return try enabledConfiguration()
     }
 
     func connectionTestConfiguration() throws -> SyncConfiguration {
@@ -68,6 +70,9 @@ final class SyncCoordinator {
     private var activeEngine: SyncEngine?
     private var needsSync = false
     private var settingsGeneration = 0
+    private var automaticScheduler: AutomaticSyncScheduler?
+    private var automaticSyncIsActive = false
+    var onSettingsChanged: (() -> Void)?
 
     init(
         settings: SyncSettings,
@@ -127,12 +132,53 @@ final class SyncCoordinator {
         await task.value
     }
 
-    func settingsDidChange() {
-        settingsGeneration += 1
+    func configureAutomaticSync(
+        library: LibraryStore,
+        canSync: @escaping @MainActor () -> Bool = { true },
+        sleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
+        automaticScheduler?.stop()
+        automaticScheduler = AutomaticSyncScheduler(synchronize: { [weak self, weak library] in
+            guard let self, let library, self.settings.isEnabled, canSync() else { return true }
+            // A settings change may still be draining a cancelled transfer.
+            if let previous = self.currentSync { await previous.value }
+            guard !Task.isCancelled, self.settings.isEnabled, canSync() else { return true }
+            await self.sync(library: library)
+            return self.errorMessage == nil
+        }, sleep: sleep)
+        updateAutomaticSync()
+    }
+
+    func setAutomaticSyncActive(_ active: Bool) {
+        automaticSyncIsActive = active
+        updateAutomaticSync()
+    }
+
+    func requestAutomaticSync() {
+        automaticScheduler?.requestSync()
+    }
+
+    func cancelCurrentSync() {
         needsSync = false
         currentConnectionTest?.cancel()
         activeEngine?.cancel()
         currentSync?.cancel()
+    }
+
+    func settingsDidChange() {
+        settingsGeneration += 1
+        cancelCurrentSync()
+        automaticScheduler?.stop()
+        updateAutomaticSync()
+        onSettingsChanged?()
+    }
+
+    private func updateAutomaticSync() {
+        if automaticSyncIsActive && settings.isEnabled {
+            automaticScheduler?.start()
+        } else {
+            automaticScheduler?.stop()
+        }
     }
 
     func testConnection() async {
@@ -223,16 +269,32 @@ final class SystemKeychainTokenStore: SyncTokenStore {
         guard let data = result as? Data else {
             return nil
         }
+        #if os(iOS)
+        // Migrate existing credentials when they become readable after unlocking.
+        let migrationStatus = SecItemUpdate(baseQuery() as CFDictionary, [
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ] as CFDictionary)
+        guard migrationStatus == errSecSuccess else {
+            throw SyncKeychainError.unhandledStatus(migrationStatus)
+        }
+        #endif
         return String(data: data, encoding: .utf8)
     }
 
     func saveToken(_ token: String) throws {
         let data = Data(token.utf8)
         var query = baseQuery()
-        let attributes = [kSecValueData as String: data]
+        #if os(iOS)
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        #else
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        #endif
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
-            query[kSecValueData as String] = data
+            query.merge(attributes) { _, new in new }
             let addStatus = SecItemAdd(query as CFDictionary, nil)
             guard addStatus == errSecSuccess else {
                 throw SyncKeychainError.unhandledStatus(addStatus)

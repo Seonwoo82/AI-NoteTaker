@@ -39,7 +39,7 @@ targets:
         CFBundleIdentifier: com.seonwoo.notetaker.ios
         CFBundleName: AI-NoteTaker
         CFBundleShortVersionString: "1.1"
-        CFBundleVersion: "4"
+        CFBundleVersion: "5"
         NSMicrophoneUsageDescription: AI-NoteTaker needs microphone access to record your voice notes.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -51,8 +51,11 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.seonwoo.notetaker.ios.sync-refresh
         UIBackgroundModes:
           - audio
+          - fetch
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
