@@ -5,6 +5,10 @@ xcuserdata/
 Config/Local.xcconfig
 .omx/
 .superpowers/
+.worktrees/
+.wrangler/
+.dev.vars
+.dev.vars.*
 Packages/AudioPipeline/.build/
 
 # Local credentials and signing material

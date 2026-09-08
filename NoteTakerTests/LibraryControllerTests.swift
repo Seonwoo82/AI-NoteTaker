@@ -125,8 +125,10 @@ struct LibraryControllerTests {
         harness.controller.requestPermanentDelete(recording.id)
         try await harness.controller.confirmPermanentDelete()
 
+        #expect(harness.libraryChangeSpy.count == 0)
         #expect(!FileManager.default.fileExists(atPath: harness.paths.audioURL(for: recording.id).path))
-        #expect(harness.store.recording(id: recording.id) == nil)
+        #expect(harness.store.recording(id: recording.id)?.id == recording.id)
+        #expect(harness.controller.visibleRecordings.map(\.id).contains(recording.id) == false)
     }
 
     @Test("permanent delete stops playback before removing files and preserves newer selection")
@@ -152,7 +154,8 @@ struct LibraryControllerTests {
         await deleteTask.value
 
         #expect(!FileManager.default.fileExists(atPath: harness.paths.audioURL(for: deleted.id).path))
-        #expect(harness.store.recording(id: deleted.id) == nil)
+        #expect(harness.store.recording(id: deleted.id)?.id == deleted.id)
+        #expect(harness.controller.visibleRecordings.map(\.id).contains(deleted.id) == false)
         #expect(harness.model.selectedRecordingID == next.id)
         #expect(harness.session.phase == .idle)
     }
@@ -176,7 +179,8 @@ struct LibraryControllerTests {
         harness.player.completeOldestStop()
         await deleteTask.value
 
-        #expect(harness.store.recording(id: recording.id) == nil)
+        #expect(harness.store.recording(id: recording.id)?.id == recording.id)
+        #expect(harness.controller.visibleRecordings.map(\.id).contains(recording.id) == false)
     }
 
     @Test("rename failure retains draft and original item")
@@ -358,6 +362,7 @@ private struct LibraryControllerHarness {
     let playback: PlaybackController
     let session: RecordingSession
     let controller: LibraryController
+    let libraryChangeSpy: LibraryChangeSpy
 
     static func make() async -> LibraryControllerHarness {
         let paths = LibraryPaths(libraryRoot: uniqueLibraryControllerRoot(), arguments: [])
@@ -370,6 +375,7 @@ private struct LibraryControllerHarness {
         let recorder = FakeRecorderEngine()
         let player = FakePlayerEngine()
         let playback = PlaybackController(player: player, library: store)
+        let libraryChangeSpy = LibraryChangeSpy()
         let session = RecordingSession(
             recorder: recorder,
             player: player,
@@ -388,7 +394,8 @@ private struct LibraryControllerHarness {
             library: store,
             model: model,
             session: session,
-            playback: playback
+            playback: playback,
+            onLibraryChanged: { libraryChangeSpy.count += 1 }
         )
         return LibraryControllerHarness(
             paths: paths,
@@ -399,7 +406,8 @@ private struct LibraryControllerHarness {
             player: player,
             playback: playback,
             session: session,
-            controller: controller
+            controller: controller,
+            libraryChangeSpy: libraryChangeSpy
         )
     }
 
@@ -422,6 +430,11 @@ private struct LibraryControllerHarness {
         try store.add(recording)
         return recording
     }
+}
+
+@MainActor
+private final class LibraryChangeSpy {
+    var count = 0
 }
 
 @MainActor

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>NoteTaker</string>
+	<string>AI-NoteTaker</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,20 +13,20 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>NoteTaker</string>
+	<string>AI-NoteTaker</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>1.2</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>4</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>NoteTaker needs system audio access to record meeting audio.</string>
+	<string>AI-NoteTaker needs system audio access to record meeting audio.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>NoteTaker needs microphone access to record your voice.</string>
+	<string>AI-NoteTaker needs microphone access to record your voice.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>NoteTaker uses speech recognition to create transcripts.</string>
+	<string>AI-NoteTaker uses speech recognition to create transcripts.</string>
 </dict>
 </plist>

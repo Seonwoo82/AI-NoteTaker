@@ -33,6 +33,13 @@ struct LibraryCommands: Commands {
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .disabled(container == nil || container?.libraryController.selectedRecording == nil || container?.model.isEditingText == true)
+
+            Button(String(localized: "Sync Now")) {
+                guard let container else { return }
+                Task { await container.syncCoordinator.sync(library: container.library) }
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(container == nil || container?.syncCoordinator.isSyncing == true)
         }
 
         CommandMenu(String(localized: "Library")) {

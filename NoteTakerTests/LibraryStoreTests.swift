@@ -283,8 +283,8 @@ func libraryStoreFailedMetadataWriteLeavesMemoryUnchanged() async throws {
 }
 
 @MainActor
-@Test("LibraryStore permanent deletion requires deleted item and removes only selected deleted directory")
-func libraryStorePermanentDeletionRequiresDeletedItemAndRemovesOnlySelectedDeletedDirectory() async throws {
+@Test("LibraryStore permanent deletion requires deleted item and removes selected files while retaining tombstone metadata")
+func libraryStorePermanentDeletionRequiresDeletedItemAndRemovesSelectedFilesWhileRetainingTombstoneMetadata() async throws {
     let paths = LibraryPaths(libraryRoot: uniqueLibraryRoot(), arguments: [])
     let active = recording(
         id: try #require(UUID(uuidString: "99999999-AAAA-BBBB-CCCC-DDDDDDDDDDDD")),
@@ -317,13 +317,20 @@ func libraryStorePermanentDeletionRequiresDeletedItemAndRemovesOnlySelectedDelet
         Issue.record("Expected LibraryStoreError, got \(error)")
     }
 
+    let beforePurge = try #require(store.recording(id: deleted.id))
     try store.deletePermanently(id: deleted.id)
+    let afterPurge = try #require(store.recording(id: deleted.id))
 
+    #expect(afterPurge.modifiedAt == beforePurge.modifiedAt)
+    #expect(afterPurge.mutationID == beforePurge.mutationID)
     #expect(FileManager.default.fileExists(atPath: paths.directory(for: active.id).path))
-    #expect(!FileManager.default.fileExists(atPath: paths.directory(for: deleted.id).path))
+    #expect(FileManager.default.fileExists(atPath: paths.directory(for: deleted.id).path))
+    #expect(FileManager.default.fileExists(atPath: paths.metadataURL(for: deleted.id).path))
+    #expect(!FileManager.default.fileExists(atPath: paths.audioURL(for: deleted.id).path))
     #expect(FileManager.default.fileExists(atPath: paths.directory(for: otherDeleted.id).path))
     #expect(FileManager.default.fileExists(atPath: unknownDirectory.path))
-    #expect(store.recordings.map(\.id).contains(deleted.id) == false)
+    #expect(store.recordings.map(\.id).contains(deleted.id))
+    #expect(store.filteredRecordings(in: .recentlyDeleted).map(\.id).contains(deleted.id) == false)
 }
 
 @MainActor
@@ -355,8 +362,8 @@ func libraryStoreFailedPermanentDeletionLeavesDeletedRecordingVisible() async th
 }
 
 @MainActor
-@Test("LibraryStore purge keeps 29d23h deleted entries and removes 30d entries")
-func libraryStorePurgeKeeps29d23hDeletedEntriesAndRemoves30dEntries() async throws {
+@Test("LibraryStore purge keeps 29d23h deleted entries and removes expired audio while retaining tombstone metadata")
+func libraryStorePurgeKeeps29d23hDeletedEntriesAndRemovesExpiredAudioWhileRetainingTombstoneMetadata() async throws {
     let paths = LibraryPaths(libraryRoot: uniqueLibraryRoot(), arguments: [])
     let now = Date(timeIntervalSince1970: 3_000_000)
     let kept = recording(
@@ -379,10 +386,32 @@ func libraryStorePurgeKeeps29d23hDeletedEntriesAndRemoves30dEntries() async thro
 
     let store = await LibraryStore.open(paths: paths, now: now)
 
-    #expect(store.recordings.map(\.id).sorted(by: uuidStringAscending) == [activeOld.id, kept.id].sorted(by: uuidStringAscending))
+    #expect(store.recordings.map(\.id).sorted(by: uuidStringAscending) == [activeOld.id, kept.id, purged.id].sorted(by: uuidStringAscending))
     #expect(FileManager.default.fileExists(atPath: paths.directory(for: kept.id).path))
-    #expect(!FileManager.default.fileExists(atPath: paths.directory(for: purged.id).path))
+    #expect(FileManager.default.fileExists(atPath: paths.directory(for: purged.id).path))
+    #expect(FileManager.default.fileExists(atPath: paths.metadataURL(for: purged.id).path))
+    #expect(!FileManager.default.fileExists(atPath: paths.audioURL(for: purged.id).path))
     #expect(FileManager.default.fileExists(atPath: paths.directory(for: activeOld.id).path))
+}
+
+@MainActor
+@Test("LibraryStore remote live apply clears local purge marker before future soft delete")
+func libraryStoreRemoteLiveApplyClearsLocalPurgeMarkerBeforeFutureSoftDelete() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueLibraryRoot(), arguments: [])
+    let id = try #require(UUID(uuidString: "DADADADA-EEEE-FFFF-0000-444444444444"))
+    let deleted = recording(id: id, title: "Deleted", deletedAt: referenceDate)
+    try saveFixture(deleted, paths: paths)
+    let store = await LibraryStore.open(paths: paths, now: referenceDate)
+    try store.deletePermanently(id: id)
+    #expect(store.filteredRecordings(in: .recentlyDeleted).isEmpty)
+
+    var remoteLive = recording(id: id, title: "Remote Live")
+    remoteLive.modifiedAt = (store.recording(id: id)?.modifiedAt ?? 0) + 1
+    try store.applyRemote(remoteLive)
+    try Data("remote audio".utf8).write(to: store.audioURL(for: remoteLive))
+    try store.moveToRecentlyDeleted(id: id, now: referenceDate.addingTimeInterval(1))
+
+    #expect(store.filteredRecordings(in: .recentlyDeleted).map(\.id) == [id])
 }
 
 @MainActor

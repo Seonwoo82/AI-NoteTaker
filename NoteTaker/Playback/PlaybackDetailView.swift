@@ -103,6 +103,7 @@ struct PlaybackDetailView: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("playback-detail")
         .task(id: PlaybackRecordingIdentity(recording)) {
             try? await prepareSelectedRecording()
@@ -118,15 +119,15 @@ struct PlaybackDetailView: View {
             }
         }
         .confirmationDialog(
-            String(localized: "Permanently Delete Recording?"),
+            String(localized: "Remove Recording from This Mac?"),
             isPresented: $confirmPermanentDelete
         ) {
-            Button(String(localized: "Delete Permanently"), role: .destructive) {
+            Button(String(localized: "Remove from This Mac"), role: .destructive) {
                 Task { try? await libraryController.confirmPermanentDelete(recording.id) }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text(String(localized: "This removes the recording file and metadata. This action cannot be undone."))
+            Text(String(localized: "This removes this Mac's audio and AI files. Sync metadata stays so other devices keep the cloud deletion state."))
         }
     }
 
@@ -192,7 +193,7 @@ struct PlaybackDetailView: View {
                 Button(String(localized: "Restore")) {
                     Task { try? await libraryController.restore(recording.id) }
                 }
-                Button(String(localized: "Delete Permanently"), role: .destructive) {
+                Button(String(localized: "Remove from This Mac"), role: .destructive) {
                     confirmPermanentDelete = true
                 }
             }
@@ -200,6 +201,7 @@ struct PlaybackDetailView: View {
         .font(.system(size: 12))
         .buttonStyle(.bordered)
         .disabled(libraryController.model.isEditingText && libraryController.renamingRecordingID != recording.id)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("detail-action-bar")
     }
 }

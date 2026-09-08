@@ -20,6 +20,7 @@ final class LibraryController {
     let model: AppModel
     private let session: RecordingSession
     private let playback: PlaybackController
+    private let onLibraryChanged: () -> Void
 
     private(set) var renameSession: RecordingRenameSession?
     var renamingRecordingID: UUID? { renameSession?.recordingID }
@@ -32,12 +33,14 @@ final class LibraryController {
         library: LibraryStore,
         model: AppModel,
         session: RecordingSession,
-        playback: PlaybackController
+        playback: PlaybackController,
+        onLibraryChanged: @escaping () -> Void = {}
     ) {
         self.library = library
         self.model = model
         self.session = session
         self.playback = playback
+        self.onLibraryChanged = onLibraryChanged
     }
 
     var visibleRecordings: [Recording] {
@@ -126,6 +129,7 @@ final class LibraryController {
         do {
             try library.rename(id: id, to: title)
             errorMessage = nil
+            onLibraryChanged()
         } catch {
             errorMessage = message(for: error)
             throw error
@@ -140,6 +144,7 @@ final class LibraryController {
         do {
             try library.setFavorite(id: id, isFavorite: !recording.isFavorite)
             errorMessage = nil
+            onLibraryChanged()
             await reconcileSelectionWithVisibleRows()
         } catch {
             errorMessage = message(for: error)
@@ -152,6 +157,7 @@ final class LibraryController {
         do {
             try library.moveToRecentlyDeleted(id: id)
             errorMessage = nil
+            onLibraryChanged()
             var didStopPlayback = false
             if model.selectedRecordingID == id || playback.selectedRecordingID == id {
                 await playback.stop()
@@ -171,6 +177,7 @@ final class LibraryController {
             model.selectedFolder = .all
             model.selectedRecordingID = id
             errorMessage = nil
+            onLibraryChanged()
         } catch {
             errorMessage = message(for: error)
             throw error
@@ -221,7 +228,7 @@ final class LibraryController {
         do {
             try await LibraryFileActions.exportAudio(
                 recording: recording,
-                source: library.paths.audioURL(for: recording.id)
+                source: library.audioURL(for: recording)
             )
             errorMessage = nil
         } catch {
@@ -231,11 +238,11 @@ final class LibraryController {
 
     func revealSelectedInFinder() {
         guard let recording = selectedRecording else { return }
-        LibraryFileActions.revealInFinder(library.paths.audioURL(for: recording.id))
+        LibraryFileActions.revealInFinder(library.audioURL(for: recording))
     }
 
     func shareFile(for recording: Recording) -> SharedAudioFile {
-        SharedAudioFile(sourceURL: library.paths.audioURL(for: recording.id), title: recording.title)
+        SharedAudioFile(sourceURL: library.audioURL(for: recording), title: recording.title)
     }
 
     func maintenanceMessage() -> String? {
@@ -289,11 +296,11 @@ final class LibraryController {
             case .recordingDeleted:
                 return String(localized: "Restore this recording before changing it.")
             case .recordingNotDeleted:
-                return String(localized: "Only recently deleted recordings can be permanently deleted.")
+                return String(localized: "Only recently deleted recordings can be removed from this Mac.")
             case .metadataWriteFailed:
                 return String(localized: "The change could not be saved. The original recording was preserved.")
             case .deletionFailed:
-                return String(localized: "The recording could not be permanently deleted. Its files were preserved.")
+                return String(localized: "The recording could not be removed from this Mac. Its local files were preserved.")
             }
         }
         return error.localizedDescription

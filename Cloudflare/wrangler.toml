@@ -1,0 +1,12 @@
+name = "note-taker-sync"
+main = "worker.mjs"
+compatibility_date = "2026-09-08"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "note-taker-sync"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "note-taker-audio"

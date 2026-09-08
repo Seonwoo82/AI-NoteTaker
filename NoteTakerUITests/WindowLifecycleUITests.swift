@@ -10,8 +10,8 @@ final class WindowLifecycleUITests: XCTestCase {
             try await closeAndReopen(app, runningApp: runningApp)
         }
 
-        app.menuBars.menuBarItems["NoteTaker"].click()
-        app.menuBars.menuItems["Quit NoteTaker"].click()
+        app.menuBars.menuBarItems["AI-NoteTaker"].click()
+        app.menuBars.menuItems["Quit AI-NoteTaker"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 5), "Explicit Quit must still terminate the app.")
     }
 

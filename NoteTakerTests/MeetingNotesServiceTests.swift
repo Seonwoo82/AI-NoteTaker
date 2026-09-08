@@ -88,7 +88,7 @@ struct MeetingNotesServiceTests {
         }
     }
 
-    @Test("Deleting a recording while AI is running never recreates its directory")
+    @Test("Deleting a recording while AI is running never recreates AI sidecars")
     func deletionCancelsLateResults() async throws {
         let h = try await MinutesHarness.make(delay: .milliseconds(100))
         h.service.generate(h.recording)
@@ -102,7 +102,11 @@ struct MeetingNotesServiceTests {
         try h.library.deletePermanently(id: h.recording.id)
         try await Task.sleep(for: .milliseconds(150))
         #expect(h.service.document(for: h.recording.id) == nil)
-        #expect(!FileManager.default.fileExists(atPath: h.library.paths.directory(for: h.recording.id).path))
+        #expect(FileManager.default.fileExists(atPath: h.library.paths.directory(for: h.recording.id).path))
+        #expect(FileManager.default.fileExists(atPath: h.library.paths.metadataURL(for: h.recording.id).path))
+        #expect(!FileManager.default.fileExists(atPath: h.library.paths.audioURL(for: h.recording.id).path))
+        #expect(!FileManager.default.fileExists(atPath: h.library.paths.directory(for: h.recording.id).appending(path: "meeting-notes.json").path))
+        #expect(!FileManager.default.fileExists(atPath: h.library.paths.directory(for: h.recording.id).appending(path: "ai-transcript.json").path))
     }
 
     @Test("An unconfigured key never triggers network work")

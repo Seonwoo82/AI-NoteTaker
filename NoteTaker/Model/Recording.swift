@@ -17,6 +17,8 @@ nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
     var skipsSilence: Bool
     var enhances: Bool
     var warnings: [String]
+    var modifiedAt: Int64
+    var mutationID: String
 
     init(
         id: UUID = UUID(),
@@ -32,7 +34,9 @@ nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
         playbackRate: Double = 1.0,
         skipsSilence: Bool = false,
         enhances: Bool = false,
-        warnings: [String] = []
+        warnings: [String] = [],
+        modifiedAt: Int64? = nil,
+        mutationID: String = UUID().uuidString.uppercased()
     ) {
         self.schemaVersion = 1
         self.id = id
@@ -49,6 +53,8 @@ nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
         self.skipsSilence = skipsSilence
         self.enhances = enhances
         self.warnings = warnings
+        self.modifiedAt = modifiedAt ?? Self.milliseconds(since1970: createdAt)
+        self.mutationID = mutationID.uppercased()
     }
 
     init(from decoder: Decoder) throws {
@@ -68,5 +74,28 @@ nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
         skipsSilence = try container.decodeIfPresent(Bool.self, forKey: .skipsSilence) ?? false
         enhances = try container.decodeIfPresent(Bool.self, forKey: .enhances) ?? false
         warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
+        modifiedAt = try container.decodeIfPresent(Int64.self, forKey: .modifiedAt) ?? Self.milliseconds(since1970: createdAt)
+        mutationID = try (container.decodeIfPresent(String.self, forKey: .mutationID) ?? id.uuidString).uppercased()
+    }
+
+    func wins(over other: Recording?) -> Bool {
+        guard let other else { return true }
+        if modifiedAt != other.modifiedAt {
+            return modifiedAt > other.modifiedAt
+        }
+        return mutationID > other.mutationID
+    }
+
+    func locallyStamped(after previous: Recording?, now: Date = .now) -> Recording {
+        var stamped = self
+        let wallClock = Self.milliseconds(since1970: now)
+        let floor = previous.map { $0.modifiedAt + 1 } ?? modifiedAt
+        stamped.modifiedAt = max(wallClock, floor)
+        stamped.mutationID = UUID().uuidString.uppercased()
+        return stamped
+    }
+
+    private static func milliseconds(since1970 date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1_000).rounded(.towardZero))
     }
 }

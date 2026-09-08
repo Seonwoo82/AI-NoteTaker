@@ -4,11 +4,16 @@ import SwiftUI
 struct RootView: View {
     let container: AppContainer?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
             if let container {
                 WorkspaceSplitView(container: container, columnVisibility: $columnVisibility)
+                .task {
+                    guard container.syncSettings.isEnabled else { return }
+                    await container.syncCoordinator.sync(library: container.library)
+                }
                 .onKeyPress(.space) {
                     guard !container.model.isEditingText else { return .ignored }
                     switch container.session.phase {
@@ -24,11 +29,26 @@ struct RootView: View {
                     return .handled
                 }
                 .recordingAlert(session: container.session)
+                .toolbar {
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button {
+                            Task { await container.syncCoordinator.sync(library: container.library) }
+                        } label: {
+                            Label(String(localized: "Sync Now"), systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(container.syncCoordinator.isSyncing)
+                        .accessibilityIdentifier("sync-now-toolbar")
+                    }
+                }
             } else {
                 ProgressView()
                     .controlSize(.large)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, let container, container.syncSettings.isEnabled else { return }
+            Task { await container.syncCoordinator.sync(library: container.library) }
         }
     }
 }

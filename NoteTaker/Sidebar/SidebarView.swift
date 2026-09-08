@@ -67,7 +67,8 @@ struct SidebarView: View {
                 .frame(maxWidth: .infinity)
                 .background(.bar)
         }
-        .navigationTitle("NoteTaker")
+        .navigationTitle("AI-NoteTaker")
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("folders-sidebar")
         .onChange(of: isSearchFocused) { _, isFocused in
             model.isEditingText = isFocused || controller.renameSession != nil

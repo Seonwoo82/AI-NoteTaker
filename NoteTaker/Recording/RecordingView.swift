@@ -87,6 +87,7 @@ struct RecordingView: View {
                         .font(.system(size: 13, design: .monospaced))
                         .accessibilityIdentifier("preview-time-label")
                 }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("pause-preview-transport")
             }
 
@@ -122,6 +123,7 @@ struct RecordingView: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("recording-view")
     }
 

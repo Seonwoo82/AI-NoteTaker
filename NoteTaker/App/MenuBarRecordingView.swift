@@ -13,9 +13,9 @@ struct MenuBarRecordingLabel: View {
                     .monospacedDigit()
             }
         }
-        .accessibilityLabel("NoteTaker")
+        .accessibilityLabel("AI-NoteTaker")
         .accessibilityValue(session?.phase.menuBarStatus ?? String(localized: "Loading..."))
-        .help("NoteTaker")
+        .help("AI-NoteTaker")
         .task(id: session?.phase) {
             now = .now
             guard session?.phase == .recording || session?.phase == .resuming else { return }
@@ -49,7 +49,7 @@ struct MenuBarRecordingView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("NoteTaker", systemImage: "waveform.circle.fill")
+                Label("AI-NoteTaker", systemImage: "waveform.circle.fill")
                     .font(.headline)
                 Spacer()
                 if let session = container?.session {
@@ -90,7 +90,7 @@ struct MenuBarRecordingView: View {
                 openWindow(id: "main")
                 NSApp.activate()
             } label: {
-                Label(String(localized: "Open NoteTaker"), systemImage: "macwindow")
+                Label(String(localized: "Open AI-NoteTaker"), systemImage: "macwindow")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .accessibilityIdentifier("menu-bar-open-window")
@@ -103,7 +103,7 @@ struct MenuBarRecordingView: View {
                 }
                 .disabled(container == nil)
                 Spacer()
-                Button(String(localized: "Quit NoteTaker")) { NSApp.terminate(nil) }
+                Button(String(localized: "Quit AI-NoteTaker")) { NSApp.terminate(nil) }
             }
             .font(.caption)
         }

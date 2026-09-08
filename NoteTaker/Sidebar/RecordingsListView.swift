@@ -55,7 +55,7 @@ struct RecordingsListView: View {
             }
         }
         .confirmationDialog(
-            String(localized: "Permanently Delete Recording?"),
+            String(localized: "Remove Recording from This Mac?"),
             isPresented: Binding(
                 get: { deleteConfirmationID != nil },
                 set: { isPresented in
@@ -66,7 +66,7 @@ struct RecordingsListView: View {
                 }
             )
         ) {
-            Button(String(localized: "Delete Permanently"), role: .destructive) {
+            Button(String(localized: "Remove from This Mac"), role: .destructive) {
                 guard let id = deleteConfirmationID else { return }
                 deleteConfirmationID = nil
                 Task {
@@ -78,7 +78,7 @@ struct RecordingsListView: View {
                 controller.cancelPermanentDelete()
             }
         } message: {
-            Text(String(localized: "This removes the recording file and metadata. This action cannot be undone."))
+            Text(String(localized: "This removes this Mac's audio and AI files. Sync metadata stays so other devices keep the cloud deletion state."))
         }
     }
 
@@ -141,7 +141,7 @@ private struct LibraryContextMenu: View {
             Button(String(localized: "Restore")) {
                 Task { try? await controller.restore(recording.id) }
             }
-            Button(String(localized: "Delete Permanently"), role: .destructive) {
+            Button(String(localized: "Remove from This Mac"), role: .destructive) {
                 controller.requestPermanentDelete(recording.id)
                 deleteConfirmationID = recording.id
             }

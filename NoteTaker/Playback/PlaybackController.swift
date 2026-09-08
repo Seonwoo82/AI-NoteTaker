@@ -75,7 +75,7 @@ final class PlaybackController {
         duration = recording.duration
 
         do {
-            let audioURL = library.paths.audioURL(for: recording.id)
+            let audioURL = library.audioURL(for: recording)
             try await player.load(url: audioURL)
             guard generation == loadGeneration else { return }
             loadedSource = .recording(source)
@@ -100,7 +100,7 @@ final class PlaybackController {
         let source = PlaybackRecordingIdentity(recording)
         if isReadyForDisplay(recording: recording) {
             if waveformPeaks.isEmpty && waveformTask == nil {
-                restoreOrSampleWaveform(url: library.paths.audioURL(for: recording.id), source: source, generation: loadGeneration)
+                restoreOrSampleWaveform(url: library.audioURL(for: recording), source: source, generation: loadGeneration)
             }
             return
         }

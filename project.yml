@@ -39,19 +39,22 @@ targets:
     info:
       path: NoteTaker/Resources/Info.plist
       properties:
-        CFBundleDisplayName: NoteTaker
+        CFBundleDisplayName: AI-NoteTaker
         CFBundleIdentifier: com.seonwoo.notetaker
-        CFBundleName: NoteTaker
+        CFBundleName: AI-NoteTaker
+        CFBundleShortVersionString: "1.2"
+        CFBundleVersion: "4"
         LSMinimumSystemVersion: "26.0"
-        NSMicrophoneUsageDescription: NoteTaker needs microphone access to record your voice.
-        NSAudioCaptureUsageDescription: NoteTaker needs system audio access to record meeting audio.
-        NSSpeechRecognitionUsageDescription: NoteTaker uses speech recognition to create transcripts.
+        NSMicrophoneUsageDescription: AI-NoteTaker needs microphone access to record your voice.
+        NSAudioCaptureUsageDescription: AI-NoteTaker needs system audio access to record meeting audio.
+        NSSpeechRecognitionUsageDescription: AI-NoteTaker uses speech recognition to create transcripts.
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        INFOPLIST_KEY_CFBundleDisplayName: NoteTaker
+        INFOPLIST_KEY_CFBundleDisplayName: AI-NoteTaker
         PRODUCT_BUNDLE_IDENTIFIER: com.seonwoo.notetaker
-        PRODUCT_NAME: NoteTaker
+        PRODUCT_MODULE_NAME: NoteTaker
+        PRODUCT_NAME: AI-NoteTaker
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
   NoteTakerTests:
     type: bundle.unit-test
@@ -69,6 +72,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.seonwoo.notetaker.tests
         PRODUCT_NAME: NoteTakerTests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AI-NoteTaker.app/Contents/MacOS/AI-NoteTaker"
   NoteTakerUITests:
     type: bundle.ui-testing
     platform: macOS

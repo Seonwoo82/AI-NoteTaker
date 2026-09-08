@@ -1,0 +1,133 @@
+name: NoteTakerIOS
+options:
+  minimumXcodeGenVersion: 2.46.0
+  deploymentTarget:
+    macOS: "26.0"
+    iOS: "17.0"
+  developmentLanguage: en
+configs:
+  Debug: debug
+  Release: release
+configFiles:
+  Debug: ../Config/Local.xcconfig
+  Release: ../Config/Local.xcconfig
+settings:
+  base:
+    ARCHS: arm64
+    CODE_SIGN_STYLE: Manual
+    ENABLE_APP_SANDBOX: NO
+    ENABLE_HARDENED_RUNTIME: YES
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_VERSION: "6.0"
+targets:
+  NoteTakerIOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: NoteTaker
+        excludes:
+          - App/SmokeRecordCommand.swift
+          - Resources/Info.plist
+          - Resources/NoteTaker.entitlements
+      - path: ../Packages/AudioPipeline/Sources/AudioPipeline/Recording/CaptureMode.swift
+    info:
+      path: NoteTaker/Resources/iOS-Info.plist
+      properties:
+        CFBundleDisplayName: AI-NoteTaker
+        CFBundleIdentifier: com.seonwoo.notetaker.ios
+        CFBundleName: AI-NoteTaker
+        CFBundleShortVersionString: "1.1"
+        CFBundleVersion: "4"
+        NSMicrophoneUsageDescription: AI-NoteTaker needs microphone access to record your voice notes.
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - audio
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        INFOPLIST_KEY_CFBundleDisplayName: AI-NoteTaker
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.seonwoo.notetaker.ios
+        PRODUCT_MODULE_NAME: NoteTakerIOS
+        PRODUCT_NAME: AI-NoteTaker
+        SDKROOT: iphoneos
+        SUPPORTS_MACCATALYST: NO
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        TARGETED_DEVICE_FAMILY: "1,2"
+  NoteTakerIOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: NoteTakerIOSTests
+      - path: NoteTakerTests
+        excludes:
+          - Info.plist
+          - NoteTakerTests.swift
+          - SmokeRecordCommandTests.swift
+    dependencies:
+      - target: NoteTakerIOS
+    info:
+      path: NoteTakerIOSTests/Info.plist
+      properties:
+        CFBundleIdentifier: com.seonwoo.notetaker.ios.tests
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        PRODUCT_BUNDLE_IDENTIFIER: com.seonwoo.notetaker.ios.tests
+        PRODUCT_MODULE_NAME: NoteTakerIOSTests
+        PRODUCT_NAME: NoteTakerIOSTests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AI-NoteTaker.app/AI-NoteTaker"
+  NoteTakerIOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: NoteTakerUITests
+        excludes:
+          - Info.plist
+    dependencies:
+      - target: NoteTakerIOS
+    info:
+      path: NoteTakerIOSUITests/Info.plist
+      properties:
+        CFBundleIdentifier: com.seonwoo.notetaker.ios.uitests
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        PRODUCT_BUNDLE_IDENTIFIER: com.seonwoo.notetaker.ios.uitests
+        PRODUCT_MODULE_NAME: NoteTakerIOSUITests
+        PRODUCT_NAME: NoteTakerIOSUITests
+schemes:
+  NoteTakerIOS:
+    build:
+      targets:
+        NoteTakerIOS: all
+        NoteTakerIOSTests: [test]
+        NoteTakerIOSUITests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - NoteTakerIOSTests
+        - NoteTakerIOSUITests
+    run:
+      config: Debug

@@ -79,7 +79,7 @@ ps_cmd=${SMOKE_PS_CMD:-/bin/ps}
 stimulus_cmd=${SMOKE_STIMULUS_CMD:-scripts/system-audio-stimulus.sh}
 audio_stats_cmd=${SMOKE_AUDIO_STATS_CMD:-swift}
 ack_timeout_seconds=${SMOKE_CANCEL_ACK_TIMEOUT_SECONDS:-10}
-app_name=${SMOKE_APP_PROCESS_NAME:-NoteTaker}
+app_name=${SMOKE_APP_PROCESS_NAME:-AI-NoteTaker}
 app_process_command=""
 app_process_start=""
 
@@ -352,7 +352,7 @@ wait "${local_open_pid}" 2>/dev/null
 open_status=$?
 set -e
 if [[ "${open_status}" -ne 0 ]]; then
-  echo "NoteTaker LaunchServices smoke exited with status ${open_status}." >&2
+  echo "AI-NoteTaker LaunchServices smoke exited with status ${open_status}." >&2
   exit "${open_status}"
 fi
 launch_started=0
@@ -374,7 +374,7 @@ fi
 
 test -s "${smoke_output}"
 if ! marker_matches "${success_sidecar}"; then
-  echo "NoteTaker smoke did not publish a matching success marker: ${success_sidecar}" >&2
+  echo "AI-NoteTaker smoke did not publish a matching success marker: ${success_sidecar}" >&2
   exit 1
 fi
 

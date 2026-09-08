@@ -18,7 +18,7 @@ struct NoteTakerApp: App {
     }
 
     var body: some Scene {
-        Window("NoteTaker", id: "main") {
+        Window("AI-NoteTaker", id: "main") {
             RootView(container: runtime.container)
                 .frame(minWidth: 900, minHeight: 560)
                 .task {
@@ -49,8 +49,15 @@ struct NoteTakerApp: App {
                     AISettingsView(configuration: container.aiConfiguration)
                         .tabItem { Label(String(localized: "AI Meeting Notes"), systemImage: "sparkles") }
                         .tag("ai")
+                    SyncSettingsView(
+                        settings: container.syncSettings,
+                        sync: container.syncCoordinator,
+                        library: container.library
+                    )
+                    .tabItem { Label(String(localized: "Sync"), systemImage: "icloud") }
+                    .tag("sync")
                 }
-                .frame(width: 560, height: 590)
+                .frame(width: 560, height: 700)
             } else {
                 ProgressView()
                     .frame(width: 420, height: 180)

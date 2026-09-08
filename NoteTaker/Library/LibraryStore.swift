@@ -57,15 +57,16 @@ final class LibraryStore {
         guard recordings[index].deletedAt == nil else {
             throw LibraryStoreError.recordingDeleted(recording.id)
         }
-        try saveMetadata(recording)
-        recordings[index] = recording
+        let stamped = recording.locallyStamped(after: recordings[index])
+        try saveMetadata(stamped)
+        recordings[index] = stamped
         sortRecordings()
     }
 
     func filteredRecordings(in folder: RecordingFolder, matching query: String = "") -> [Recording] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return recordings.filter { recording in
-            guard Self.includes(recording, in: folder) else { return false }
+            guard includes(recording, in: folder) else { return false }
             guard !trimmedQuery.isEmpty else { return true }
             return recording.title.localizedStandardContains(trimmedQuery)
         }
@@ -100,6 +101,8 @@ final class LibraryStore {
         }
         var restored = recordings[index]
         restored.deletedAt = nil
+        restored = restored.locallyStamped(after: recordings[index])
+        try clearLocalPurgeMarker(id)
         try saveMetadata(restored)
         recordings[index] = restored
         sortRecordings()
@@ -112,12 +115,16 @@ final class LibraryStore {
         guard recordings[index].deletedAt != nil else {
             throw LibraryStoreError.recordingNotDeleted(id)
         }
+        let tombstone = recordings[index]
         do {
-            try FileManager.default.removeItem(at: paths.directory(for: id))
+            try removeRecordingFilesPreservingMetadata(for: id)
+            try markLocallyPurged(id)
+            try saveMetadata(tombstone)
         } catch {
             throw LibraryStoreError.deletionFailed(id, String(describing: error))
         }
-        recordings.remove(at: index)
+        recordings[index] = tombstone
+        sortRecordings()
         onRecordingUnavailable?(id)
     }
 
@@ -132,10 +139,38 @@ final class LibraryStore {
 
         var purgedIDs: [UUID] = []
         for id in expiredIDs {
-            try deletePermanently(id: id)
-            purgedIDs.append(id)
+            guard let index = recordings.firstIndex(where: { $0.id == id }) else { continue }
+            do {
+                try removeRecordingFilesPreservingMetadata(for: id)
+                try markLocallyPurged(id)
+                try saveMetadata(recordings[index])
+                purgedIDs.append(id)
+            } catch {
+                throw LibraryStoreError.deletionFailed(id, String(describing: error))
+            }
         }
         return purgedIDs
+    }
+
+    func applyRemote(_ recording: Recording) throws {
+        try saveMetadata(recording)
+        if recording.deletedAt == nil {
+            try clearLocalPurgeMarker(recording.id)
+        }
+        if let index = recordings.firstIndex(where: { $0.id == recording.id }) {
+            recordings[index] = recording
+        } else {
+            recordings.append(recording)
+        }
+        sortRecordings()
+    }
+
+    func audioURL(for recording: Recording) -> URL {
+        if recording.audioVersion <= 1 {
+            return paths.audioURL(for: recording.id)
+        }
+        return paths.directory(for: recording.id)
+            .appending(path: "audio-\(recording.audioVersion).m4a")
     }
 
     func nextTitle(base: String = String(localized: "New Recording")) -> String {
@@ -162,9 +197,51 @@ final class LibraryStore {
         }
         var updated = recordings[index]
         update(&updated)
+        updated = updated.locallyStamped(after: recordings[index])
         try saveMetadata(updated)
         recordings[index] = updated
         sortRecordings()
+    }
+
+    private func removeRecordingFilesPreservingMetadata(for id: UUID) throws {
+        try Self.removeRecordingFilesPreservingMetadata(paths: paths, id: id)
+    }
+
+    private func markLocallyPurged(_ id: UUID) throws {
+        try Self.markLocallyPurged(paths: paths, id: id)
+    }
+
+    private func clearLocalPurgeMarker(_ id: UUID) throws {
+        try Self.clearLocalPurgeMarker(paths: paths, id: id)
+    }
+
+    nonisolated private static func removeRecordingFilesPreservingMetadata(paths: LibraryPaths, id: UUID) throws {
+        let directory = paths.directory(for: id)
+        let metadata = paths.metadataURL(for: id).standardizedFileURL
+        let marker = locallyPurgedMarkerURL(paths: paths, id: id).standardizedFileURL
+        let fileManager = FileManager.default
+        let contents = try fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )
+        for url in contents where url.standardizedFileURL != metadata && url.standardizedFileURL != marker {
+            try fileManager.removeItem(at: url)
+        }
+    }
+
+    nonisolated private static func markLocallyPurged(paths: LibraryPaths, id: UUID) throws {
+        try Data().write(to: locallyPurgedMarkerURL(paths: paths, id: id), options: .atomic)
+    }
+
+    nonisolated private static func clearLocalPurgeMarker(paths: LibraryPaths, id: UUID) throws {
+        let url = locallyPurgedMarkerURL(paths: paths, id: id)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
+    nonisolated private static func locallyPurgedMarkerURL(paths: LibraryPaths, id: UUID) -> URL {
+        paths.directory(for: id).appending(path: ".purged")
     }
 
     private func saveMetadata(_ recording: Recording) throws {
@@ -183,7 +260,7 @@ final class LibraryStore {
         ) else { return LoadResult(recordings: [], maintenanceError: nil) }
 
         var maintenanceErrors: [String] = []
-        var recordings = recordingDirectories.compactMap { directory -> Recording? in
+        let recordings = recordingDirectories.compactMap { directory -> Recording? in
             guard let directoryID = UUID(uuidString: directory.lastPathComponent) else {
                 return nil
             }
@@ -203,8 +280,8 @@ final class LibraryStore {
 
         for recording in expiredRecordings {
             do {
-                try fileManager.removeItem(at: paths.directory(for: recording.id))
-                recordings.removeAll { $0.id == recording.id }
+                try removeRecordingFilesPreservingMetadata(paths: paths, id: recording.id)
+                try markLocallyPurged(paths: paths, id: recording.id)
             } catch {
                 maintenanceErrors.append("Failed to purge \(recording.id.uuidString): \(error)")
             }
@@ -220,15 +297,21 @@ final class LibraryStore {
         recordings = Self.sorted(recordings)
     }
 
-    nonisolated private static func includes(_ recording: Recording, in folder: RecordingFolder) -> Bool {
+    private func includes(_ recording: Recording, in folder: RecordingFolder) -> Bool {
+        guard !isLocallyPurgedTombstone(recording) else { return false }
         switch folder {
         case .all:
-            recording.deletedAt == nil
+            return recording.deletedAt == nil
         case .favorites:
-            recording.isFavorite && recording.deletedAt == nil
+            return recording.isFavorite && recording.deletedAt == nil
         case .recentlyDeleted:
-            recording.deletedAt != nil
+            return recording.deletedAt != nil
         }
+    }
+
+    private func isLocallyPurgedTombstone(_ recording: Recording) -> Bool {
+        recording.deletedAt != nil &&
+            FileManager.default.fileExists(atPath: Self.locallyPurgedMarkerURL(paths: paths, id: recording.id).path)
     }
 
     nonisolated private static func sorted(_ recordings: [Recording]) -> [Recording] {

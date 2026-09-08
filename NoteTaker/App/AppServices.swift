@@ -7,13 +7,15 @@ struct AppServices {
     let player: any PlayerEngine
     let audioDeviceProvider: any AudioDeviceProviding
     var aiEnvironment: AIEnvironment? = nil
+    var syncSettings: SyncSettings = SyncSettings()
 
     static func live() -> AppServices {
         AppServices(
             recorder: AudioPipelineRecorderEngine(),
             player: AudioPipelinePlayerEngine(),
             audioDeviceProvider: SystemAudioDeviceProvider(),
-            aiEnvironment: .live()
+            aiEnvironment: .live(),
+            syncSettings: SyncSettings()
         )
     }
 
@@ -28,7 +30,22 @@ struct AppServices {
                 ],
                 defaultInputDeviceUID: "ui-built-in"
             ),
-            aiEnvironment: .testing(configured: ProcessInfo.processInfo.arguments.contains("-uiTestingAI"))
+            aiEnvironment: .testing(configured: ProcessInfo.processInfo.arguments.contains("-uiTestingAI")),
+            syncSettings: SyncSettings(defaults: UserDefaults(suiteName: "NoteTakerUITesting-\(UUID().uuidString)") ?? .standard,
+                                       tokenStore: MemorySyncTokenStore())
         )
+    }
+}
+
+@MainActor
+private final class MemorySyncTokenStore: SyncTokenStore {
+    private var token: String?
+
+    func loadToken() throws -> String? {
+        token
+    }
+
+    func saveToken(_ token: String) throws {
+        self.token = token
     }
 }
