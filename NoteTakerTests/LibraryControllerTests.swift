@@ -1,3 +1,4 @@
+import AppKit
 import AudioPipeline
 import Foundation
 import Testing
@@ -195,6 +196,140 @@ struct LibraryControllerTests {
             #expect(harness.controller.renameDraft == "Draft")
             #expect(harness.store.recording(id: recording.id)?.title == "Original")
         }
+    }
+
+    @Test("sidebar rename selects its row and persists the inline draft")
+    func sidebarRenameSelectsRowAndPersistsDraft() async throws {
+        let harness = await LibraryControllerHarness.make()
+        let first = try await harness.addRecording(title: "First")
+        let target = try await harness.addRecording(title: "Original")
+        harness.model.selectedRecordingID = first.id
+
+        harness.controller.beginRename(target.id, at: .sidebar)
+        let session = try #require(harness.controller.renameSession)
+        #expect(session.location == .sidebar)
+        #expect(harness.model.selectedRecordingID == target.id)
+        #expect(harness.model.isEditingText)
+        harness.controller.renameDraft = "  Saved title  "
+        try harness.controller.commitRename(sessionID: session.id)
+
+        #expect(harness.controller.renameSession == nil)
+        #expect(!harness.model.isEditingText)
+        #expect(harness.store.recording(id: target.id)?.title == "Saved title")
+        #expect(harness.store.recording(id: first.id)?.title == "First")
+        let reopened = await LibraryStore.open(paths: harness.paths)
+        #expect(reopened.recording(id: target.id)?.title == "Saved title")
+    }
+
+    @Test("stale editor callbacks cannot commit or cancel a newer rename session")
+    func staleEditorCannotFinishNewRenameSession() async throws {
+        let harness = await LibraryControllerHarness.make()
+        let recording = try await harness.addRecording(title: "Original")
+        harness.controller.beginRename(recording.id, at: .sidebar)
+        let oldSession = try #require(harness.controller.renameSession)
+        harness.controller.cancelRename(sessionID: oldSession.id)
+        harness.controller.beginRename(recording.id)
+        let currentSession = try #require(harness.controller.renameSession)
+        harness.controller.renameDraft = "New draft"
+
+        try harness.controller.commitRename(sessionID: oldSession.id)
+        harness.controller.cancelRename(sessionID: oldSession.id)
+
+        #expect(harness.controller.renameSession == currentSession)
+        #expect(currentSession.location == .detail)
+        #expect(harness.controller.renameDraft == "New draft")
+        #expect(harness.model.isEditingText)
+        #expect(harness.store.recording(id: recording.id)?.title == "Original")
+        try harness.controller.commitRename(sessionID: currentSession.id)
+        try harness.controller.commitRename(sessionID: currentSession.id)
+        #expect(harness.store.recording(id: recording.id)?.title == "New draft")
+    }
+
+    @Test("invalid inline rename retains the draft and Escape restores the title")
+    func invalidInlineRenameRetainsDraftUntilCancellation() async throws {
+        let harness = await LibraryControllerHarness.make()
+        let recording = try await harness.addRecording(title: "Original")
+        harness.controller.beginRename(recording.id, at: .sidebar)
+        let session = try #require(harness.controller.renameSession)
+        harness.controller.renameDraft = "  "
+
+        #expect(throws: LibraryStoreError.emptyTitle) {
+            try harness.controller.commitRename(sessionID: session.id)
+        }
+        #expect(harness.controller.renameSession == session)
+        #expect(harness.controller.renameDraft == "  ")
+        #expect(harness.model.isEditingText)
+        harness.controller.cancelRename(sessionID: session.id)
+        #expect(!harness.model.isEditingText)
+        #expect(harness.store.recording(id: recording.id)?.title == "Original")
+    }
+
+    @Test("discarded native view cannot finish a still-active sidebar edit")
+    func discardedNativeViewCannotFinishActiveSidebarEdit() async throws {
+        let harness = await LibraryControllerHarness.make()
+        let recording = try await harness.addRecording(title: "Original")
+        harness.controller.beginRename(recording.id, at: .sidebar)
+        let session = try #require(harness.controller.renameSession)
+        let oldEditor = RecordingTitleEditor.Coordinator(controller: harness.controller, session: session)
+        let currentEditor = RecordingTitleEditor.Coordinator(controller: harness.controller, session: session)
+        harness.controller.renameDraft = "Still editing"
+
+        oldEditor.deactivate()
+        oldEditor.finish()
+        oldEditor.controlTextDidEndEditing(Notification(name: Notification.Name("editingEnded")))
+
+        #expect(harness.controller.renameSession == session)
+        #expect(harness.controller.renameDraft == "Still editing")
+        #expect(harness.model.isEditingText)
+        #expect(harness.store.recording(id: recording.id)?.title == "Original")
+        currentEditor.finish()
+        #expect(harness.store.recording(id: recording.id)?.title == "Still editing")
+        #expect(harness.controller.renameSession == nil)
+    }
+
+    @Test("IME owns Enter and Escape until marked text is resolved", arguments: ["insertNewline:", "cancelOperation:"])
+    func markedTextKeepsRenameActive(command: String) async throws {
+        let harness = await LibraryControllerHarness.make()
+        let recording = try await harness.addRecording(title: "Original")
+        harness.controller.beginRename(recording.id)
+        let session = try #require(harness.controller.renameSession)
+        let coordinator = RecordingTitleEditor.Coordinator(controller: harness.controller, session: session)
+        let textView = NSTextView()
+        textView.setMarkedText("회의", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(textView.hasMarkedText())
+
+        let handled = coordinator.control(NSControl(), textView: textView, doCommandBy: NSSelectorFromString(command))
+
+        #expect(!handled)
+        #expect(harness.controller.renameSession == session)
+        #expect(harness.store.recording(id: recording.id)?.title == "Original")
+    }
+
+    @Test("click-away finalizes the native field editor before persisting its title")
+    func clickAwayFinalizesFieldEditorBeforePersistingTitle() async throws {
+        let harness = await LibraryControllerHarness.make()
+        let recording = try await harness.addRecording(title: "Original")
+        harness.controller.beginRename(recording.id)
+        let session = try #require(harness.controller.renameSession)
+        let coordinator = RecordingTitleEditor.Coordinator(controller: harness.controller, session: session)
+        let field = RecordingTitleEditor.TitleField(frame: NSRect(x: 10, y: 10, width: 240, height: 28))
+        field.stringValue = "Original"
+        field.isEditable = true
+        field.delegate = coordinator
+        coordinator.field = field
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView?.addSubview(field)
+        defer { coordinator.deactivate(); field.delegate = nil; window.close() }
+        #expect(window.makeFirstResponder(field))
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        editor.setMarkedText("최종 회의", selectedRange: NSRange(location: 5, length: 0), replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+
+        coordinator.finish()
+
+        #expect(harness.store.recording(id: recording.id)?.title == "최종 회의")
+        #expect(harness.controller.renameSession == nil)
+        #expect(field.currentEditor() == nil)
     }
 
     @Test("restore persists and reveals restored item in all recordings")

@@ -145,25 +145,11 @@ struct PlaybackDetailView: View {
 
     @ViewBuilder
     private var titleView: some View {
-        if libraryController.renamingRecordingID == recording.id {
-            TextField(String(localized: "Title"), text: $libraryController.renameDraft)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 17, weight: .medium))
-                .multilineTextAlignment(.center)
+        if let session = libraryController.renameSession,
+           session.recordingID == recording.id, session.location == .detail {
+            RecordingTitleEditor(controller: libraryController, session: session)
                 .frame(maxWidth: 360)
-                .onSubmit {
-                    Task { try? await libraryController.commitRename() }
-                }
-                .onExitCommand {
-                    libraryController.cancelRename()
-                }
-                .onAppear {
-                    libraryController.model.isEditingText = true
-                }
-                .onDisappear {
-                    libraryController.model.isEditingText = false
-                }
-                .accessibilityIdentifier("recording-title-field")
+                .id(session.id)
         } else {
             Text(recording.title)
                 .font(.system(size: 17, weight: .medium))

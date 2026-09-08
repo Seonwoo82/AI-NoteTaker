@@ -2,14 +2,21 @@ import SwiftUI
 
 struct RecordingRow: View {
     let recording: Recording
+    @Bindable var controller: LibraryController
     var isSelected = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 4) {
-                Text(recording.title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
+                if let session = controller.renameSession,
+                   session.recordingID == recording.id, session.location == .sidebar {
+                    RecordingTitleEditor(controller: controller, session: session)
+                        .id(session.id)
+                } else {
+                    Text(recording.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                }
                 if recording.isFavorite && recording.deletedAt == nil {
                     Image(systemName: "star.fill")
                         .font(.system(size: 9, weight: .semibold))
@@ -33,7 +40,12 @@ struct RecordingRow: View {
         }
         .foregroundStyle(isSelected ? .white : .primary)
         .padding(.vertical, 3)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: isRenaming ? .contain : .combine)
+    }
+
+    private var isRenaming: Bool {
+        controller.renameSession?.recordingID == recording.id
+            && controller.renameSession?.location == .sidebar
     }
 
     private func retentionText(deletedAt: Date) -> String {

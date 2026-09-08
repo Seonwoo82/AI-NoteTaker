@@ -19,21 +19,21 @@ struct RecordingsListView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(recordings) { recording in
-                        Button {
-                            controller.selectRecording(recording.id)
-                        } label: {
-                            RecordingRow(recording: recording, isSelected: selectedRecordingID == recording.id)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(
-                                    selectedRecordingID == recording.id
-                                        ? Color.accentColor
-                                        : Color.clear,
-                                    in: Rectangle()
-                                )
+                        Group {
+                            if controller.renameSession?.recordingID == recording.id,
+                               controller.renameSession?.location == .sidebar {
+                                // Keep the editor outside a Button so clicks and text
+                                // selection go to the field, not the row action.
+                                row(recording)
+                            } else {
+                                Button {
+                                    controller.selectRecording(recording.id)
+                                } label: {
+                                    row(recording)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
                         .contextMenu {
                             LibraryContextMenu(
                                 recording: recording,
@@ -42,7 +42,9 @@ struct RecordingsListView: View {
                             )
                         }
                         .simultaneousGesture(TapGesture(count: 2).onEnded {
-                            controller.beginRename(recording.id)
+                            guard controller.renameSession?.recordingID != recording.id
+                                    || controller.renameSession?.location != .sidebar else { return }
+                            controller.beginRename(recording.id, at: .sidebar)
                         })
                         .accessibilityIdentifier("recording-row-\(recording.id.uuidString)")
 
@@ -80,6 +82,14 @@ struct RecordingsListView: View {
         }
     }
 
+    private func row(_ recording: Recording) -> some View {
+        RecordingRow(recording: recording, controller: controller, isSelected: selectedRecordingID == recording.id)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(selectedRecordingID == recording.id ? Color.accentColor : Color.clear)
+    }
+
     private var emptyTitle: String {
         if !controller.model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return String(localized: "No Search Results")
@@ -103,7 +113,7 @@ private struct LibraryContextMenu: View {
     var body: some View {
         if recording.deletedAt == nil {
             Button(String(localized: "Rename")) {
-                controller.beginRename(recording.id)
+                controller.beginRename(recording.id, at: .sidebar)
             }
             Button(recording.isFavorite ? String(localized: "Remove Favorite") : String(localized: "Favorite")) {
                 Task { try? await controller.toggleFavorite(recording.id) }

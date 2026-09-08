@@ -6,6 +6,13 @@ nonisolated enum LibraryControllerError: Error, Equatable, Sendable {
     case missingSelection
 }
 
+nonisolated struct RecordingRenameSession: Identifiable, Equatable {
+    enum Location { case sidebar, detail }
+    let id = UUID()
+    let recordingID: UUID
+    let location: Location
+}
+
 @MainActor
 @Observable
 final class LibraryController {
@@ -14,7 +21,8 @@ final class LibraryController {
     private let session: RecordingSession
     private let playback: PlaybackController
 
-    var renamingRecordingID: UUID?
+    private(set) var renameSession: RecordingRenameSession?
+    var renamingRecordingID: UUID? { renameSession?.recordingID }
     var renameDraft = ""
     var pendingPermanentDeleteID: UUID?
     private(set) var errorMessage: String?
@@ -78,26 +86,42 @@ final class LibraryController {
         await session.start()
     }
 
-    func beginRename(_ id: UUID) {
+    func beginRename(_ id: UUID, at location: RecordingRenameSession.Location = .detail) {
         guard let recording = library.recording(id: id), recording.deletedAt == nil else { return }
-        renamingRecordingID = id
+        model.selectedRecordingID = id
+        renameSession = RecordingRenameSession(recordingID: id, location: location)
         renameDraft = recording.title
         model.isEditingText = true
     }
 
     func cancelRename() {
-        renamingRecordingID = nil
+        renameSession = nil
         renameDraft = ""
         model.isEditingText = false
     }
 
     func commitRename() async throws {
-        guard let id = renamingRecordingID else { throw LibraryControllerError.missingSelection }
-        try await rename(id, to: renameDraft)
+        guard let session = renameSession else { throw LibraryControllerError.missingSelection }
+        try commitRename(sessionID: session.id)
+    }
+
+    // Focus/teardown callbacks from an old editor must not finish a newer draft.
+    func cancelRename(sessionID: UUID) {
+        guard renameSession?.id == sessionID else { return }
+        cancelRename()
+    }
+
+    func commitRename(sessionID: UUID) throws {
+        guard let session = renameSession, session.id == sessionID else { return }
+        try persistRename(session.recordingID, to: renameDraft)
         cancelRename()
     }
 
     func rename(_ id: UUID, to title: String) async throws {
+        try persistRename(id, to: title)
+    }
+
+    private func persistRename(_ id: UUID, to title: String) throws {
         try ensureIdle()
         do {
             try library.rename(id: id, to: title)

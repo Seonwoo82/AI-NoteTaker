@@ -70,7 +70,7 @@ struct SidebarView: View {
         .navigationTitle("NoteTaker")
         .accessibilityIdentifier("folders-sidebar")
         .onChange(of: isSearchFocused) { _, isFocused in
-            model.isEditingText = isFocused
+            model.isEditingText = isFocused || controller.renameSession != nil
         }
         .onChange(of: model.searchFocusRequestID) { _, _ in
             isSearchFocused = true
@@ -79,7 +79,9 @@ struct SidebarView: View {
             isSearchFocused = false
         }
         .onDisappear {
-            model.isEditingText = false
+            if controller.renameSession == nil {
+                model.isEditingText = false
+            }
         }
     }
 }
