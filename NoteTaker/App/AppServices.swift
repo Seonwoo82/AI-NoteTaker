@@ -6,12 +6,14 @@ struct AppServices {
     let recorder: any RecorderEngine
     let player: any PlayerEngine
     let audioDeviceProvider: any AudioDeviceProviding
+    var aiEnvironment: AIEnvironment? = nil
 
     static func live() -> AppServices {
         AppServices(
             recorder: AudioPipelineRecorderEngine(),
             player: AudioPipelinePlayerEngine(),
-            audioDeviceProvider: SystemAudioDeviceProvider()
+            audioDeviceProvider: SystemAudioDeviceProvider(),
+            aiEnvironment: .live()
         )
     }
 
@@ -25,7 +27,8 @@ struct AppServices {
                     AudioDeviceInfo(id: 22, uid: "ui-usb", name: "USB Microphone", transportType: 0, inputChannelCount: 1)
                 ],
                 defaultInputDeviceUID: "ui-built-in"
-            )
+            ),
+            aiEnvironment: .testing(configured: ProcessInfo.processInfo.arguments.contains("-uiTestingAI"))
         )
     }
 }

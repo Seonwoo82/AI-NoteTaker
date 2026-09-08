@@ -138,6 +138,24 @@ struct PlaybackControllerTests {
         #expect(!harness.controller.isPlaying)
     }
 
+    @Test("play after stop reloads the still-selected recording")
+    func playAfterStopReloadsStillSelectedRecording() async throws {
+        let harness = await PlaybackControllerHarness.make()
+        let recording = try await harness.addRecording(duration: 20)
+        try await harness.controller.load(recording: recording)
+
+        await harness.controller.stop()
+        await harness.controller.play()
+
+        #expect(harness.controller.selectedRecordingID == recording.id)
+        #expect(harness.player.loadedURLs == [
+            harness.paths.audioURL(for: recording.id),
+            harness.paths.audioURL(for: recording.id)
+        ])
+        #expect(harness.player.playCallCount == 1)
+        #expect(harness.controller.isPlaying)
+    }
+
     @Test("load failure keeps the recording row selected and exposes an error")
     func loadFailureKeepsTheRecordingRowSelectedAndExposesError() async throws {
         let harness = await PlaybackControllerHarness.make()

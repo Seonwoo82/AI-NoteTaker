@@ -42,6 +42,7 @@ final class RecordingSession {
     private let settings: AppSettings
     private let stopPlayback: () async -> Void
     private let loadPreview: (URL, TimeInterval) async throws -> Void
+    private let onRecordingSaved: (Recording) -> Void
     private let now: () -> Date
     private var activeRecording: ActiveRecording?
     private var eventConsumerTask: Task<Void, Never>?
@@ -61,7 +62,8 @@ final class RecordingSession {
         settings: AppSettings,
         stopPlayback: (() async -> Void)? = nil,
         loadPreview: (((URL, TimeInterval) async throws -> Void))? = nil,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        onRecordingSaved: @escaping (Recording) -> Void = { _ in }
     ) {
         self.recorder = recorder
         self.library = library
@@ -75,6 +77,7 @@ final class RecordingSession {
             _ = duration
         }
         self.now = now
+        self.onRecordingSaved = onRecordingSaved
     }
 
     func start() async {
@@ -213,6 +216,7 @@ final class RecordingSession {
             stopEventConsumer()
             resetLevels()
             phase = .idle
+            onRecordingSaved(recording)
         } catch {
             guard isCurrentTransition(generation, recordingID: recordingID, phase: .finishing) else { return }
             alert = alertValue(for: error)

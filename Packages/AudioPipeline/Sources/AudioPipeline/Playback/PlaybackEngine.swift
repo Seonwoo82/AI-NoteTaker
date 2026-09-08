@@ -46,6 +46,9 @@ public final class PlaybackEngine {
         stop()
         clearLoadedFile()
         file = try AVAudioFile(forReading: url)
+        if let file {
+            schedulingDriver.configureOutput(format: file.processingFormat)
+        }
         seekFrame = 0
     }
 
@@ -179,6 +182,7 @@ protocol PlaybackSchedulingDriver: AnyObject {
     var isRunning: Bool { get }
 
     func prepare()
+    func configureOutput(format: AVAudioFormat)
     func start() throws
     func play()
     func pause()
@@ -194,9 +198,13 @@ protocol PlaybackSchedulingDriver: AnyObject {
 }
 
 @MainActor
-private final class AVAudioPlaybackSchedulingDriver: PlaybackSchedulingDriver {
-    private let engine = AVAudioEngine()
+final class AVAudioPlaybackSchedulingDriver: PlaybackSchedulingDriver {
+    let engine: AVAudioEngine
     private let playerNode = AVAudioPlayerNode()
+
+    init(engine: AVAudioEngine = AVAudioEngine()) {
+        self.engine = engine
+    }
 
     var isRunning: Bool {
         engine.isRunning
@@ -205,6 +213,12 @@ private final class AVAudioPlaybackSchedulingDriver: PlaybackSchedulingDriver {
     func prepare() {
         engine.attach(playerNode)
         engine.connect(playerNode, to: engine.mainMixerNode, format: nil)
+    }
+
+    func configureOutput(format: AVAudioFormat) {
+        engine.disconnectNodeOutput(playerNode)
+        engine.connect(playerNode, to: engine.mainMixerNode, format: format)
+        engine.prepare()
     }
 
     func start() throws {

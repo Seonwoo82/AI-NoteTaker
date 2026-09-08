@@ -21,6 +21,8 @@ Packages/AudioPipeline/.build/
 
 # Recordings, diagnostics, and generated artifacts
 Recordings/
+meeting-notes.json
+ai-transcript.json
 *.m4a
 *.wav
 *.aiff

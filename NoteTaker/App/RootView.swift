@@ -87,7 +87,9 @@ private struct WorkspaceDetailContent: View {
             session: container.session,
             settings: container.settings,
             playback: container.playback,
-            libraryController: container.libraryController
+            libraryController: container.libraryController,
+            meetingNotes: container.meetingNotes,
+            aiConfiguration: container.aiConfiguration
         )
     }
 }
@@ -99,6 +101,8 @@ private struct DetailView: View {
     let settings: AppSettings
     let playback: PlaybackController
     let libraryController: LibraryController
+    let meetingNotes: MeetingNotesService
+    let aiConfiguration: AIConfiguration
 
     var body: some View {
         switch session.phase {
@@ -107,10 +111,12 @@ private struct DetailView: View {
         case .idle:
             if let selectedID = model.selectedRecordingID,
                let recording = library.recording(id: selectedID) {
-                PlaybackDetailView(
+                RecordingDetailTabsView(
                     recording: recording,
-                    controller: playback,
-                    libraryController: libraryController
+                    playback: playback,
+                    libraryController: libraryController,
+                    meetingNotes: meetingNotes,
+                    aiConfiguration: aiConfiguration
                 )
             } else {
                 EmptyDetailView()

@@ -8,8 +8,12 @@ struct NoteTakerApp: App {
     @NSApplicationDelegateAdaptor(AppTerminationDelegate.self) private var appDelegate
 
     init() {
+        let isUnitTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         let isUITesting = ProcessInfo.processInfo.arguments.contains("-uiTesting")
-        _runtime = State(initialValue: AppRuntime(services: isUITesting ? .uiTesting() : .live()))
+        let paths = isUnitTesting && !isUITesting
+            ? LibraryPaths(libraryRoot: FileManager.default.temporaryDirectory.appending(path: "NoteTakerTestHost-\(UUID())"), arguments: [])
+            : LibraryPaths()
+        _runtime = State(initialValue: AppRuntime(services: isUITesting || isUnitTesting ? .uiTesting() : .live(), paths: paths))
         _smokeRecordBootstrap = StateObject(wrappedValue: SmokeRecordBootstrap())
     }
 
@@ -38,8 +42,15 @@ struct NoteTakerApp: App {
 
         Settings {
             if let container = runtime.container {
-                SettingsView(settings: container.settings, session: container.session)
-                    .frame(width: 420)
+                TabView(selection: Binding(get: { container.aiConfiguration.settingsTab }, set: { container.aiConfiguration.settingsTab = $0 })) {
+                    SettingsView(settings: container.settings, session: container.session)
+                        .tabItem { Label(String(localized: "Recording"), systemImage: "mic") }
+                        .tag("recording")
+                    AISettingsView(configuration: container.aiConfiguration)
+                        .tabItem { Label(String(localized: "AI Meeting Notes"), systemImage: "sparkles") }
+                        .tag("ai")
+                }
+                .frame(width: 560, height: 590)
             } else {
                 ProgressView()
                     .frame(width: 420, height: 180)
@@ -50,12 +61,14 @@ struct NoteTakerApp: App {
     private func prepareApp() async {
         let container = await runtime.load()
         appDelegate.session = container.session
+        appDelegate.meetingNotes = container.meetingNotes
     }
 }
 
 @MainActor
 final class AppTerminationDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     var session: RecordingSession?
+    var meetingNotes: MeetingNotesService?
     private var isTerminating = false
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -63,6 +76,7 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate, ObservableO
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        meetingNotes?.prepareForTermination()
         guard !isTerminating else { return .terminateLater }
         guard let session else { return .terminateNow }
         guard session.phase != .idle else { return .terminateNow }

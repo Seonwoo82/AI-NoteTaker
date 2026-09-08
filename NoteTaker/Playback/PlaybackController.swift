@@ -99,7 +99,7 @@ final class PlaybackController {
     }
 
     func play() async {
-        guard canTransport else { return }
+        guard await ensureSelectedRecordingLoadedIfNeeded() else { return }
         errorMessage = nil
         let timeline = PlaybackTimeline(duration: duration)
         if currentTime >= timeline.endTime {
@@ -113,6 +113,21 @@ final class PlaybackController {
         } catch {
             isPlaying = false
             errorMessage = message(for: error)
+        }
+    }
+
+    private func ensureSelectedRecordingLoadedIfNeeded() async -> Bool {
+        guard !canTransport else { return true }
+        guard let selectedRecordingID,
+              let recording = library.recording(id: selectedRecordingID)
+        else {
+            return false
+        }
+        do {
+            try await load(recording: recording)
+            return canTransport
+        } catch {
+            return false
         }
     }
 

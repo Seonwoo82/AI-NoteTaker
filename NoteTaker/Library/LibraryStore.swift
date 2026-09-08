@@ -17,6 +17,7 @@ final class LibraryStore {
     private(set) var recordings: [Recording]
     private(set) var maintenanceError: String?
     let paths: LibraryPaths
+    @ObservationIgnored var onRecordingUnavailable: ((UUID) -> Void)?
 
     private init(recordings: [Recording], paths: LibraryPaths, maintenanceError: String? = nil) {
         self.recordings = recordings
@@ -90,6 +91,7 @@ final class LibraryStore {
         try mutateActiveRecording(id: id) { recording in
             recording.deletedAt = now
         }
+        onRecordingUnavailable?(id)
     }
 
     func restore(id: UUID) throws {
@@ -116,6 +118,7 @@ final class LibraryStore {
             throw LibraryStoreError.deletionFailed(id, String(describing: error))
         }
         recordings.remove(at: index)
+        onRecordingUnavailable?(id)
     }
 
     @discardableResult

@@ -1,6 +1,246 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Save Key & Enable AI" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "키 저장 및 자동 회의록 켜기" } } }
+    },
+    "Save Key & Enable AI turns on automatic minutes for new recordings. You can turn it off below." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "아래 '키 저장 및 자동 회의록 켜기'를 누르면 새 녹음부터 자동 생성합니다. 자동 생성은 언제든 끌 수 있습니다." } } }
+    },
+    "AI Meeting Notes" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "AI 회의록" } } }
+    },
+    "Configure OpenRouter transcription and minutes generation." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenRouter 음성 인식과 회의록 생성을 설정합니다." } } }
+    },
+    "Before you save an API key" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "API 키를 저장하기 전에" } } }
+    },
+    "When AI minutes are generated, your recording audio and transcript are sent to OpenRouter and the selected model providers. Provider usage may be billed to your OpenRouter account." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "AI 회의록을 생성하면 녹음 오디오와 전사문이 OpenRouter 및 선택한 모델 제공자에게 전송됩니다. 사용량에 따라 OpenRouter 계정에 요금이 부과될 수 있습니다." } } }
+    },
+    "OpenRouter API Key" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "OpenRouter API 키" } } }
+    },
+    "Saved" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장됨" } } }
+    },
+    "Not Set" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "설정 안 됨" } } }
+    },
+    "Paste a new key" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "새 키 붙여넣기" } } }
+    },
+    "Save Key" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "키 저장" } } }
+    },
+    "Test" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "연결 확인" } } }
+    },
+    "Remove" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "제거" } } }
+    },
+    "Saved keys are kept in Keychain and are never shown here." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "키는 macOS 키체인에 안전하게 보관되며 화면에 다시 표시되지 않습니다." } } }
+    },
+    "Models" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "모델" } } }
+    },
+    "Refresh" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "새로 고침" } } }
+    },
+    "Minutes Model" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "회의록 모델" } } }
+    },
+    "Speech-to-Text Model" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "음성 인식 모델" } } }
+    },
+    "Refreshing models..." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "모델 목록을 불러오는 중…" } } }
+    },
+    "Automatically generate minutes after recording" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 후 회의록 자동 생성" } } }
+    },
+    "Output Language" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "회의록 언어" } } }
+    },
+    "Match source" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "원문 언어" } } }
+    },
+    "Korean" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "한국어" } } }
+    },
+    "English" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "영어" } } }
+    },
+    "AI settings are ready when a key and models are selected." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "키와 모델을 선택하면 AI 회의록을 사용할 수 있습니다." } } }
+    },
+    "API key saved." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "API 키를 저장했습니다." } } }
+    },
+    "API key removed." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "API 키를 제거했습니다." } } }
+    },
+    "Search models" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "모델 검색" } } }
+    },
+    "AI" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "AI" } } }
+    },
+    "Queued" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "대기 중" } } }
+    },
+    "Transcribing audio" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "음성을 텍스트로 변환하는 중" } } }
+    },
+    "Writing minutes" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "회의록 작성 중" } } }
+    },
+    "Generation failed" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "회의록 생성 실패" } } }
+    },
+    "Generate" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "생성하기" } } }
+    },
+    "Open AI Settings" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "AI 설정 열기" } } }
+    },
+    "Regenerate Minutes?" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "회의록을 다시 생성할까요?" } } }
+    },
+    "Regenerate" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "다시 생성" } } }
+    },
+    "The previous minutes stay visible while new minutes are generated." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "새 회의록을 생성하는 동안 이전 회의록은 그대로 볼 수 있습니다." } } }
+    },
+    "Summary" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "요약" } } }
+    },
+    "Minutes" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "회의록" } } }
+    },
+    "Transcript" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "전사문" } } }
+    },
+    "Copy Markdown" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "Markdown 복사" } } }
+    },
+    "Copied" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "복사됨" } } }
+    },
+    "No transcript was stored." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "저장된 전사문이 없습니다." } } }
+    },
+    "No AI Minutes" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "AI 회의록 없음" } } }
+    },
+    "Deleted recordings keep existing minutes read-only, but new minutes cannot be generated." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "삭제된 녹음의 기존 회의록은 읽을 수 있지만 새로 생성할 수는 없습니다." } } }
+    },
+    "Ready to generate minutes" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "회의록을 생성할 준비가 됐어요" } } }
+    },
+    "Create clear minutes and a transcript from this recording." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "이 녹음으로 읽기 쉬운 회의록과 전사문을 만드세요." } } }
+    },
+    "AI setup needed" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "AI 설정이 필요해요" } } }
+    },
+    "Save an OpenRouter API key before generating minutes." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "설정에서 OpenRouter API 키를 저장하고 모델을 선택해 주세요." } } }
+    },
+    "The existing minutes remain available while this runs." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "처리 중에도 이전 회의록을 볼 수 있습니다." } } }
+    },
+    "Generated" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "생성일" } } }
+    },
+    "Duration" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 길이" } } }
+    },
+    "Cost" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "사용 비용" } } }
+    },
+    "Outline" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차" } } }
+    },
+    "Recording Detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 상세" } } }
+    },
+    "Audio" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음" } } }
+    },
+    "AI meeting notes are being prepared." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "AI 회의록을 만들고 있어요." } } }
+    },
+    "View Notes" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "회의록 보기" } } }
+    },
+    "View AI Meeting Notes" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "AI 회의록 보기" } } }
+    },
     "Start Recording" : {
       "extractionState" : "manual",
       "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 시작" } } }
