@@ -20,10 +20,20 @@ nonisolated struct MarkdownDocument: Equatable, Sendable {
 
 nonisolated extension MarkdownDocument {
     var headings: [Heading] {
-        blocks.compactMap { block in
+        blocks.enumerated().compactMap { blockIndex, block in
             guard case .heading(let level, let text) = block else { return nil }
-            return Heading(level: level, text: text)
+            return Heading(blockIndex: blockIndex, level: level, text: text)
         }
+    }
+
+    var outlineHeadings: [Heading] {
+        let candidates = headings.filter { $0.level >= 2 }
+        guard let outlineLevel = candidates.map(\.level).min() else { return [] }
+        return candidates.filter { $0.level == outlineLevel }
+    }
+
+    enum Anchor: Hashable, Sendable {
+        case block(Int)
     }
 
     enum Block: Equatable, Sendable {
@@ -60,7 +70,9 @@ nonisolated extension MarkdownDocument {
         }
     }
 
-    struct Heading: Equatable, Sendable {
+    struct Heading: Equatable, Identifiable, Sendable {
+        let blockIndex: Int
+        var id: Int { blockIndex }
         let level: Int
         let text: String
     }

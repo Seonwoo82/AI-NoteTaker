@@ -14,8 +14,9 @@ struct MarkdownDocumentView: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
+            ForEach(Array(document.blocks.enumerated()), id: \.offset) { index, block in
                 MarkdownBlockView(block: block)
+                    .id(MarkdownDocument.Anchor.block(index))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

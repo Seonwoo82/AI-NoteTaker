@@ -233,6 +233,30 @@
       "extractionState" : "manual",
       "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차" } } }
     },
+    "Expanded" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "펼쳐짐" } } }
+    },
+    "Collapsed" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "접힘" } } }
+    },
+    "Show outline" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차 펼치기" } } }
+    },
+    "Hide outline" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차 접기" } } }
+    },
+    "Show all sections" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "목차 전체 보기" } } }
+    },
+    "Show fewer sections" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "간단히 보기" } } }
+    },
     "Recording Detail" : {
       "extractionState" : "manual",
       "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 상세" } } }

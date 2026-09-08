@@ -5,10 +5,12 @@ struct MeetingNotesView: View {
     let service: MeetingNotesService
     @Bindable var configuration: AIConfiguration
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var selectedTab = NotesTab.minutes
     @State private var showingRegenerateConfirmation = false
     @State private var copied = false
+    @State private var selectedOutlineBlock: Int?
 
     private var document: MeetingNotesDocument? {
         service.document(for: recording.id)
@@ -19,20 +21,32 @@ struct MeetingNotesView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                progressView
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    progressView
 
-                if let document {
-                    documentTabs(document)
-                } else if !progress.isRunning {
-                    emptyState
+                    if let document {
+                        documentTabs(document) { heading in
+                            selectedOutlineBlock = heading.blockIndex
+                            let anchor = MarkdownDocument.Anchor.block(heading.blockIndex)
+                            if reduceMotion {
+                                proxy.scrollTo(anchor, anchor: .top)
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.22)) {
+                                    proxy.scrollTo(anchor, anchor: .top)
+                                }
+                            }
+                        }
+                    } else if !progress.isRunning {
+                        emptyState
+                    }
                 }
+                .frame(maxWidth: 760, alignment: .leading)
+                .padding(24)
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(24)
-            .frame(maxWidth: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .task(id: recording.id) {
@@ -42,7 +56,10 @@ struct MeetingNotesView: View {
             copied = false
             selectedTab = .minutes
         }
-        .onChange(of: document?.markdown) { copied = false }
+        .onChange(of: document?.markdown) {
+            copied = false
+            selectedOutlineBlock = nil
+        }
         .confirmationDialog(
             String(localized: "Regenerate Minutes?"),
             isPresented: $showingRegenerateConfirmation
@@ -134,8 +151,9 @@ struct MeetingNotesView: View {
         .buttonStyle(.bordered)
     }
 
-    private func documentTabs(_ document: MeetingNotesDocument) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+    private func documentTabs(_ document: MeetingNotesDocument, onSelectHeading: @escaping (MarkdownDocument.Heading) -> Void) -> some View {
+        let markdown = MarkdownDocument(document.markdown)
+        return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Picker(String(localized: "Summary"), selection: $selectedTab) {
                     Text(String(localized: "Minutes")).tag(NotesTab.minutes)
@@ -162,7 +180,13 @@ struct MeetingNotesView: View {
                 switch selectedTab {
                 case .minutes:
                     ReportOverview(document: document, recording: recording)
-                    MarkdownDocumentView(document.markdown)
+                    if !markdown.outlineHeadings.isEmpty {
+                        MeetingNotesOutline(headings: markdown.outlineHeadings,
+                                            selectedBlockIndex: selectedOutlineBlock,
+                                            onSelect: onSelectHeading)
+                            .id(document.recordingID)
+                    }
+                    MarkdownDocumentView(document: markdown)
                 case .transcript:
                     Text(document.transcript.isEmpty ? String(localized: "No transcript was stored.") : document.transcript)
                         .font(.body)
@@ -276,14 +300,6 @@ private struct ReportOverview: View {
     let document: MeetingNotesDocument
     let recording: Recording
 
-    private var markdown: MarkdownDocument {
-        MarkdownDocument(document.markdown)
-    }
-
-    private var outline: [MarkdownDocument.Heading] {
-        markdown.headings.filter { $0.level == 2 }.prefix(6).map { $0 }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
@@ -306,24 +322,6 @@ private struct ReportOverview: View {
                 }
             }
 
-            if !outline.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(String(localized: "Outline"))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 6)], alignment: .leading, spacing: 6) {
-                        ForEach(Array(outline.enumerated()), id: \.offset) { _, heading in
-                            Text(heading.text)
-                                .font(.caption)
-                                .lineLimit(2)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(.quaternary, in: Capsule())
-                        }
-                    }
-                }
-            }
         }
         .padding(.bottom, 4)
     }

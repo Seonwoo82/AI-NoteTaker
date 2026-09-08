@@ -72,3 +72,108 @@ func markdownDocumentPreservesMalformedInput() {
         .codeBlock(language: "json", code: "{\"ok\": true}")
     ])
 }
+
+@Test("markdown headings with duplicate text remain distinct for navigation")
+func markdownHeadingsWithDuplicateTextRemainDistinctForNavigation() {
+    let source = """
+    # Planning
+
+    ## Decisions
+    Ship the first decision.
+
+    ## Decisions
+    Ship the second decision.
+    """
+
+    let headings = MarkdownDocument(source).headings
+
+    #expect(headings.count == 3)
+    #expect(headings[1] != headings[2])
+}
+
+@Test("markdown headings expose stable block index identity and anchors")
+func markdownHeadingsExposeStableBlockIndexIdentityAndAnchors() {
+    let source = """
+    # Planning
+
+    Intro paragraph.
+
+    ## Decisions
+    Ship the first decision.
+
+    ## Decisions
+    Ship the second decision.
+    """
+
+    let headings = MarkdownDocument(source).headings
+
+    #expect(headings.map(\.blockIndex) == [0, 2, 4])
+    #expect(headings.map(\.id) == [0, 2, 4])
+    #expect(MarkdownDocument.Anchor.block(headings[1].blockIndex) != .block(headings[2].blockIndex))
+}
+
+@Test("markdown outline falls back to h3 when no h2 sections exist")
+func markdownOutlineFallsBackToH3WhenNoH2SectionsExist() {
+    let source = """
+    # Planning
+
+    ### Risks
+    Budget drift.
+
+    #### Detail
+    Keep watching scope.
+
+    ### Actions
+    Send the recap.
+    """
+
+    let outline = MarkdownDocument(source).outlineHeadings
+
+    #expect(outline.map(\.level) == [3, 3])
+    #expect(outline.map(\.text) == ["Risks", "Actions"])
+    #expect(outline.map(\.blockIndex) == [1, 5])
+}
+
+@Test("markdown outline is empty for title-only documents")
+func markdownOutlineIsEmptyForTitleOnlyDocuments() {
+    let source = """
+    # Planning
+
+    Opening notes without sections.
+    """
+
+    #expect(MarkdownDocument(source).outlineHeadings == [])
+}
+
+@Test("markdown outline preserves every h2 section")
+func markdownOutlinePreservesEveryH2Section() {
+    let source = """
+    # Planning
+
+    ## One
+    Notes.
+
+    ## Two
+    Notes.
+
+    ## Three
+    Notes.
+
+    ## Four
+    Notes.
+
+    ## Five
+    Notes.
+
+    ## Six
+    Notes.
+
+    ## Seven
+    Notes.
+    """
+
+    let outline = MarkdownDocument(source).outlineHeadings
+
+    #expect(outline.map(\.text) == ["One", "Two", "Three", "Four", "Five", "Six", "Seven"])
+    #expect(outline.count == 7)
+}
