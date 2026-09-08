@@ -55,7 +55,7 @@ All routes require `Authorization: Bearer <SYNC_TOKEN>`.
 - `PUT /v1/recordings/<UUID>/notes/<audioVersion>` accepts a completed `MeetingNotesDocument` (including its transcript) after matching recording metadata exists. Returns `{ "note": descriptor }`, where the descriptor has `recordingID`, `audioVersion`, `generatedAtMillis`, `revision` (SHA-256), and `byteCount`.
 - `GET /v1/recordings/<UUID>/notes/<audioVersion>/<revision>` returns the exact completed JSON bytes from `recordings/<UUID>/notes/<audioVersion>/<revision>.json` in private R2.
 
-Responses include `Cache-Control: no-store` so private metadata, audio, and documents are not cached by intermediary clients. The health route reads both the `recordings` and `meeting_notes` tables and performs an R2 metadata lookup; a missing migration or broken bucket binding fails health. Apply both migrations before deploying the Worker.
+Responses include `Cache-Control: no-store` so private metadata, audio, and documents are not cached by intermediary clients. The health route reads both the `recordings` and `meeting_notes` tables and performs an R2 metadata lookup; a missing migration or broken bucket binding fails health. Apply all migrations before deploying the Worker.
 
 ## Limits And Conflicts
 
@@ -63,4 +63,17 @@ Metadata is limited to 64 KiB. Chunked metadata bodies are read incrementally an
 
 Metadata conflicts use last-edit-wins by the lexicographic tuple `(modifiedAt, mutationID)`. `modifiedAt` is Unix milliseconds and `mutationID` is a canonical uppercase UUID. The higher tuple wins atomically in D1; stale clients receive and should adopt the returned winner. This depends on device clocks being reasonably close. Audio is immutable for this scope, and cloud audio or tombstones are not purged automatically.
 
-Completed documents are limited to 2 MiB and use a separate `(generatedAtMillis, revision)` conflict order. Clients verify size, schema, recording/audio version, and SHA-256 before atomic publication. A failed transfer preserves the local document. `ai-transcript.json` is an unfinished generation cache and remains local; the complete transcript already travels inside `meeting-notes.json`. OpenRouter API keys and AI preferences remain device-local and are never uploaded.
+Completed documents are limited to 2 MiB and use a separate `(generatedAtMillis, revision)` conflict order. Clients verify size, schema, recording/audio version, and SHA-256 before atomic publication. A failed transfer preserves the local document. `ai-transcript.json` is an unfinished generation cache and remains local; the complete transcript already travels inside `meeting-notes.json`. OpenRouter API keys remain device-local and are never uploaded. AI model IDs, output language, and the requested automatic-generation preference sync separately through D1.
+
+
+## AI Preferences
+
+Apply `0003_ai_settings.sql` for the singleton preference document and per-device key-presence records.
+
+- `GET /v1/ai-settings?deviceID=<UUID>` returns `{ preferences: document|null, otherDevicesHaveAPIKey: boolean }`.
+- `PUT /v1/ai-settings` accepts `{ preferences: document|null, device: { id, platform, hasAPIKey } }` and returns the same response shape, excluding the caller when checking other devices.
+- The document includes `schemaVersion: 1`, `modelID`, `transcriptionModelID`, `outputLanguage` (`ko`, `en`, `source`), `autoGenerate`, `modifiedAt` (Unix milliseconds), and `mutationID` (uppercase UUID). Conflicts use `(modifiedAt, mutationID)`.
+- A null preference only updates device presence. `hasAPIKey` is a boolean; null or omission preserves the last known presence when Keychain is temporarily unavailable. Platforms are `macOS` or `iOS`.
+- Requests and responses are bounded to 16 KiB. Only explicitly supported fields are accepted; API keys, key fragments, catalogs, and device names are never part of the payload.
+
+A new client reads existing preferences before publishing. Explicit offline edits are preserved for retry. Generation is still gated by a local API key even when shared automatic generation is enabled.

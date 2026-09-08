@@ -2338,6 +2338,76 @@
           }
         }
       }
+    },
+    "An API key is registered on another linked device.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 연결 기기에 API 키가 등록되어 있습니다."
+          }
+        }
+      }
+    },
+    "AI preferences are synced. Enter an OpenRouter API key on this device to generate meeting notes here.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 설정은 동기화되었습니다. 이 기기에서도 회의록을 생성하려면 OpenRouter API 키를 입력해 주세요."
+          }
+        }
+      }
+    },
+    "Enter API Key on This Device": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에 API 키 입력"
+          }
+        }
+      }
+    },
+    "Saving a key keeps the automatic-generation preference synced from your other device.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 키를 저장해도 다른 기기에서 동기화된 자동 생성 설정은 유지됩니다."
+          }
+        }
+      }
+    },
+    "Save an API key on this device to automatically generate minutes for new recordings.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 녹음의 회의록을 자동 생성하려면 이 기기에 API 키를 저장해 주세요."
+          }
+        }
+      }
+    },
+    "Select a model": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모델 선택"
+          }
+        }
+      }
+    },
+    "AI models, output language, and automatic-generation preferences sync too. API keys stay on each device.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 모델, 출력 언어, 자동 생성 설정도 동기화합니다. API 키는 각 기기에 보관합니다."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

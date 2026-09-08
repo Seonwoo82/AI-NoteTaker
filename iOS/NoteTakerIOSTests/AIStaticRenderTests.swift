@@ -58,6 +58,19 @@ final class AIStaticRenderTests: XCTestCase {
         attach(notesImage, name: "AI Meeting Notes iPhone 390pt")
         attach(settingsImage, name: "AI Settings iPhone 390pt")
 
+        let missingKeyEnvironment = AIEnvironment.testing()
+        let missingKeyConfiguration = AIConfiguration(client: missingKeyEnvironment.client,
+            keyStore: missingKeyEnvironment.keyStore, defaults: missingKeyEnvironment.defaults)
+        missingKeyConfiguration.setSyncContext(endpoint: "https://example.test", enabled: true)
+        missingKeyConfiguration.acceptSharedPreferences(AISharedPreferences(
+            modelID: "fixture/summary", transcriptionModelID: "fixture/transcription", outputLanguage: "ko",
+            autoGenerate: true, modifiedAt: 1000, mutationID: UUID()))
+        missingKeyConfiguration.setOtherDeviceKeyPresence(true)
+        await missingKeyConfiguration.refreshModels()
+        let missingKeyImage = try await renderImage(
+            AISettingsView(configuration: missingKeyConfiguration).frame(width: 390, height: 920))
+        attach(missingKeyImage, name: "AI Shared Settings Missing Key 390pt")
+
         let parsed = MarkdownDocument(document.markdown)
         guard service.document(for: recording.id) == document else { throw RenderError.documentNotLoaded }
         guard !parsed.outlineHeadings.isEmpty else { throw RenderError.missingOutline }

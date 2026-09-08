@@ -107,6 +107,7 @@ struct SyncSettingsView: View {
                     Text("If both devices edit the same note, the edit with the later device timestamp wins. Keep device clocks set automatically.")
                 Text("Audio uploads are limited to 95 MiB per recording. Deleted notes can be restored from Recently Deleted; their cloud audio is retained.")
                 Text("Recordings, AI minutes, and completed transcripts sync between devices. Set your OpenRouter API key separately on each device.")
+                    Text("AI models, output language, and automatic-generation preferences sync too. API keys stay on each device.")
             }
             .font(.footnote).foregroundStyle(.secondary)
         }

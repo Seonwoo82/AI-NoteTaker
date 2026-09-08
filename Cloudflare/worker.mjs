@@ -69,6 +69,14 @@ async function handleRequest(request, env) {
     return listNotes(env, url);
   }
 
+  if (url.pathname === "/v1/ai-settings" && request.method === "GET") {
+    validateUUID(url.searchParams.get("deviceID"), "device ID");
+    return getAISettings(env, url.searchParams.get("deviceID"));
+  }
+  if (url.pathname === "/v1/ai-settings" && request.method === "PUT") {
+    return putAISettings(request, env);
+  }
+
   const metadataMatch = url.pathname.match(/^\/v1\/recordings\/([^/]+)$/);
   if (metadataMatch && request.method === "PUT") {
     return putRecording(request, env, metadataMatch[1]);
@@ -93,6 +101,74 @@ async function handleRequest(request, env) {
   }
 
   return jsonError(404, "not_found", "Endpoint was not found.");
+}
+
+const AI_SETTINGS_LIMIT_BYTES = 16 * 1024;
+const AI_PREFERENCE_FIELDS = new Set([
+  "schemaVersion", "modelID", "transcriptionModelID", "outputLanguage",
+  "autoGenerate", "modifiedAt", "mutationID",
+]);
+
+function exactObject(value, fields, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      Object.keys(value).some((key) => !fields.has(key))) {
+    throw new HttpError(400, "invalid_ai_settings", `${label} contains unsupported fields.`);
+  }
+}
+
+function validateAIPreferences(value) {
+  exactObject(value, AI_PREFERENCE_FIELDS, "AI preferences");
+  const validModelID = (id) => typeof id === "string" && id.length <= 256 &&
+    (id === "" || /^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$/.test(id));
+  if (value.schemaVersion !== 1 || !validModelID(value.modelID) ||
+      !validModelID(value.transcriptionModelID) || !["ko", "en", "source"].includes(value.outputLanguage) ||
+      typeof value.autoGenerate !== "boolean" || !Number.isSafeInteger(value.modifiedAt) || value.modifiedAt < 0) {
+    throw new HttpError(400, "invalid_ai_settings", "AI preference values are invalid.");
+  }
+  validateUUID(value.mutationID, "settings mutation ID");
+  return value;
+}
+
+async function getAISettings(env, deviceID) {
+  requireBindings(env);
+  const row = await env.DB.prepare("SELECT preferences_json FROM ai_settings WHERE id = 1").first();
+  const other = await env.DB.prepare(
+    "SELECT device_id FROM ai_devices WHERE device_id <> ? AND has_api_key = 1 LIMIT 1",
+  ).bind(deviceID).first();
+  return json({ preferences: row ? JSON.parse(row.preferences_json) : null, otherDevicesHaveAPIKey: other !== null });
+}
+
+async function putAISettings(request, env) {
+  requireBindings(env);
+  assertBodySize(request, AI_SETTINGS_LIMIT_BYTES, "AI settings must not exceed 16 KiB.");
+  const text = await readLimitedText(request, AI_SETTINGS_LIMIT_BYTES, "AI settings must not exceed 16 KiB.");
+  let candidate;
+  try { candidate = JSON.parse(text); }
+  catch { throw new HttpError(400, "invalid_json", "AI settings must be valid JSON."); }
+  exactObject(candidate, new Set(["preferences", "device"]), "AI settings");
+  exactObject(candidate.device, new Set(["id", "platform", "hasAPIKey"]), "Device");
+  const device = candidate.device;
+  validateUUID(device.id, "device ID");
+  if (!["macOS", "iOS"].includes(device.platform) ||
+      (device.hasAPIKey != null && typeof device.hasAPIKey !== "boolean")) {
+    throw new HttpError(400, "invalid_ai_settings", "Device information is invalid.");
+  }
+  const preferences = candidate.preferences == null ? null : validateAIPreferences(candidate.preferences);
+  if (preferences) {
+    await env.DB.prepare(
+      `INSERT INTO ai_settings (id, preferences_json, modified_at, mutation_id) VALUES (1, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET preferences_json = excluded.preferences_json,
+         modified_at = excluded.modified_at, mutation_id = excluded.mutation_id
+       WHERE excluded.modified_at > ai_settings.modified_at
+          OR (excluded.modified_at = ai_settings.modified_at AND excluded.mutation_id > ai_settings.mutation_id)`,
+    ).bind(JSON.stringify(preferences), preferences.modifiedAt, preferences.mutationID).run();
+  }
+  await env.DB.prepare(
+    `INSERT INTO ai_devices (device_id, platform, has_api_key) VALUES (?, ?, ?)
+     ON CONFLICT(device_id) DO UPDATE SET platform = excluded.platform,
+       has_api_key = COALESCE(excluded.has_api_key, ai_devices.has_api_key)`,
+  ).bind(device.id, device.platform, device.hasAPIKey == null ? null : Number(device.hasAPIKey)).run();
+  return getAISettings(env, device.id);
 }
 
 async function health(env) {

@@ -25,9 +25,10 @@ struct AppContainer {
         let meetingNotes = MeetingNotesService(configuration: aiConfiguration, client: ai.client,
                                               chunker: ai.chunker, library: library)
         let syncSettings = services.syncSettings
+        let automaticallySyncs = services.automaticallySyncs
         let syncCoordinator = SyncCoordinator(settings: syncSettings)
         meetingNotes.onDocumentSaved = { [weak syncCoordinator, weak library] _ in
-            guard syncSettings.isEnabled, let syncCoordinator, let library else { return }
+            guard automaticallySyncs, syncSettings.isEnabled, let syncCoordinator, let library else { return }
             Task { await syncCoordinator.sync(library: library) }
         }
         syncCoordinator.onNotesChanged = { [weak meetingNotes, weak library] id in
@@ -50,7 +51,7 @@ struct AppContainer {
             },
             onRecordingSaved: { recording in
                 meetingNotes.recordingDidFinish(recording)
-                if syncSettings.isEnabled {
+                if automaticallySyncs && syncSettings.isEnabled {
                     Task { await syncCoordinator.sync(library: library) }
                 }
             }
@@ -61,13 +62,14 @@ struct AppContainer {
             session: session,
             playback: playback,
             onLibraryChanged: {
-                if syncSettings.isEnabled {
+                if automaticallySyncs && syncSettings.isEnabled {
                     Task { await syncCoordinator.sync(library: library) }
                 }
             }
         )
 
-        if services.automaticallySyncs {
+        if automaticallySyncs {
+            syncCoordinator.configureAISettingsSync(configuration: aiConfiguration, library: library)
             syncCoordinator.configureAutomaticSync(library: library)
             syncCoordinator.setAutomaticSyncActive(true)
         }

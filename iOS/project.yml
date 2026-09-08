@@ -39,7 +39,7 @@ targets:
         CFBundleIdentifier: com.seonwoo.notetaker.ios
         CFBundleName: AI-NoteTaker
         CFBundleShortVersionString: "1.1"
-        CFBundleVersion: "5"
+        CFBundleVersion: "6"
         NSMicrophoneUsageDescription: AI-NoteTaker needs microphone access to record your voice notes.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:

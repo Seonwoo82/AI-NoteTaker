@@ -12,6 +12,13 @@ final class SyncSettings {
     private let defaults: UserDefaults
     private let tokenStore: SyncTokenStore
 
+    var deviceID: UUID {
+        if let saved = defaults.string(forKey: "sync.deviceID"), let id = UUID(uuidString: saved) { return id }
+        let id = UUID()
+        defaults.set(id.uuidString, forKey: "sync.deviceID")
+        return id
+    }
+
     init(
         defaults: UserDefaults = .standard,
         tokenStore: SyncTokenStore = SystemKeychainTokenStore()
@@ -72,6 +79,8 @@ final class SyncCoordinator {
     private var settingsGeneration = 0
     private var automaticScheduler: AutomaticSyncScheduler?
     private var automaticSyncIsActive = false
+    private var aiSettingsSynchronizer: AISettingsSynchronizer?
+    private var aiConfiguration: AIConfiguration?
     var onSettingsChanged: (() -> Void)?
 
     init(
@@ -111,13 +120,25 @@ final class SyncCoordinator {
                     try Task.checkCancellation()
                     needsSync = false
                     let configuration = try settings.configuration()
+                    let transport = transportFactory(configuration)
                     let engine = SyncEngine(
-                        transport: transportFactory(configuration),
+                        transport: transport,
                         onNotesChanged: onNotesChanged
                     )
                     activeEngine = engine
+                    var settingsError: Error?
+                    if let aiSettingsSynchronizer, let settingsTransport = transport as? any AISettingsSyncTransport {
+                        do {
+                            try await aiSettingsSynchronizer.synchronize(transport: settingsTransport,
+                                workspace: configuration.endpoint.absoluteString)
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch { settingsError = error }
+                    }
+                    try Task.checkCancellation()
                     try await engine.sync(library: library)
                     activeEngine = nil
+                    if let settingsError { throw settingsError }
                 } while needsSync
                 try Task.checkCancellation()
                 status = String(localized: "Synced")
@@ -130,6 +151,16 @@ final class SyncCoordinator {
         }
         currentSync = task
         await task.value
+    }
+
+    func configureAISettingsSync(configuration: AIConfiguration, library: LibraryStore) {
+        aiConfiguration = configuration
+        aiSettingsSynchronizer = AISettingsSynchronizer(configuration: configuration, deviceID: settings.deviceID)
+        configuration.setSyncContext(endpoint: settings.endpoint, enabled: settings.isEnabled)
+        configuration.onSyncStateChanged = { [weak self, weak library] in
+            guard let self, let library, self.settings.isEnabled else { return }
+            Task { await self.sync(library: library) }
+        }
     }
 
     func configureAutomaticSync(
@@ -168,6 +199,7 @@ final class SyncCoordinator {
     func settingsDidChange() {
         settingsGeneration += 1
         cancelCurrentSync()
+        aiConfiguration?.setSyncContext(endpoint: settings.endpoint, enabled: settings.isEnabled)
         automaticScheduler?.stop()
         updateAutomaticSync()
         onSettingsChanged?()

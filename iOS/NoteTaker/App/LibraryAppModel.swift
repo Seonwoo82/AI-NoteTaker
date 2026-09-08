@@ -93,6 +93,7 @@ final class LibraryAppModel {
         library = openedLibrary
         _ = await recorder.recoverRecordings(library: openedLibrary)
         if !isTesting {
+            sync.configureAISettingsSync(configuration: aiConfiguration, library: openedLibrary)
             sync.configureAutomaticSync(library: openedLibrary, canSync: { [weak self] in
                 guard let self else { return false }
                 return !self.recorder.isRecording && !self.recorder.isBusy

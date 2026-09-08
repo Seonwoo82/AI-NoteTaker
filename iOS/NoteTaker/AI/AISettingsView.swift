@@ -55,7 +55,9 @@ struct AISettingsView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(String(localized: "Save Key & Enable AI turns on automatic minutes for new recordings. You can turn it off below."))
+            Text(configuration.hasSyncedPreferences
+                 ? String(localized: "Saving a key keeps the automatic-generation preference synced from your other device.")
+                 : String(localized: "Save Key & Enable AI turns on automatic minutes for new recordings. You can turn it off below."))
                 .font(.caption.weight(.medium))
         }
     }
@@ -70,6 +72,19 @@ struct AISettingsView: View {
                     text: configuration.hasAPIKey ? String(localized: "Saved") : String(localized: "Not Set"),
                     systemImage: configuration.hasAPIKey ? "checkmark.circle.fill" : "circle"
                 )
+            }
+
+            if configuration.needsKeyForSyncedSettings {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(String(localized: "An API key is registered on another linked device."), systemImage: "icloud.and.arrow.down")
+                        .font(.subheadline.weight(.semibold))
+                    Text(String(localized: "AI preferences are synced. Enter an OpenRouter API key on this device to generate meeting notes here."))
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(String(localized: "Enter API Key on This Device")) { focusedInput = .apiKey }
+                        .accessibilityIdentifier("ai-enter-key-on-this-device")
+                }
+                .accessibilityIdentifier("ai-other-device-key-notice")
             }
 
             SecureField(String(localized: "Paste a new key"), text: $apiKey)
@@ -153,7 +168,7 @@ struct AISettingsView: View {
         Button {
             saveKey()
         } label: {
-            Label(configuration.hasAPIKey ? String(localized: "Save Key") : String(localized: "Save Key & Enable AI"), systemImage: "square.and.arrow.down")
+            Label(configuration.shouldEnableAutomaticGenerationOnFirstKeySave ? String(localized: "Save Key & Enable AI") : String(localized: "Save Key"), systemImage: "square.and.arrow.down")
         }
         .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
         .accessibilityIdentifier("ai-save-key")
@@ -181,6 +196,11 @@ struct AISettingsView: View {
         SettingsCard {
             Toggle(isOn: $configuration.autoGenerate) {
                 Label(String(localized: "Automatically generate minutes after recording"), systemImage: "wand.and.stars")
+            }
+
+            if configuration.autoGenerate && !configuration.hasAPIKey {
+                Text(String(localized: "Save an API key on this device to automatically generate minutes for new recordings."))
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Picker(String(localized: "Output Language"), selection: $configuration.outputLanguage) {
@@ -233,9 +253,7 @@ struct AISettingsView: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            let enablingAI = !configuration.hasAPIKey
-            try configuration.saveKey(trimmed)
-            if enablingAI { configuration.autoGenerate = true }
+            try configuration.saveKeyFromSettings(trimmed)
             apiKey = ""
             localMessage = String(localized: "API key saved.")
         } catch {
@@ -275,6 +293,7 @@ private struct ModelChooser: View {
                 .focused(focusedInput, equals: focusInput)
 #endif
             Picker(title, selection: $selection) {
+                if fallbackID.isEmpty { Text(String(localized: "Select a model")).tag("") }
                 if !fallbackID.isEmpty && !models.contains(where: { $0.id == fallbackID }) {
                     Text(fallbackID).tag(fallbackID)
                 }

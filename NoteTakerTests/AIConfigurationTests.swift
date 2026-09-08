@@ -5,6 +5,21 @@ import Testing
 @MainActor
 @Suite
 struct AIConfigurationTests {
+    @Test("requested automatic generation survives missing or removed device credentials")
+    func automaticGenerationPreferenceIsIndependentOfCredentials() throws {
+        let defaults = try isolatedDefaults()
+        defaults.set(true, forKey: "ai.autoGenerate")
+        let keyStore = InMemoryAPIKeyStore()
+        let configuration = AIConfiguration(client: StubOpenRouterClient(models: []), keyStore: keyStore, defaults: defaults)
+        #expect(configuration.autoGenerate)
+        #expect(!configuration.isConfigured)
+        try configuration.saveKey("synthetic-key")
+        configuration.autoGenerate = true
+        try configuration.removeKey()
+        #expect(configuration.autoGenerate)
+        #expect(!configuration.isConfigured)
+    }
+
     @Test("defaults require a stored key before auto generation is enabled")
     func defaultsRequireStoredKeyBeforeAutoGeneration() throws {
         let configuration = AIConfiguration(

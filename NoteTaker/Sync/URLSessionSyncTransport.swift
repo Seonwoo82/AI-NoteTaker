@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class URLSessionSyncTransport: MeetingNotesSyncTransport {
+final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTransport {
     nonisolated static let maxAudioByteCount = 95 * 1_024 * 1_024
     nonisolated static let maxMeetingNotesByteCount = 2 * 1_024 * 1_024
 
@@ -146,6 +146,40 @@ final class URLSessionSyncTransport: MeetingNotesSyncTransport {
             try? FileManager.default.removeItem(at: downloadedURL)
             throw error
         }
+    }
+
+    func getAISettings(deviceID: UUID) async throws -> AISettingsResponse {
+        var components = URLComponents(url: configuration.url(path: "v1/ai-settings"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "deviceID", value: deviceID.uuidString)]
+        guard let url = components?.url else { throw SyncError.invalidResponse }
+        return try await requestAISettings(request(url: url))
+    }
+
+    func putAISettings(_ upload: AISettingsUpload) async throws -> AISettingsResponse {
+        try upload.preferences?.validate()
+        var request = request(path: "v1/ai-settings")
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(upload)
+        guard (request.httpBody?.count ?? 0) <= 16 * 1024 else { throw SyncError.invalidResponse }
+        return try await requestAISettings(request)
+    }
+
+    private func requestAISettings(_ request: URLRequest) async throws -> AISettingsResponse {
+        let (bytes, response) = try await session.bytes(for: request)
+        if let length = (response as? HTTPURLResponse)?.expectedContentLength, length > 16 * 1024 {
+            throw SyncError.invalidResponse
+        }
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < 16 * 1024 else { throw SyncError.invalidResponse }
+            data.append(byte)
+        }
+        try Task.checkCancellation()
+        try validate(response: response, data: data)
+        let decoded = try decoder.decode(AISettingsResponse.self, from: data)
+        try decoded.preferences?.validate()
+        return decoded
     }
 
     private func request(path: String) -> URLRequest {
