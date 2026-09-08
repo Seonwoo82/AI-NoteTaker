@@ -5,6 +5,7 @@ struct PlaybackDetailView: View {
     @Bindable var controller: PlaybackController
     @Bindable var libraryController: LibraryController
     @State private var confirmPermanentDelete = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         VStack(spacing: 6) {
@@ -31,6 +32,24 @@ struct PlaybackDetailView: View {
                     }
                 )
                 .frame(height: 148)
+                .overlay {
+                    if controller.waveformPeaks.isEmpty {
+                        if controller.isLoadingWaveform {
+                            ProgressView(String(localized: "Loading waveform..."))
+                                .controlSize(.small)
+                        } else {
+                            VStack(spacing: 8) {
+                                Text(String(localized: "Waveform unavailable"))
+                                    .foregroundStyle(.secondary)
+                                Button(String(localized: "Reload Waveform")) {
+                                    Task { try? await prepareSelectedRecording() }
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                            .font(.caption)
+                        }
+                    }
+                }
                 .accessibilityIdentifier("waveform-view")
 
                 WaveformView(
@@ -85,9 +104,17 @@ struct PlaybackDetailView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("playback-detail")
-        .task(id: recording.id) {
-            if controller.selectedRecordingID != recording.id {
-                try? await controller.load(recording: recording)
+        .task(id: PlaybackRecordingIdentity(recording)) {
+            try? await prepareSelectedRecording()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { try? await prepareSelectedRecording() }
+            }
+        }
+        .onChange(of: controller.isReadyForDisplay(recording: recording)) { _, ready in
+            if !ready {
+                Task { try? await prepareSelectedRecording() }
             }
         }
         .confirmationDialog(
@@ -105,6 +132,15 @@ struct PlaybackDetailView: View {
 
     private var timeAccessibilityLabel: String {
         "\(DurationFormat.list(controller.currentTime)) / \(DurationFormat.list(controller.duration))"
+    }
+
+    private func prepareSelectedRecording() async throws {
+        guard !Task.isCancelled,
+              let current = libraryController.selectedRecording,
+              current.id == recording.id else { return }
+        // A focus callback can outlive the view that scheduled it. Resolve the
+        // still-selected row again instead of reopening a stale recording.
+        try await controller.prepareForDisplay(recording: current)
     }
 
     @ViewBuilder

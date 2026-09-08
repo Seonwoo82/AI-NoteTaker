@@ -1,6 +1,18 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Loading waveform..." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "파형을 불러오는 중…" } } }
+    },
+    "Waveform unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "파형을 불러오지 못했습니다" } } }
+    },
+    "Reload Waveform" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "파형 다시 불러오기" } } }
+    },
     "Save Key & Enable AI" : {
       "extractionState" : "manual",
       "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "키 저장 및 자동 회의록 켜기" } } }
