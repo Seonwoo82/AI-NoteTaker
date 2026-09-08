@@ -14,6 +14,7 @@ final class MeetingNotesService {
         let language: String
         let inputBudget: Int
         let outputBudget: Int
+        let partialOutputBudget: Int
     }
 
     private let configuration: AIConfiguration
@@ -73,11 +74,17 @@ final class MeetingNotesService {
             let key = try configuration.apiKey()
             let model = configuration.models.first { $0.id == configuration.modelID }
             let context = model?.contextLength ?? 8_192
-            let outputBudget = min(8_192, max(2_048, context / 4))
+            let needsReasoningReserve = OpenRouterModel.requiresReasoningBudget(for: configuration.modelID)
+            let outputBudget = needsReasoningReserve
+                ? min(12_288, max(4_096, context / 4))
+                : min(8_192, max(2_048, context / 4))
+            let partialOutputBudget = min(outputBudget, needsReasoningReserve ? 4_096 : 2_048)
             let job = Job(token: UUID(), recording: current, key: key, modelID: configuration.modelID,
                           transcriptionModelID: configuration.transcriptionModelID,
                           language: configuration.outputLanguage,
-                          inputBudget: max(1_024, min(24_000, context - outputBudget - 2_048)), outputBudget: outputBudget)
+                          inputBudget: max(1_024, min(96_000, context - outputBudget - 2_048)),
+                          outputBudget: outputBudget,
+                          partialOutputBudget: partialOutputBudget)
             tokens[recording.id] = job.token
             states[recording.id] = .queued
             queue.append(job)
@@ -196,7 +203,7 @@ final class MeetingNotesService {
                     try reserveModelCall()
                     let response = try await client.complete(system: MeetingNotesPrompts.system(language: job.language, partial: true),
                         user: "Meeting excerpt \(index + 1)/\(parts.count):\n<transcript>\n\(part)\n</transcript>",
-                        model: job.modelID, apiKey: job.key, maxTokens: 512)
+                        model: job.modelID, apiKey: job.key, maxTokens: job.partialOutputBudget)
                     try check(job)
                     account(response)
                     condensed.append(response.text)

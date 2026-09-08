@@ -100,6 +100,80 @@ struct OpenRouterClientTests {
         }
     }
 
+    @Test("reasoning-only truncated responses report output limits instead of JSON errors")
+    func reasoningOnlyTruncationIsActionable() async throws {
+        let recorder = HTTPRecorder(routes: [
+            "POST /api/v1/chat/completions": .json(#"{"choices":[{"message":{"role":"assistant","content":null,"reasoning":"private reasoning must not be shown"},"finish_reason":"length"}],"usage":{"completion_tokens":512,"completion_tokens_details":{"reasoning_tokens":512}}}"#)
+        ])
+        do {
+            _ = try await OpenRouterClient(session: recorder.session)
+                .complete(system: "s", user: "u", model: "z-ai/glm-5.3", apiKey: "sk", maxTokens: 512)
+            Issue.record("Expected output-limit error")
+        } catch let error as AIError {
+            #expect(error.message.contains("길이 제한"))
+            #expect(!error.message.contains("해석"))
+            #expect(!error.message.contains("private reasoning"))
+        }
+    }
+
+    @Test("null final content never substitutes private reasoning for meeting notes")
+    func nullContentDoesNotExposeReasoning() async throws {
+        let recorder = HTTPRecorder(routes: [
+            "POST /api/v1/chat/completions": .json(#"{"choices":[{"message":{"content":null,"reasoning":"do not reveal this"},"finish_reason":"stop"}]}"#)
+        ])
+        do {
+            _ = try await OpenRouterClient(session: recorder.session)
+                .complete(system: "s", user: "u", model: "m", apiKey: "sk", maxTokens: 512)
+            Issue.record("Expected empty-answer error")
+        } catch let error as AIError {
+            #expect(error.message.contains("최종 답변"))
+            #expect(!error.message.contains("do not reveal"))
+        }
+    }
+
+    @Test("optional usage metadata cannot discard a valid answer", arguments: [#""0.0123""#, #"{"unexpected":true}"#])
+    func optionalUsageCannotDiscardAnswer(costJSON: String) async throws {
+        let recorder = HTTPRecorder(routes: [
+            "POST /api/v1/chat/completions": .json("""
+            {"choices":[{"message":{"content":"# 회의록"},"finish_reason":"stop"}],"usage":{"cost":\(costJSON)}}
+            """)
+        ])
+        let response = try await OpenRouterClient(session: recorder.session)
+            .complete(system: "s", user: "u", model: "m", apiKey: "sk", maxTokens: 512)
+        #expect(response.text == "# 회의록")
+        #expect(response.costUSD == (costJSON == #""0.0123""# ? 0.0123 : nil))
+    }
+
+    @Test("HTTP 200 provider errors are sanitized and actionable")
+    func successfulHTTPStatusCanContainProviderFailure() async throws {
+        let recorder = HTTPRecorder(routes: [
+            "POST /api/v1/chat/completions": .json(#"{"error":{"code":429,"message":"secret transcript sk-or-secret"}}"#)
+        ])
+        do {
+            _ = try await OpenRouterClient(session: recorder.session)
+                .complete(system: "s", user: "u", model: "m", apiKey: "sk-or-secret", maxTokens: 512)
+            Issue.record("Expected provider error")
+        } catch let error as AIError {
+            #expect(error.message.contains("요청 한도"))
+            #expect(!error.message.contains("secret"))
+        }
+    }
+
+    @Test("GLM 5.3 receives low reasoning effort without disabling mandatory thinking")
+    func glmGetsBoundedReasoningEffort() async throws {
+        let recorder = HTTPRecorder(routes: [
+            "POST /api/v1/chat/completions": .json(#"{"choices":[{"message":{"role":"assistant","content":"회의록"},"finish_reason":"stop"}]}"#)
+        ])
+        _ = try await OpenRouterClient(session: recorder.session)
+            .complete(system: "s", user: "u", model: "z-ai/glm-5.3", apiKey: "sk", maxTokens: 4096)
+        let body = try recorder.jsonBody(at: 0)
+        let reasoning = try #require(body["reasoning"] as? [String: Any])
+        #expect(reasoning["effort"] as? String == "low")
+        #expect(reasoning["enabled"] as? Bool != false)
+        #expect(body["max_tokens"] as? Int == 4096)
+        #expect(recorder.requests.first?.value.timeoutInterval == 180)
+    }
+
     @Test("HTTP errors are Korean actionable and never include request secrets or raw body")
     func httpErrorsAreSanitized() async throws {
         let recorder = HTTPRecorder(routes: [

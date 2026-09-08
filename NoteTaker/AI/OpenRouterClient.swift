@@ -11,7 +11,7 @@ nonisolated struct OpenRouterClient: OpenRouterServing {
 
     init(configuration: URLSessionConfiguration) {
         configuration.timeoutIntervalForRequest = min(configuration.timeoutIntervalForRequest, 30)
-        configuration.timeoutIntervalForResource = min(configuration.timeoutIntervalForResource, 75)
+        configuration.timeoutIntervalForResource = min(configuration.timeoutIntervalForResource, 240)
         self.session = URLSession(
             configuration: configuration,
             delegate: OpenRouterNoRedirectDelegate(),
@@ -71,27 +71,37 @@ nonisolated struct OpenRouterClient: OpenRouterServing {
                 ChatMessage(role: "user", content: user)
             ],
             maxTokens: max(1, maxTokens),
-            stream: false
+            stream: false,
+            reasoning: OpenRouterModel.requiresReasoningBudget(for: model)
+                ? ReasoningOptions(effort: "low", exclude: true) : nil
         )
-        let request = try makeJSONRequest(path: "/chat/completions", apiKey: apiKey, body: &body, timeout: 60)
+        let request = try makeJSONRequest(path: "/chat/completions", apiKey: apiKey, body: &body, timeout: 180)
         let data = try await data(for: request)
         let response = try decode(ChatResponse.self, from: data)
         guard let choice = response.choices.first else {
             throw AIError(message: "모델 응답을 읽을 수 없어요. 잠시 후 다시 시도해 주세요.")
         }
         if choice.finishReason == "length" {
-            throw AIError(message: "응답이 길이 제한으로 잘렸어요. 더 큰 토큰 제한이나 더 짧은 입력으로 다시 시도해 주세요.")
+            throw AIError(message: "모델의 추론·답변이 출력 길이 제한에 도달했어요. 회의록이 완성되지 않았으니 다시 생성하거나 다른 모델을 선택해 주세요.")
         }
-        let text = choice.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let error = choice.error { throw providerError(error) }
+        if choice.finishReason == "error" {
+            throw AIError(message: "모델 제공자가 답변 생성을 중단했어요. 잠시 후 다시 생성해 주세요.")
+        }
+        if choice.finishReason == "content_filter" || choice.message?.refusal?.isEmpty == false {
+            throw AIError(message: "모델이 이 내용에 대한 회의록 생성을 거부했어요. 모델의 사용 정책과 녹음 내용을 확인해 주세요.")
+        }
+        let text = choice.message?.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !text.isEmpty else {
-            throw AIError(message: "모델 응답이 비어 있어요. 다른 모델로 다시 시도해 주세요.")
+            // Reasoning is not a meeting report and must never be shown as one.
+            throw AIError(message: "모델이 최종 답변을 반환하지 않았어요. 다시 생성하거나 다른 모델을 선택해 주세요.")
         }
         return AITextResponse(text: text, costUSD: response.usage?.cost)
     }
 
     nonisolated static func makeSession(configuration: URLSessionConfiguration = .ephemeral) -> URLSession {
         configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 75
+        configuration.timeoutIntervalForResource = 240
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         configuration.httpShouldSetCookies = false
         return URLSession(configuration: configuration, delegate: OpenRouterNoRedirectDelegate(), delegateQueue: nil)
@@ -157,11 +167,17 @@ nonisolated struct OpenRouterClient: OpenRouterServing {
             guard (200..<300).contains(httpResponse.statusCode) else {
                 throw statusError(httpResponse.statusCode)
             }
+            // Providers can report a generation failure after HTTP 200 was sent.
+            // Decode only the safe numeric code, never relay their raw message.
+            if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data),
+               let error = envelope.error {
+                throw providerError(error)
+            }
             return data
         } catch let error as AIError {
             throw error
         } catch let error as URLError where error.code == .timedOut {
-            throw AIError(message: "OpenRouter 요청 시간이 초과됐어요. 오디오를 더 짧게 나누거나 잠시 후 다시 시도해 주세요.")
+            throw AIError(message: "모델 응답 대기 시간이 초과됐어요. 저장된 전사문은 유지됩니다. 잠시 후 다시 생성하거나 더 빠른 모델을 선택해 주세요.")
         } catch {
             throw AIError(message: "OpenRouter에 연결할 수 없어요. 네트워크 연결을 확인해 주세요.")
         }
@@ -191,6 +207,13 @@ nonisolated struct OpenRouterClient: OpenRouterServing {
         default:
             AIError(message: "OpenRouter 요청이 실패했어요. 상태 코드 \(statusCode)를 확인해 주세요.")
         }
+    }
+
+    private func providerError(_ error: ProviderErrorDTO) -> AIError {
+        guard let code = error.code, (400...599).contains(code) else {
+            return AIError(message: "모델 제공자가 답변을 완료하지 못했어요. 잠시 후 다시 생성해 주세요.")
+        }
+        return statusError(code)
     }
 }
 
@@ -284,6 +307,39 @@ nonisolated private struct PriceValue: Decodable {
 
 nonisolated private struct UsageDTO: Decodable {
     let cost: Double?
+
+    enum CodingKeys: String, CodingKey { case cost }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Billing metadata is optional and must not discard a usable answer.
+        let value = try? container.decode(PriceValue.self, forKey: .cost)
+        if let value, let number = Double(value.value), number.isFinite, number >= 0 {
+            cost = number
+        } else {
+            cost = nil
+        }
+    }
+}
+
+nonisolated private struct ErrorEnvelope: Decodable {
+    let error: ProviderErrorDTO?
+}
+
+nonisolated private struct ProviderErrorDTO: Decodable {
+    let code: Int?
+    enum CodingKeys: String, CodingKey { case code }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let number = try? container.decode(Int.self, forKey: .code) {
+            code = number
+        } else if let string = try? container.decode(String.self, forKey: .code) {
+            code = Int(string)
+        } else {
+            code = nil
+        }
+    }
 }
 
 nonisolated private struct InputAudio: Encodable {
@@ -306,6 +362,14 @@ nonisolated private struct TranscriptionRequest: Encodable {
 nonisolated private struct TranscriptionResponse: Decodable {
     let text: String
     let usage: UsageDTO?
+
+    enum CodingKeys: String, CodingKey { case text, usage }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        usage = try? container.decode(UsageDTO.self, forKey: .usage)
+    }
 }
 
 nonisolated private struct ChatRequest: Encodable {
@@ -313,16 +377,23 @@ nonisolated private struct ChatRequest: Encodable {
     let messages: [ChatMessage]
     let maxTokens: Int
     let stream: Bool
+    let reasoning: ReasoningOptions?
 
     enum CodingKeys: String, CodingKey {
         case model
         case messages
         case maxTokens = "max_tokens"
         case stream
+        case reasoning
     }
 }
 
-nonisolated private struct ChatMessage: Codable, Equatable {
+nonisolated private struct ReasoningOptions: Encodable {
+    let effort: String
+    let exclude: Bool
+}
+
+nonisolated private struct ChatMessage: Encodable, Equatable {
     let role: String
     let content: String
 }
@@ -330,14 +401,29 @@ nonisolated private struct ChatMessage: Codable, Equatable {
 nonisolated private struct ChatResponse: Decodable {
     let choices: [ChatChoice]
     let usage: UsageDTO?
+
+    enum CodingKeys: String, CodingKey { case choices, usage }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        choices = try container.decode([ChatChoice].self, forKey: .choices)
+        usage = try? container.decode(UsageDTO.self, forKey: .usage)
+    }
 }
 
 nonisolated private struct ChatChoice: Decodable {
-    let message: ChatMessage
+    let message: ChatResponseMessage?
     let finishReason: String?
+    let error: ProviderErrorDTO?
 
     enum CodingKeys: String, CodingKey {
         case message
         case finishReason = "finish_reason"
+        case error
     }
+}
+
+nonisolated private struct ChatResponseMessage: Decodable {
+    let content: String?
+    let refusal: String?
 }

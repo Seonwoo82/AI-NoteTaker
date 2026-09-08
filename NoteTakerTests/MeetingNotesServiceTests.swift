@@ -135,6 +135,50 @@ struct MeetingNotesServiceTests {
         #expect(await h.client.sawFinalSentinel)
     }
 
+    @Test("A thirty kilobyte transcript on a large context model uses one final synthesis")
+    func largeContextTranscriptAvoidsUnnecessaryCompaction() async throws {
+        let h = try await MinutesHarness.make(summaryModel: OpenRouterModel(
+            id: "fixture/large-context",
+            name: "Large Context",
+            contextLength: 1_000_000,
+            inputModalities: ["text"],
+            outputModalities: ["text"]
+        ))
+        let transcript = String(repeating: "A", count: 30_000) + "FINAL_SENTINEL"
+        await h.client.setTranscript(transcript)
+
+        h.service.generate(h.recording)
+        try await h.waitUntilFinished()
+
+        #expect(await h.client.completionCalls == 1)
+        let requests = await h.client.completionRequests
+        #expect(requests.map(\.maxTokens) == [8_192])
+        #expect(requests.first?.user.contains("FINAL_SENTINEL") == true)
+    }
+
+    @Test("GLM 5.3 partial summaries get a reasoning-safe token budget")
+    func glmPartialSummariesUseLargerBudget() async throws {
+        let h = try await MinutesHarness.make(summaryModel: OpenRouterModel(
+            id: "z-ai/glm-5.3",
+            name: "GLM 5.3",
+            contextLength: 1_000_000,
+            inputModalities: ["text"],
+            outputModalities: ["text"]
+        ))
+        await h.client.setTranscript(String(repeating: "B", count: 110_000) + "FINAL_SENTINEL")
+
+        h.service.generate(h.recording)
+        try await h.waitUntilFinished()
+
+        let requests = await h.client.completionRequests
+        let partials = requests.filter { $0.user.contains("Meeting excerpt") }
+        #expect(partials.count == 2)
+        #expect(partials.allSatisfy { $0.maxTokens == 4_096 })
+        #expect(partials.allSatisfy { $0.user.utf8.count <= 97_000 })
+        #expect(requests.last?.maxTokens == 12_288)
+        #expect(await h.client.sawFinalSentinel)
+    }
+
     @Test("Excessive audio length is rejected before any paid request")
     func limitsAudioRequests() async throws {
         let h = try await MinutesHarness.make(chunker: OversizedMeetingChunker())
@@ -188,7 +232,11 @@ private struct MinutesHarness {
     let recording: Recording
     let service: MeetingNotesService
 
-    static func make(delay: Duration = .zero, chunker: any MeetingAudioChunking = FakeMeetingAudioChunker()) async throws -> MinutesHarness {
+    static func make(
+        delay: Duration = .zero,
+        chunker: any MeetingAudioChunking = FakeMeetingAudioChunker(),
+        summaryModel: OpenRouterModel? = nil
+    ) async throws -> MinutesHarness {
         let root = FileManager.default.temporaryDirectory.appending(path: "NoteTakerMinutesTests-\(UUID())")
         let paths = LibraryPaths(libraryRoot: root, arguments: [])
         let library = await LibraryStore.open(paths: paths)
@@ -198,9 +246,22 @@ private struct MinutesHarness {
         let client = MinutesTestClient(delay: delay)
         let keyStore = InMemoryAPIKeyStore()
         let defaults = UserDefaults(suiteName: "NoteTakerMinutesTests.\(UUID())")!
+        if let summaryModel {
+            let models = [
+                summaryModel,
+                OpenRouterModel(
+                    id: "fixture/transcription",
+                    name: "Transcription",
+                    contextLength: 0,
+                    inputModalities: ["audio"],
+                    outputModalities: ["transcription"]
+                )
+            ]
+            defaults.set(try JSONEncoder().encode(models), forKey: "ai.modelCatalog")
+        }
         let config = AIConfiguration(client: client, keyStore: keyStore, defaults: defaults)
         try config.saveKey("fixture-key")
-        config.modelID = "fixture/summary"
+        config.modelID = summaryModel?.id ?? "fixture/summary"
         config.transcriptionModelID = "fixture/transcription"
         let service = MeetingNotesService(configuration: config, client: client,
             chunker: chunker, library: library)
@@ -217,9 +278,17 @@ private struct MinutesHarness {
 }
 
 private actor MinutesTestClient: OpenRouterServing {
+    struct CompletionRequest: Sendable {
+        let system: String
+        let user: String
+        let model: String
+        let maxTokens: Int
+    }
+
     let delay: Duration
     private(set) var transcriptionCalls = 0
     private(set) var completionCalls = 0
+    private(set) var completionRequests: [CompletionRequest] = []
     private var fails = false
     private var transcript = "회의에서 다음 주 출시를 논의했습니다."
     private(set) var sawFinalSentinel = false
@@ -235,7 +304,8 @@ private actor MinutesTestClient: OpenRouterServing {
     }
     func complete(system: String, user: String, model: String, apiKey: String, maxTokens: Int) async throws -> AITextResponse {
         completionCalls += 1
-        if user.contains("LAST_SENTINEL") { sawFinalSentinel = true }
+        completionRequests.append(CompletionRequest(system: system, user: user, model: model, maxTokens: maxTokens))
+        if user.contains("LAST_SENTINEL") || user.contains("FINAL_SENTINEL") { sawFinalSentinel = true }
         if fails { throw AIError(message: "요청 실패") }
         return AITextResponse(text: "# 회의록\n\n## 요약\n다음 주 출시를 논의했습니다.\n\n## 할 일\n- [ ] 출시 일정 확인")
     }

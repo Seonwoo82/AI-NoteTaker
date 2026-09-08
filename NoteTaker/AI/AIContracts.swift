@@ -13,6 +13,13 @@ nonisolated struct OpenRouterModel: Identifiable, Codable, Equatable, Sendable {
         inputModalities.contains("text") && outputModalities.contains("text") && contextLength >= 8_192
     }
     var supportsTranscription: Bool { outputModalities.contains("transcription") }
+
+    /// GLM 5.3 always reasons; disabling thinking is not supported by the provider.
+    static func requiresReasoningBudget(for modelID: String) -> Bool {
+        modelID == "z-ai/glm-5.3"
+            || modelID.hasPrefix("z-ai/glm-5.3-")
+            || modelID.hasPrefix("z-ai/glm-5.3:")
+    }
 }
 
 nonisolated struct AITextResponse: Sendable {
