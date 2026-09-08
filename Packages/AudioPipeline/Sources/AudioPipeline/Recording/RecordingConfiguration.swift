@@ -7,6 +7,7 @@ public struct RecordingConfiguration: Sendable {
     public let microphoneGain: Float
     public let systemGain: Float
     public let clockSource: AggregateClockSource
+    public let liveAudioHandler: LiveAudioSampleHandler?
 
     public init(
         mode: CaptureMode,
@@ -14,7 +15,8 @@ public struct RecordingConfiguration: Sendable {
         outputURL: URL,
         microphoneGain: Float,
         systemGain: Float,
-        clockSource: AggregateClockSource = .microphone
+        clockSource: AggregateClockSource = .microphone,
+        liveAudioHandler: LiveAudioSampleHandler? = nil
     ) {
         self.mode = mode
         self.microphoneUID = microphoneUID
@@ -22,6 +24,7 @@ public struct RecordingConfiguration: Sendable {
         self.microphoneGain = microphoneGain
         self.systemGain = systemGain
         self.clockSource = clockSource
+        self.liveAudioHandler = liveAudioHandler
     }
 }
 

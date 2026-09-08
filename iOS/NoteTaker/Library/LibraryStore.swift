@@ -10,6 +10,7 @@ nonisolated enum LibraryStoreError: Error, Equatable, Sendable {
 final class LibraryStore {
     private(set) var recordings: [Recording]
     let paths: LibraryPaths
+    @ObservationIgnored var onRecordingUnavailable: ((UUID) -> Void)?
 
     private init(recordings: [Recording], paths: LibraryPaths) {
         self.recordings = recordings
@@ -37,13 +38,18 @@ final class LibraryStore {
         guard let index = recordings.firstIndex(where: { $0.id == recording.id }) else {
             throw LibraryStoreError.recordingNotFound(recording.id)
         }
-        let stamped = recording.locallyStamped(after: recordings[index])
+        let previous = recordings[index]
+        let stamped = recording.locallyStamped(after: previous)
         try JSONFile.save(stamped, to: paths.metadataURL(for: stamped.id))
         recordings[index] = stamped
         sortRecordings()
+        if stamped.deletedAt != nil || stamped.audioVersion != previous.audioVersion {
+            onRecordingUnavailable?(stamped.id)
+        }
     }
 
     func applyRemote(_ recording: Recording) throws {
+        let previous = self.recording(id: recording.id)
         try JSONFile.save(recording, to: paths.metadataURL(for: recording.id))
         if let index = recordings.firstIndex(where: { $0.id == recording.id }) {
             recordings[index] = recording
@@ -51,6 +57,9 @@ final class LibraryStore {
             recordings.append(recording)
         }
         sortRecordings()
+        if recording.deletedAt != nil || previous.map({ $0.audioVersion != recording.audioVersion }) == true {
+            onRecordingUnavailable?(recording.id)
+        }
     }
 
     func audioURL(for recording: Recording) -> URL {

@@ -27,6 +27,78 @@ func writerProgressReportsMeasuredSourcePeaksAndFreezesOnPause() throws {
     #expect(paused.systemPeak == 0)
 }
 
+@Test("Recording writer emits bounded mono live samples from recorded audio")
+func recordingWriterEmitsBoundedMonoLiveSamplesFromRecordedAudio() throws {
+    let ring = try SPSCRingBuffer(capacityFrames: 65_536, channelCount: 1)
+    let frames = 48_000
+    let samples = Array<Float>(repeating: 0.25, count: frames)
+    #expect(samples.withUnsafeBufferPointer { ring.write($0, frameCount: frames) } == frames)
+    let collector = LiveAudioSampleCollector()
+    let writer = try RecordingWriter(
+        inputSampleRate: 48_000,
+        inputChannelCount: 1,
+        layout: MixChannelLayout(microphoneChannels: [0], systemChannels: []),
+        ring: ring,
+        wake: DispatchSemaphore(value: 0),
+        outputURL: temporaryDirectory().appendingPathComponent("live.m4a"),
+        microphoneGain: 1,
+        systemGain: 1,
+        liveAudioHandler: collector.append,
+        diskSpaceChecker: AlwaysEnoughDiskSpace(),
+        sinkFactory: MemorySinkFactory()
+    )
+
+    try writer.start()
+    writer.requestStop()
+    let output = try writer.join()
+
+    let chunks = collector.chunks()
+    #expect(output.stats.outputFramesWritten == UInt64(frames))
+    #expect(chunks.count == 2)
+    #expect(chunks.allSatisfy { $0.samples.count == 24_000 })
+    #expect(chunks.map(\.sampleRate) == [48_000, 48_000])
+    #expect(chunks.map(\.startTime) == [0, 0.5])
+    #expect(chunks.flatMap(\.samples).allSatisfy { abs($0 - 0.25) < 0.000_001 })
+}
+
+@Test("Recording writer keeps live sample time continuous across pause and resume")
+func recordingWriterKeepsLiveSampleTimeContinuousAcrossPauseAndResume() throws {
+    let ring = try SPSCRingBuffer(capacityFrames: 65_536, channelCount: 1)
+    let firstSamples = Array<Float>(repeating: 0.1, count: 24_000)
+    #expect(firstSamples.withUnsafeBufferPointer { ring.write($0, frameCount: 24_000) } == 24_000)
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let collector = LiveAudioSampleCollector()
+    let writer = try RecordingWriter(
+        inputSampleRate: 48_000,
+        inputChannelCount: 1,
+        layout: MixChannelLayout(microphoneChannels: [0], systemChannels: []),
+        ring: ring,
+        wake: DispatchSemaphore(value: 0),
+        outputURL: directory.appendingPathComponent("000.m4a"),
+        microphoneGain: 1,
+        systemGain: 1,
+        liveAudioHandler: collector.append,
+        diskSpaceChecker: AlwaysEnoughDiskSpace(),
+        sinkFactory: RotatingMemorySinkFactory()
+    )
+
+    try writer.start()
+    _ = try writer.pause()
+    let pausedSamples = Array<Float>(repeating: 0.8, count: 24_000)
+    #expect(pausedSamples.withUnsafeBufferPointer { ring.write($0, frameCount: 24_000) } == 24_000)
+    try writer.resume(outputURL: directory.appendingPathComponent("001.m4a"))
+    let secondSamples = Array<Float>(repeating: 0.2, count: 24_000)
+    #expect(secondSamples.withUnsafeBufferPointer { ring.write($0, frameCount: 24_000) } == 24_000)
+    writer.requestStop()
+    _ = try writer.join()
+
+    let chunks = collector.chunks()
+    #expect(chunks.map(\.startTime) == [0, 0.5])
+    #expect(chunks[0].samples.allSatisfy { abs($0 - 0.1) < 0.000_001 })
+    #expect(chunks[1].samples.allSatisfy { abs($0 - 0.2) < 0.000_001 })
+}
+
 @Test("Recording writer join before start throws without waiting")
 func recordingWriterJoinBeforeStartThrowsWithoutWaiting() throws {
     let writer = try makeLifecycleWriter()
@@ -539,6 +611,23 @@ private final class CommandResults<Output>: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return recordedErrors
+    }
+}
+
+private final class LiveAudioSampleCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedChunks: [LiveAudioSamples] = []
+
+    func append(_ chunk: LiveAudioSamples) {
+        lock.lock()
+        recordedChunks.append(chunk)
+        lock.unlock()
+    }
+
+    func chunks() -> [LiveAudioSamples] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedChunks
     }
 }
 

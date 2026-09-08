@@ -32,6 +32,7 @@ public final class RecordingWriter: @unchecked Sendable {
     let outputURL: URL
     let microphoneGain: Float
     let systemGain: Float
+    let liveAudioHandler: LiveAudioSampleHandler?
     let diskSpaceChecker: any DiskSpaceChecking
     let diskSpaceWatchdogIntervalFrames: UInt64
     let sinkFactory: any RecordingFileSinkFactory
@@ -64,6 +65,7 @@ public final class RecordingWriter: @unchecked Sendable {
         outputURL: URL,
         microphoneGain: Float,
         systemGain: Float,
+        liveAudioHandler: LiveAudioSampleHandler? = nil,
         diskSpaceChecker: any DiskSpaceChecking = VolumeDiskSpaceChecker()
     ) throws {
         try self.init(
@@ -75,6 +77,7 @@ public final class RecordingWriter: @unchecked Sendable {
             outputURL: outputURL,
             microphoneGain: microphoneGain,
             systemGain: systemGain,
+            liveAudioHandler: liveAudioHandler,
             diskSpaceChecker: diskSpaceChecker,
             diskSpaceWatchdogIntervalFrames: DiskSpaceMonitor.defaultWatchdogIntervalFrames,
             sinkFactory: AVAudioRecordingFileSinkFactory()
@@ -90,6 +93,7 @@ public final class RecordingWriter: @unchecked Sendable {
         outputURL: URL,
         microphoneGain: Float,
         systemGain: Float,
+        liveAudioHandler: LiveAudioSampleHandler? = nil,
         diskSpaceChecker: any DiskSpaceChecking,
         diskSpaceWatchdogIntervalFrames: UInt64 = DiskSpaceMonitor.defaultWatchdogIntervalFrames,
         sinkFactory: any RecordingFileSinkFactory
@@ -105,6 +109,7 @@ public final class RecordingWriter: @unchecked Sendable {
         self.outputURL = outputURL
         self.microphoneGain = microphoneGain
         self.systemGain = systemGain
+        self.liveAudioHandler = liveAudioHandler
         self.diskSpaceChecker = diskSpaceChecker
         self.diskSpaceWatchdogIntervalFrames = diskSpaceWatchdogIntervalFrames
         self.sinkFactory = sinkFactory

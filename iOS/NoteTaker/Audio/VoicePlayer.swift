@@ -28,15 +28,17 @@ final class VoicePlayer {
     @ObservationIgnored private let engine: any VoicePlaybackEngine
     @ObservationIgnored private var progressTask: Task<Void, Never>?
     @ObservationIgnored private var activePlaybackToken: ObjectIdentifier?
+    @ObservationIgnored private var segmentPlaybackToken: UUID?
 
-    init(engine: any VoicePlaybackEngine = AVFoundationPlaybackEngine()) {
-        self.engine = engine
+    init(engine: (any VoicePlaybackEngine)? = nil) {
+        self.engine = engine ?? AVFoundationPlaybackEngine()
         self.engine.finishHandler = { [weak self] finishedSuccessfully, token in
             self?.playbackFinished(successfully: finishedSuccessfully, token: token)
         }
     }
 
     func play(recording: Recording, url: URL) throws {
+        segmentPlaybackToken = nil
         errorMessage = nil
 
         if recordingID == recording.id, isPlaying {
@@ -58,6 +60,39 @@ final class VoicePlayer {
         }
     }
 
+    var exactCurrentTime: TimeInterval { engine.currentTime }
+    var exactIsPlaying: Bool { engine.isPlaying }
+
+    func playSegment(recording: Recording, url: URL, at time: Double, owner: UUID) throws {
+        // Explicitly start a range without the ordinary play/pause toggle.
+        segmentPlaybackToken = owner
+        if recordingID != recording.id {
+            stop()
+            segmentPlaybackToken = owner
+        }
+        guard segmentPlaybackToken == owner else { throw CancellationError() }
+        try engine.play(recording: recording, url: url)
+        guard segmentPlaybackToken == owner else { throw CancellationError() }
+        activePlaybackToken = engine.playbackToken
+        recordingID = recording.id
+        duration = engine.duration > 0 ? engine.duration : recording.duration
+        seek(to: time)
+        isPlaying = engine.isPlaying
+        startProgressClock()
+    }
+
+    func seekSegment(recordingID ownerRecordingID: UUID, owner: UUID, to time: TimeInterval) {
+        guard segmentPlaybackToken == owner, recordingID == ownerRecordingID else { return }
+        seek(to: time)
+    }
+
+    func stopSegment(recordingID ownerRecordingID: UUID, owner: UUID) {
+        guard segmentPlaybackToken == owner else { return }
+        segmentPlaybackToken = nil
+        guard recordingID == ownerRecordingID else { return }
+        pause()
+    }
+
     func pause() {
         engine.pause()
         isPlaying = engine.isPlaying
@@ -66,6 +101,7 @@ final class VoicePlayer {
     }
 
     func stop() {
+        segmentPlaybackToken = nil
         engine.stop()
         isPlaying = false
         currentTime = 0

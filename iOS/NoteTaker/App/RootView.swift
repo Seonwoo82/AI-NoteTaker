@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     let model: LibraryAppModel
     @State private var showingSettings = false
+    @State private var showingBriefing = false
 
     var body: some View {
         @Bindable var model = model
@@ -54,6 +55,13 @@ struct RootView: View {
                     .accessibilityIdentifier("library-filter")
                 }
                 ToolbarItem(placement: .automatic) {
+                    Button { showingBriefing = true } label: {
+                        Label(String(localized: "Meeting Briefing"), systemImage: "calendar.badge.clock")
+                    }
+                    .disabled(model.meeting?.store.documents.isEmpty ?? true)
+                    .accessibilityIdentifier("meeting-briefing-toolbar")
+                }
+                ToolbarItem(placement: .automatic) {
                     Button { showingSettings = true } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
@@ -80,6 +88,12 @@ struct RootView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { RecordingBar(model: model) }
         .sheet(isPresented: $showingSettings) {
             AppSettingsView(model: model)
+        }
+        .sheet(isPresented: $showingBriefing) {
+            MeetingBriefingView(sources: model.meeting?.briefingSources ?? []) { recordingID, turnIDs in
+                model.meeting?.requestEvidence(recordingID: recordingID, turnIDs: turnIDs)
+                model.selection = recordingID
+            }
         }
         .task { await model.open() }
         .onChange(of: model.selection) { _, _ in model.player.stop() }

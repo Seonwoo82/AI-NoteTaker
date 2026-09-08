@@ -1,9 +1,11 @@
+import CryptoKit
 import Foundation
 
 @MainActor
-final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTransport {
+final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTransport, MeetingDataSyncTransport {
     nonisolated static let maxAudioByteCount = 95 * 1_024 * 1_024
     nonisolated static let maxMeetingNotesByteCount = 2 * 1_024 * 1_024
+    nonisolated static let maxMeetingIntelligenceByteCount = 4 * 1_024 * 1_024
 
     private let configuration: SyncConfiguration
     private let session: URLSession
@@ -148,6 +150,88 @@ final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTr
         }
     }
 
+    func getMeetingProfile() async throws -> MeetingProfileResponse {
+        try await requestMeetingProfile(request(path: "v1/profile"))
+    }
+
+    func putMeetingProfile(_ upload: MeetingProfileUpload) async throws -> MeetingProfileResponse {
+        try upload.profile?.validate()
+        var request = request(path: "v1/profile")
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(upload)
+        guard (request.httpBody?.count ?? 0) <= 64 * 1_024 else { throw SyncError.invalidResponse }
+        return try await requestMeetingProfile(request)
+    }
+
+    func listMeetingIntelligence(cursor: String?) async throws -> MeetingIntelligencePage {
+        var components = URLComponents(url: configuration.url(path: "v1/intelligence"), resolvingAgainstBaseURL: false)
+        if let cursor {
+            components?.queryItems = [URLQueryItem(name: "cursor", value: cursor)]
+        }
+        guard let url = components?.url else {
+            throw SyncError.invalidResponse
+        }
+        let (data, response) = try await session.data(for: request(url: url))
+        try validate(response: response, data: data)
+        return try decoder.decode(MeetingIntelligencePage.self, from: data)
+    }
+
+    func uploadMeetingIntelligence(_ document: MeetingIntelligenceDocument, data: Data) async throws -> MeetingNotesDescriptor {
+        guard data.count <= Self.maxMeetingIntelligenceByteCount else {
+            throw SyncError.transferFailed("Meeting intelligence is larger than the 4 MiB sync limit.")
+        }
+        var request = request(
+            path: "v1/recordings/\(document.recordingID.uuidString.uppercased())/intelligence/\(document.audioVersion)"
+        )
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(String(data.count), forHTTPHeaderField: "Content-Length")
+        let (responseData, response) = try await session.upload(for: request, from: data)
+        try validate(response: response, data: responseData)
+        return try decoder.decode(MeetingIntelligenceResponse.self, from: responseData).intelligence
+    }
+
+    func downloadMeetingIntelligence(_ descriptor: MeetingNotesDescriptor, to url: URL) async throws {
+        let request = request(
+            path: "v1/recordings/\(descriptor.recordingID.uuidString.uppercased())/intelligence/\(descriptor.audioVersion)/\(descriptor.revision)"
+        )
+        let (downloadedURL, response) = try await session.download(for: request)
+        do {
+            try validateMeetingIntelligenceDownload(response: response, downloadedURL: downloadedURL, descriptor: descriptor)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try? FileManager.default.removeItem(at: url)
+            try FileManager.default.moveItem(at: downloadedURL, to: url)
+        } catch {
+            try? FileManager.default.removeItem(at: downloadedURL)
+            throw error
+        }
+    }
+
+    func listMeetingEdits(after cursor: Int64) async throws -> MeetingEditPage {
+        var components = URLComponents(url: configuration.url(path: "v1/meeting-edits"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "after", value: String(cursor))]
+        guard let url = components?.url else { throw SyncError.invalidResponse }
+        let (data, response) = try await session.data(for: request(url: url))
+        try validate(response: response, data: data)
+        return try decoder.decode(MeetingEditPage.self, from: data)
+    }
+
+    func uploadMeetingEdit(_ edit: MeetingEdit) async throws -> MeetingEditEntry {
+        try edit.validate(recordingID: edit.recordingID, audioVersion: edit.audioVersion)
+        var request = request(path: "v1/meeting-edits/\(edit.id.uuidString.uppercased())")
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(edit)
+        guard (request.httpBody?.count ?? 0) <= 16 * 1_024 else { throw SyncError.invalidResponse }
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decoder.decode(MeetingEditResponse.self, from: data).entry
+    }
+
     func getAISettings(deviceID: UUID) async throws -> AISettingsResponse {
         var components = URLComponents(url: configuration.url(path: "v1/ai-settings"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "deviceID", value: deviceID.uuidString)]
@@ -179,6 +263,23 @@ final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTr
         try validate(response: response, data: data)
         let decoded = try decoder.decode(AISettingsResponse.self, from: data)
         try decoded.preferences?.validate()
+        return decoded
+    }
+
+    private func requestMeetingProfile(_ request: URLRequest) async throws -> MeetingProfileResponse {
+        let (bytes, response) = try await session.bytes(for: request)
+        if let length = (response as? HTTPURLResponse)?.expectedContentLength, length > 64 * 1_024 {
+            throw SyncError.invalidResponse
+        }
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < 64 * 1_024 else { throw SyncError.invalidResponse }
+            data.append(byte)
+        }
+        try Task.checkCancellation()
+        try validate(response: response, data: data)
+        let decoded = try decoder.decode(MeetingProfileResponse.self, from: data)
+        try decoded.profile?.validate()
         return decoded
     }
 
@@ -254,6 +355,38 @@ final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTr
         }
     }
 
+    private func validateMeetingIntelligenceDownload(
+        response: URLResponse,
+        downloadedURL: URL,
+        descriptor: MeetingNotesDescriptor
+    ) throws {
+        try validate(response: response, data: Data())
+        guard let response = response as? HTTPURLResponse else {
+            throw SyncError.invalidResponse
+        }
+        let contentType = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+        guard contentType.split(separator: ";", maxSplits: 1).first == "application/json" else {
+            throw SyncError.invalidResponse
+        }
+        if let contentLength = response.value(forHTTPHeaderField: "Content-Length"),
+           let byteCount = Int(contentLength),
+           byteCount != descriptor.byteCount || byteCount > Self.maxMeetingIntelligenceByteCount {
+            throw SyncError.invalidResponse
+        }
+        let data = try Data(contentsOf: downloadedURL)
+        guard data.count == descriptor.byteCount,
+              data.count > 0,
+              data.count <= Self.maxMeetingIntelligenceByteCount,
+              Self.sha256Hex(data) == descriptor.revision
+        else {
+            throw SyncError.invalidResponse
+        }
+    }
+
+    private static func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     private func serverErrorMessage(from data: Data) -> String? {
         guard let decoded = try? decoder.decode(SyncServerErrorResponse.self, from: data) else {
             return nil
@@ -271,6 +404,14 @@ private struct SyncRecordingResponse: Decodable {
 
 private struct MeetingNotesResponse: Decodable {
     let note: MeetingNotesDescriptor
+}
+
+private struct MeetingIntelligenceResponse: Decodable {
+    let intelligence: MeetingNotesDescriptor
+}
+
+private struct MeetingEditResponse: Decodable {
+    let entry: MeetingEditEntry
 }
 
 private struct SyncServerErrorResponse: Decodable {

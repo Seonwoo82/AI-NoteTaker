@@ -1,0 +1,45 @@
+AI-NoteTaker Third-Party Notices
+Last reviewed: 2026-09-09
+Full license texts copied from the resolved FluidAudio package checkout are bundled under Shared/Resources/Licenses/.
+Full license texts copied from the resolved FluidAudio package checkout are bundled under Shared/Resources/Licenses/.
+
+FluidAudio
+- Version: 0.15.6 (Git tag v0.15.6)
+- Source: https://github.com/FluidInference/FluidAudio
+- License: Apache License 2.0
+- Used for local Core ML speaker diarization and speaker embedding extraction.
+
+FluidInference speaker-diarization-coreml models
+- Source: https://huggingface.co/FluidInference/speaker-diarization-coreml
+- Files used by AI-NoteTaker through FluidAudio DiarizerModels: pyannote_segmentation.mlmodelc and wespeaker_v2.mlmodelc
+- Model card license: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+- Parent model noted by the model card: pyannote/speaker-diarization-community-1, also listed as CC-BY-4.0
+
+WeSpeaker
+- Source: https://github.com/wenet-e2e/wespeaker
+- License: Apache License 2.0
+- Upstream/source technology for the wespeaker_v2 Core ML embedding model used by the FluidAudio diarization pipeline.
+
+fastcluster
+- Included through FluidAudio FastClusterWrapper.
+- License: BSD-style permissive license included by FluidAudio at ThirdPartyLicenses/fastcluster-LICENSE.md.
+- Redistribution requires preserving the copyright notice, conditions, and disclaimer.
+
+VBx
+- Included through FluidAudio diarization/clustering support.
+- License: Apache License 2.0, included by FluidAudio at ThirdPartyLicenses/vbx-LICENSE.md.
+
+NemoTextProcessing binary target
+- Source package: https://github.com/FluidInference/text-processing-rs
+- Version noted by FluidAudio: v0.3.0
+- License: Apache License 2.0 for text-processing-rs.
+- Bundled upstream works noted by FluidAudio include NVIDIA NeMo Text Processing (Apache-2.0), rustfst (MIT OR Apache-2.0), flate2 (MIT OR Apache-2.0), and transitive Rust crates under MIT and/or Apache-2.0.
+- AI-NoteTaker does not directly expose FluidAudio TTS or NeMo text-normalization UI, but the linked FluidAudio library product includes this binary target.
+
+MachTaskSelfWrapper
+- Included through FluidAudio and covered by the FluidAudio Apache-2.0 package notice unless FluidAudio later adds a separate upstream notice.
+
+Runtime service providers
+- OpenRouter: https://openrouter.ai/
+- Cloudflare Workers, D1, and R2: https://developers.cloudflare.com/
+These services are optional runtime integrations, not bundled code dependencies. Users must follow their own account terms, pricing, and data-processing policies.

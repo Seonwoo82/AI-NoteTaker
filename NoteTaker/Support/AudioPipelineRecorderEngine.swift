@@ -46,18 +46,23 @@ final class AudioPipelineRecorderEngine: RecorderEngine {
     private let continuation: AsyncStream<RecorderEvent>.Continuation
 
     var events: AsyncStream<RecorderEvent> { stream }
+    var liveAudioHandler: LiveAudioSampleHandler?
 
     init(
         makeCaptureSession: @escaping @MainActor () -> any AudioPipelineCaptureSessioning = { CaptureSession() },
-        merger: AudioSegmentMerger = AudioSegmentMerger()
+        merger: AudioSegmentMerger? = nil
     ) {
         self.makeCaptureSession = makeCaptureSession
-        self.merger = merger
+        self.merger = merger ?? AudioSegmentMerger()
         var capturedContinuation: AsyncStream<RecorderEvent>.Continuation!
         stream = AsyncStream { continuation in
             capturedContinuation = continuation
         }
         continuation = capturedContinuation
+    }
+
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool {
+        true
     }
 
     func start(_ request: RecorderRequest) async throws -> RecorderStart {
@@ -74,7 +79,8 @@ final class AudioPipelineRecorderEngine: RecorderEngine {
                 microphoneUID: request.microphoneUID,
                 outputURL: firstSegmentURL,
                 microphoneGain: request.microphoneGain,
-                systemGain: request.systemGain
+                systemGain: request.systemGain,
+                liveAudioHandler: liveAudioHandler
             ))
             activeCapture = ActiveSegmentCapture(
                 audioURL: request.directoryURL.appending(path: "audio.m4a"),

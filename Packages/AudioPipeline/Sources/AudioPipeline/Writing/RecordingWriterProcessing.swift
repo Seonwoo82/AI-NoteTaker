@@ -26,6 +26,10 @@ extension RecordingWriter {
         var fileWriteCalls: UInt64 = 0
         var microphonePeak: Float = 0
         var systemPeak: Float = 0
+        var liveAudioEmitter = LiveAudioSampleEmitter(
+            sampleRate: inputSampleRate,
+            handler: liveAudioHandler
+        )
         var activeSegment = try SegmentPipeline(
             url: outputURL,
             sink: initialSink,
@@ -66,6 +70,7 @@ extension RecordingWriter {
                                 readFrames: read,
                                 mixedSamples: &mixedSamples,
                                 barAccumulator: &barAccumulator,
+                                liveAudioEmitter: &liveAudioEmitter,
                                 segment: &activeSegment,
                                 bars: &bars,
                                 outputFramesWritten: &outputFramesWritten,
@@ -79,6 +84,7 @@ extension RecordingWriter {
                     do {
                         let segmentOutputBeforeDrain = activeSegment.outputFramesWritten
                         let segmentWritesBeforeDrain = activeSegment.fileWriteCalls
+                        liveAudioEmitter.flush()
                         let segment = try activeSegment.close()
                         outputFramesWritten += activeSegment.outputFramesWritten - segmentOutputBeforeDrain
                         fileWriteCalls += activeSegment.fileWriteCalls - segmentWritesBeforeDrain
@@ -173,6 +179,7 @@ extension RecordingWriter {
                                 readFrames: read,
                                 mixedSamples: &mixedSamples,
                                 barAccumulator: &barAccumulator,
+                                liveAudioEmitter: &liveAudioEmitter,
                                 segment: &activeSegment,
                                 bars: &bars,
                                 outputFramesWritten: &outputFramesWritten,
@@ -193,6 +200,7 @@ extension RecordingWriter {
             if case .recording = writerMode {
                 let segmentOutputBeforeDrain = activeSegment.outputFramesWritten
                 let segmentWritesBeforeDrain = activeSegment.fileWriteCalls
+                liveAudioEmitter.flush()
                 _ = try activeSegment.close()
                 outputFramesWritten += activeSegment.outputFramesWritten - segmentOutputBeforeDrain
                 fileWriteCalls += activeSegment.fileWriteCalls - segmentWritesBeforeDrain
@@ -219,6 +227,7 @@ extension RecordingWriter {
         readFrames: Int,
         mixedSamples: inout [Float],
         barAccumulator: inout BarAccumulator,
+        liveAudioEmitter: inout LiveAudioSampleEmitter,
         segment: inout SegmentPipeline,
         bars: inout [AudioBar],
         outputFramesWritten: inout UInt64,
@@ -238,6 +247,7 @@ extension RecordingWriter {
             let immutableMixed = UnsafeBufferPointer(mixedChunk)
             barAccumulator.ingest(immutableMixed, frameCount: readFrames, channelCount: 2)
             bars.append(contentsOf: barAccumulator.drainCompleted())
+            liveAudioEmitter.ingest(interleavedStereo: immutableMixed, frameCount: readFrames)
             try writeMixedChunk(
                 immutableMixed,
                 frameCount: readFrames,
@@ -371,6 +381,59 @@ extension RecordingWriter {
                 return .command(command)
             }
             return .read(shouldStop: state.shouldStop, boundary: ring.writeSequenceSnapshot)
+        }
+    }
+
+    private struct LiveAudioSampleEmitter {
+        private let sampleRate: Double
+        private let handler: LiveAudioSampleHandler?
+        private let targetFrames: Int
+        private var pending: [Float] = []
+        private var emittedFrames = 0
+
+        init(sampleRate: Double, handler: LiveAudioSampleHandler?) {
+            self.sampleRate = sampleRate
+            self.handler = handler
+            self.targetFrames = max(1, Int(sampleRate * 0.5))
+            if handler != nil {
+                pending.reserveCapacity(targetFrames)
+            }
+        }
+
+        mutating func ingest(interleavedStereo: UnsafeBufferPointer<Float>, frameCount: Int) {
+            guard handler != nil, frameCount > 0 else { return }
+
+            for frameIndex in 0..<frameCount {
+                let offset = frameIndex * 2
+                pending.append((interleavedStereo[offset] + interleavedStereo[offset + 1]) * 0.5)
+            }
+            emitCompleteChunks()
+        }
+
+        mutating func flush() {
+            guard let handler, !pending.isEmpty else { return }
+            let samples = pending
+            pending.removeAll(keepingCapacity: true)
+            handler(LiveAudioSamples(
+                samples: samples,
+                sampleRate: sampleRate,
+                startTime: Double(emittedFrames) / sampleRate
+            ))
+            emittedFrames += samples.count
+        }
+
+        private mutating func emitCompleteChunks() {
+            guard let handler else { return }
+            while pending.count >= targetFrames {
+                let samples = Array(pending[..<targetFrames])
+                pending.removeFirst(targetFrames)
+                handler(LiveAudioSamples(
+                    samples: samples,
+                    sampleRate: sampleRate,
+                    startTime: Double(emittedFrames) / sampleRate
+                ))
+                emittedFrames += samples.count
+            }
         }
     }
 

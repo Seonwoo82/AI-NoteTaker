@@ -95,7 +95,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "OpenRouter 음성 인식과 회의록 생성을 설정합니다."
+            "value": "OpenRouter 전사와 회의록 생성을 설정하세요."
           }
         }
       }
@@ -183,7 +183,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "연결 확인"
+            "value": "테스트"
           }
         }
       }
@@ -249,7 +249,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "음성 인식 모델"
+            "value": "음성-텍스트 모델"
           }
         }
       }
@@ -293,7 +293,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "원문 언어"
+            "value": "원본과 동일"
           }
         }
       }
@@ -326,7 +326,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "키와 모델을 선택하면 AI 회의록을 사용할 수 있습니다."
+            "value": "키와 모델을 선택하면 AI 설정이 준비됩니다."
           }
         }
       }
@@ -337,7 +337,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "API 키를 저장했습니다."
+            "value": "API 키가 저장되었습니다."
           }
         }
       }
@@ -348,7 +348,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "API 키를 제거했습니다."
+            "value": "API 키가 제거되었습니다."
           }
         }
       }
@@ -502,7 +502,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전사문"
+            "value": "전사"
           }
         }
       }
@@ -590,7 +590,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "AI 설정이 필요해요"
+            "value": "AI 설정이 필요합니다"
           }
         }
       }
@@ -755,7 +755,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "AI 회의록을 만들고 있어요."
+            "value": "AI 회의록을 준비하고 있습니다."
           }
         }
       }
@@ -1041,7 +1041,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "녹음 중"
+            "value": "녹음"
           }
         }
       }
@@ -2405,6 +2405,1706 @@
           "stringUnit": {
             "state": "translated",
             "value": "AI 모델, 출력 언어, 자동 생성 설정도 동기화합니다. API 키는 각 기기에 보관합니다."
+          }
+        }
+      }
+    },
+    "%lld edits need review": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld개의 편집 항목을 검토해야 합니다"
+          }
+        }
+      }
+    },
+    "%lld turns": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld개 발화"
+          }
+        }
+      }
+    },
+    "+%lld more glossary matches": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+%lld개의 용어 일치 항목 더 있음"
+          }
+        }
+      }
+    },
+    "AI Meeting": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 분석"
+          }
+        }
+      }
+    },
+    "Action Filter": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "작업 필터"
+          }
+        }
+      }
+    },
+    "Actions": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "작업"
+          }
+        }
+      }
+    },
+    "Add Term": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어 추가"
+          }
+        }
+      }
+    },
+    "Add names, products, acronyms, and project words that are often misheard in meetings.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의에서 자주 잘못 인식되는 이름, 제품명, 약어, 프로젝트 용어를 추가하세요."
+          }
+        }
+      }
+    },
+    "Aliases, separated by commas": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "별칭, 쉼표로 구분"
+          }
+        }
+      }
+    },
+    "All": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전체"
+          }
+        }
+      }
+    },
+    "Analyze": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "분석"
+          }
+        }
+      }
+    },
+    "Analyze a recording and assign a project to start building meeting briefings.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "녹음을 분석하고 프로젝트를 지정하면 회의 브리핑을 만들 수 있습니다."
+          }
+        }
+      }
+    },
+    "Analyzing commitments, questions, and decisions.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "약속, 질문, 결정을 분석하고 있습니다."
+          }
+        }
+      }
+    },
+    "Analyzing meeting audio": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 오디오를 분석하고 있습니다"
+          }
+        }
+      }
+    },
+    "Another speaker": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 발화자"
+          }
+        }
+      }
+    },
+    "Another speaker is active.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 발화자가 말하고 있습니다."
+          }
+        }
+      }
+    },
+    "Answered": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "답변됨"
+          }
+        }
+      }
+    },
+    "Assign Speaker": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자 지정"
+          }
+        }
+      }
+    },
+    "Automatically analyze speaker conversations": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자별 대화를 자동 분석"
+          }
+        }
+      }
+    },
+    "Category": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "카테고리"
+          }
+        }
+      }
+    },
+    "Choose a project": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로젝트 선택"
+          }
+        }
+      }
+    },
+    "Clear": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "비우기"
+          }
+        }
+      }
+    },
+    "Close": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "닫기"
+          }
+        }
+      }
+    },
+    "Commitment": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "약속"
+          }
+        }
+      }
+    },
+    "Commitments and Requests": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "약속 및 요청"
+          }
+        }
+      }
+    },
+    "Creating local voice profile...": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로컬 목소리 프로필을 만들고 있습니다..."
+          }
+        }
+      }
+    },
+    "Decided": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "결정됨"
+          }
+        }
+      }
+    },
+    "Decision": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "결정"
+          }
+        }
+      }
+    },
+    "Decision History": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "결정 기록"
+          }
+        }
+      }
+    },
+    "Decisions": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "결정"
+          }
+        }
+      }
+    },
+    "Deferred": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보류됨"
+          }
+        }
+      }
+    },
+    "Dismissed": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "제외됨"
+          }
+        }
+      }
+    },
+    "Display Name": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "표시 이름"
+          }
+        }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "편집"
+          }
+        }
+      }
+    },
+    "Edit Term": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어 편집"
+          }
+        }
+      }
+    },
+    "Finish": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "완료"
+          }
+        }
+      }
+    },
+    "Glossary": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어집"
+          }
+        }
+      }
+    },
+    "Glossary term added.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어집에 추가되었습니다."
+          }
+        }
+      }
+    },
+    "Glossary term deleted.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어가 삭제되었습니다."
+          }
+        }
+      }
+    },
+    "Glossary term saved.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어가 저장되었습니다."
+          }
+        }
+      }
+    },
+    "Heard as: %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "들리는 표현: %@"
+          }
+        }
+      }
+    },
+    "Help AI-NoteTaker recognize your role, names, and meeting vocabulary across linked devices.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI-NoteTaker가 연결된 기기에서 내 역할, 이름, 회의 용어를 인식하도록 도와주세요."
+          }
+        }
+      }
+    },
+    "Likely me speaking": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리로 추정됨"
+          }
+        }
+      }
+    },
+    "Listening for my voice": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리를 듣는 중"
+          }
+        }
+      }
+    },
+    "Listening for your voice...": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리를 듣고 있습니다..."
+          }
+        }
+      }
+    },
+    "Load More Transcript Turns": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사 발화 더 보기"
+          }
+        }
+      }
+    },
+    "Local voice profile is ready.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로컬 목소리 프로필이 준비되었습니다."
+          }
+        }
+      }
+    },
+    "Local voice profile was deleted.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로컬 목소리 프로필이 삭제되었습니다."
+          }
+        }
+      }
+    },
+    "Mark Me": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "나로 표시"
+          }
+        }
+      }
+    },
+    "Me": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "나"
+          }
+        }
+      }
+    },
+    "Me: %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "나: %@"
+          }
+        }
+      }
+    },
+    "Meaning": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "의미"
+          }
+        }
+      }
+    },
+    "Meeting Briefing": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 브리핑"
+          }
+        }
+      }
+    },
+    "Meeting Sections": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 섹션"
+          }
+        }
+      }
+    },
+    "Meeting analysis failed: %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 분석 실패: %@"
+          }
+        }
+      }
+    },
+    "Meeting analysis has not started.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 분석이 아직 시작되지 않았습니다."
+          }
+        }
+      }
+    },
+    "Meeting analysis is complete.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 분석이 완료되었습니다."
+          }
+        }
+      }
+    },
+    "Meeting analysis was cancelled.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 분석이 취소되었습니다."
+          }
+        }
+      }
+    },
+    "Meeting edit saved.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 편집 내용이 저장되었습니다."
+          }
+        }
+      }
+    },
+    "Model: %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모델: %@"
+          }
+        }
+      }
+    },
+    "My": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 항목"
+          }
+        }
+      }
+    },
+    "My Voice": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리"
+          }
+        }
+      }
+    },
+    "Needs Review": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "검토 필요"
+          }
+        }
+      }
+    },
+    "No Meeting Analysis": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 분석 없음"
+          }
+        }
+      }
+    },
+    "No Project Meetings Yet": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 프로젝트 회의가 없습니다"
+          }
+        }
+      }
+    },
+    "No answer was captured.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "답변이 기록되지 않았습니다."
+          }
+        }
+      }
+    },
+    "No commitments or requests match this filter.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 필터와 일치하는 약속이나 요청이 없습니다."
+          }
+        }
+      }
+    },
+    "No decisions were identified.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "식별된 결정이 없습니다."
+          }
+        }
+      }
+    },
+    "No local voice profile is registered.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "등록된 로컬 목소리 프로필이 없습니다."
+          }
+        }
+      }
+    },
+    "No questions match this filter.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 필터와 일치하는 질문이 없습니다."
+          }
+        }
+      }
+    },
+    "No speaker groups were detected.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "감지된 발화자 그룹이 없습니다."
+          }
+        }
+      }
+    },
+    "No speech detected.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성이 감지되지 않았습니다."
+          }
+        }
+      }
+    },
+    "No turns match this filter.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 필터와 일치하는 발화가 없습니다."
+          }
+        }
+      }
+    },
+    "Not Ready": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "준비 안 됨"
+          }
+        }
+      }
+    },
+    "Nothing to review here.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "검토할 항목이 없습니다."
+          }
+        }
+      }
+    },
+    "Open": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "열림"
+          }
+        }
+      }
+    },
+    "Owner detection cannot start while recording your voice.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리를 등록하는 동안에는 내 목소리 감지를 시작할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Owner detection is listening": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지가 듣는 중입니다"
+          }
+        }
+      }
+    },
+    "Owner detection is paused.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지가 일시 중지되었습니다."
+          }
+        }
+      }
+    },
+    "Owner detection is unavailable.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지를 사용할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Owner detection is waiting for speech": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지가 음성을 기다리고 있습니다"
+          }
+        }
+      }
+    },
+    "Owner voice detection is unavailable": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지를 사용할 수 없습니다"
+          }
+        }
+      }
+    },
+    "Owner voice detection is uncertain": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지가 확신하지 못했습니다"
+          }
+        }
+      }
+    },
+    "Owner voice detection says another speaker is likely talking": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지가 다른 발화자가 말하는 것으로 추정했습니다"
+          }
+        }
+      }
+    },
+    "Owner voice detection says this is likely my voice": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지가 내 목소리로 추정했습니다"
+          }
+        }
+      }
+    },
+    "Owner voice unavailable": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지 불가"
+          }
+        }
+      }
+    },
+    "Partially Answered": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "부분 답변됨"
+          }
+        }
+      }
+    },
+    "Play All Evidence": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "근거 전체 재생"
+          }
+        }
+      }
+    },
+    "Play My Turns": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 발화 재생"
+          }
+        }
+      }
+    },
+    "Prepare": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "준비"
+          }
+        }
+      }
+    },
+    "Prepare for the Next Meeting": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다음 회의 준비"
+          }
+        }
+      }
+    },
+    "Prepare the voice model before recording your voice.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리를 녹음하기 전에 음성 모델을 준비하세요."
+          }
+        }
+      }
+    },
+    "Preparing meeting analysis.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 분석을 준비하고 있습니다."
+          }
+        }
+      }
+    },
+    "Preparing voice model...": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성 모델을 준비하고 있습니다..."
+          }
+        }
+      }
+    },
+    "Profile": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로필"
+          }
+        }
+      }
+    },
+    "Profile Unavailable": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로필을 사용할 수 없습니다"
+          }
+        }
+      }
+    },
+    "Profile changes will sync when the Cloudflare connection is available.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cloudflare 연결이 가능해지면 프로필 변경사항이 동기화됩니다."
+          }
+        }
+      }
+    },
+    "Profile saved.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로필이 저장되었습니다."
+          }
+        }
+      }
+    },
+    "Profile settings are saved on this device.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로필 설정이 이 기기에 저장되어 있습니다."
+          }
+        }
+      }
+    },
+    "Project": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로젝트"
+          }
+        }
+      }
+    },
+    "Project Name": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로젝트 이름"
+          }
+        }
+      }
+    },
+    "Proposal": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "제안"
+          }
+        }
+      }
+    },
+    "Q&A": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "질문/답변"
+          }
+        }
+      }
+    },
+    "Question Filter": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "질문 필터"
+          }
+        }
+      }
+    },
+    "Questions and Answers": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "질문과 답변"
+          }
+        }
+      }
+    },
+    "Queued for meeting analysis.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 분석 대기열에 추가되었습니다."
+          }
+        }
+      }
+    },
+    "Re-record": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다시 녹음"
+          }
+        }
+      }
+    },
+    "Reanalyze": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다시 분석"
+          }
+        }
+      }
+    },
+    "Record My Voice": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 녹음"
+          }
+        }
+      }
+    },
+    "Record a little more clear speech before saving your voice profile.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리 프로필을 저장하기 전에 또렷한 음성을 조금 더 녹음하세요."
+          }
+        }
+      }
+    },
+    "Record your voice before owner detection.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 감지를 사용하기 전에 목소리를 등록하세요."
+          }
+        }
+      }
+    },
+    "Recording your voice...": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리를 녹음하고 있습니다..."
+          }
+        }
+      }
+    },
+    "Registered on this device": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에 등록됨"
+          }
+        }
+      }
+    },
+    "Request": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "요청"
+          }
+        }
+      }
+    },
+    "Revert": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "되돌리기"
+          }
+        }
+      }
+    },
+    "Review prior decisions, open commitments, and unanswered questions with links to the original meeting.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이전 결정, 열린 약속, 미답변 질문을 원본 회의 링크와 함께 검토하세요."
+          }
+        }
+      }
+    },
+    "Review speaker-separated transcript, commitments, questions, and decision history.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자별 전사, 약속, 질문, 결정 기록을 검토하세요."
+          }
+        }
+      }
+    },
+    "Revised": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수정됨"
+          }
+        }
+      }
+    },
+    "Role": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "역할"
+          }
+        }
+      }
+    },
+    "Run AI analysis to create speaker-separated transcript and meeting intelligence.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 분석을 실행해 발화자별 전사와 회의 인텔리전스를 만드세요."
+          }
+        }
+      }
+    },
+    "Save Profile": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로필 저장"
+          }
+        }
+      }
+    },
+    "Save Project": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "프로젝트 저장"
+          }
+        }
+      }
+    },
+    "Save Term": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어 저장"
+          }
+        }
+      }
+    },
+    "Separating speakers.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자를 분리하고 있습니다."
+          }
+        }
+      }
+    },
+    "Speaker Correction": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자 수정"
+          }
+        }
+      }
+    },
+    "Speaker Name": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자 이름"
+          }
+        }
+      }
+    },
+    "Speaker conversation analysis will run automatically.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자별 대화 분석이 자동으로 실행됩니다."
+          }
+        }
+      }
+    },
+    "Speaker conversation analysis will run only when started manually.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자별 대화 분석은 수동으로 시작할 때만 실행됩니다."
+          }
+        }
+      }
+    },
+    "Speaker match is uncertain.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자 일치 여부가 불확실합니다."
+          }
+        }
+      }
+    },
+    "Speaker uncertain": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자 불확실"
+          }
+        }
+      }
+    },
+    "Speakers": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화자"
+          }
+        }
+      }
+    },
+    "Spoken As": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "들리는 표현"
+          }
+        }
+      }
+    },
+    "Term": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어"
+          }
+        }
+      }
+    },
+    "Terminology: %@ → %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "용어: %@ → %@"
+          }
+        }
+      }
+    },
+    "Text Profile": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "텍스트 프로필"
+          }
+        }
+      }
+    },
+    "The transcript and meeting intelligence will appear here when processing finishes.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "처리가 끝나면 전사와 회의 인텔리전스가 여기에 표시됩니다."
+          }
+        }
+      }
+    },
+    "This text profile syncs through Cloudflare. API keys and voice enrollment stay on each device.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 텍스트 프로필은 Cloudflare를 통해 동기화됩니다. API 키와 목소리 등록은 각 기기에만 유지됩니다."
+          }
+        }
+      }
+    },
+    "Transcribing meeting audio %lld/%lld.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의 오디오를 전사하고 있습니다 %lld/%lld."
+          }
+        }
+      }
+    },
+    "Transcript Filter": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사 필터"
+          }
+        }
+      }
+    },
+    "Unanswered": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "미답변"
+          }
+        }
+      }
+    },
+    "Unknown Speaker": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "알 수 없는 발화자"
+          }
+        }
+      }
+    },
+    "Unmark Me": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "나 표시 해제"
+          }
+        }
+      }
+    },
+    "Unresolved": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "미해결"
+          }
+        }
+      }
+    },
+    "Used to connect previous decisions and open items for the same project.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "같은 프로젝트의 이전 결정과 열린 항목을 연결하는 데 사용됩니다."
+          }
+        }
+      }
+    },
+    "Voice capture failed.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리 캡처에 실패했습니다."
+          }
+        }
+      }
+    },
+    "Voice enrollment cannot start while listening or already recording.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "감지 중이거나 이미 녹음 중일 때는 목소리 등록을 시작할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Voice enrollment is in progress.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리 등록이 진행 중입니다."
+          }
+        }
+      }
+    },
+    "Voice enrollment is stored only on this device. It helps highlight likely owner speech, but uncertain matches still need review.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리 등록은 이 기기에만 저장됩니다. 앱 소유주의 발화를 추정해 강조하는 데 도움을 주지만, 불확실한 일치는 검토가 필요합니다."
+          }
+        }
+      }
+    },
+    "Voice enrollment is unavailable while recording.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "녹음 중에는 목소리 등록을 사용할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Voice model is not prepared.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성 모델이 준비되지 않았습니다."
+          }
+        }
+      }
+    },
+    "Voice model is ready.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성 모델이 준비되었습니다."
+          }
+        }
+      }
+    },
+    "Voice model is unavailable.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성 모델을 사용할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Voice profile was not saved.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리 프로필이 저장되지 않았습니다."
+          }
+        }
+      }
+    },
+    "Waiting for speech": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성을 기다리는 중"
+          }
+        }
+      }
+    },
+    "When automatic generation is enabled, AI-NoteTaker also creates speaker-separated transcripts, commitments, decisions, and briefing sources. This setting syncs; API keys stay device-local.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동 생성이 켜져 있으면 AI-NoteTaker가 발화자별 전사, 약속, 결정, 브리핑 출처도 함께 만듭니다. 이 설정은 동기화되며 API 키는 각 기기에만 저장됩니다."
+          }
+        }
+      }
+    },
+    "Your voice is active.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리가 감지되고 있습니다."
+          }
+        }
+      }
+    },
+    "Abbreviation": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "약어"
+          }
+        }
+      }
+    },
+    "General": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "일반"
+          }
+        }
+      }
+    },
+    "Organization": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "조직"
+          }
+        }
+      }
+    },
+    "Person": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사람"
+          }
+        }
+      }
+    },
+    "Prepare the voice model before owner detection.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리를 인식하려면 먼저 음성 모델을 준비해 주세요."
+          }
+        }
+      }
+    },
+    "Aliases": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "별칭"
+          }
+        }
+      }
+    },
+    "Concern": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "우려"
+          }
+        }
+      }
+    },
+    "Owner detection paused.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리 인식을 일시 중지했습니다."
+          }
+        }
+      }
+    },
+    "Owner voice detection is listening": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 목소리를 확인하고 있습니다"
+          }
+        }
+      }
+    },
+    "Owner voice detection is waiting for speech": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "발화를 기다리고 있습니다"
+          }
+        }
+      }
+    },
+    "Save an OpenRouter API key before analyzing this meeting.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 회의를 분석하려면 먼저 OpenRouter API 키를 저장해 주세요."
+          }
+        }
+      }
+    },
+    "Recent Decisions": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "최근 결정"
+          }
+        }
+      }
+    },
+    "Open Actions": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "미완료 할 일"
+          }
+        }
+      }
+    },
+    "Unanswered Questions": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "미답변 질문"
           }
         }
       }

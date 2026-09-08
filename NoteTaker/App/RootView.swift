@@ -4,6 +4,7 @@ import SwiftUI
 struct RootView: View {
     let container: AppContainer?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showingBriefing = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -25,7 +26,22 @@ struct RootView: View {
                     return .handled
                 }
                 .recordingAlert(session: container.session)
+                .sheet(isPresented: $showingBriefing) {
+                    MeetingBriefingView(sources: container.meeting.briefingSources) { recordingID, turnIDs in
+                        container.meeting.requestEvidence(recordingID: recordingID, turnIDs: turnIDs)
+                        container.model.selectedRecordingID = recordingID
+                    }
+                }
                 .toolbar {
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button {
+                            showingBriefing = true
+                        } label: {
+                            Label(String(localized: "Meeting Briefing"), systemImage: "calendar.badge.clock")
+                        }
+                        .disabled(container.meeting.store.documents.isEmpty)
+                        .accessibilityIdentifier("meeting-briefing-toolbar")
+                    }
                     ToolbarItem(placement: .secondaryAction) {
                         Button {
                             Task { await container.syncCoordinator.sync(library: container.library) }
@@ -105,7 +121,9 @@ private struct WorkspaceDetailContent: View {
             playback: container.playback,
             libraryController: container.libraryController,
             meetingNotes: container.meetingNotes,
-            aiConfiguration: container.aiConfiguration
+            aiConfiguration: container.aiConfiguration,
+            meeting: container.meeting,
+            evidenceRequest: container.meeting.evidenceRequest
         )
     }
 }
@@ -119,11 +137,13 @@ private struct DetailView: View {
     let libraryController: LibraryController
     let meetingNotes: MeetingNotesService
     let aiConfiguration: AIConfiguration
+    let meeting: MeetingFeatureContext
+    let evidenceRequest: MeetingEvidenceRequest?
 
     var body: some View {
         switch session.phase {
         case .preparing, .recording, .pausing, .paused, .resuming, .finishing:
-            RecordingView(session: session, settings: settings, playback: playback)
+            RecordingView(session: session, settings: settings, playback: playback, ownerSpeechState: meeting.voice.state)
         case .idle:
             if let selectedID = model.selectedRecordingID,
                let recording = library.recording(id: selectedID) {
@@ -132,7 +152,9 @@ private struct DetailView: View {
                     playback: playback,
                     libraryController: libraryController,
                     meetingNotes: meetingNotes,
-                    aiConfiguration: aiConfiguration
+                    aiConfiguration: aiConfiguration,
+                    meeting: meeting,
+                    evidenceRequest: evidenceRequest
                 )
             } else {
                 EmptyDetailView()

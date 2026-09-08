@@ -59,6 +59,7 @@ extension CaptureSession {
             outputURL: configuration.outputURL,
             microphoneGain: configuration.microphoneGain,
             systemGain: configuration.systemGain,
+            liveAudioHandler: configuration.liveAudioHandler,
             diskSpaceChecker: dependencies.diskSpaceChecker
         )
         partial.writer = createdWriter

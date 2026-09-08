@@ -42,6 +42,7 @@ protocol CaptureSessionRecordingWriterMaking: Sendable {
         outputURL: URL,
         microphoneGain: Float,
         systemGain: Float,
+        liveAudioHandler: LiveAudioSampleHandler?,
         diskSpaceChecker: any DiskSpaceChecking
     ) throws -> any CaptureSessionRecordingWriter
 }
@@ -96,6 +97,7 @@ struct DefaultCaptureSessionRecordingWriterFactory: CaptureSessionRecordingWrite
         outputURL: URL,
         microphoneGain: Float,
         systemGain: Float,
+        liveAudioHandler: LiveAudioSampleHandler?,
         diskSpaceChecker: any DiskSpaceChecking
     ) throws -> any CaptureSessionRecordingWriter {
         try RecordingWriter(
@@ -107,6 +109,7 @@ struct DefaultCaptureSessionRecordingWriterFactory: CaptureSessionRecordingWrite
             outputURL: outputURL,
             microphoneGain: microphoneGain,
             systemGain: systemGain,
+            liveAudioHandler: liveAudioHandler,
             diskSpaceChecker: diskSpaceChecker
         )
     }

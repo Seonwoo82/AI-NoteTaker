@@ -18,6 +18,7 @@ struct FakeSessionWriterFactory: CaptureSessionRecordingWriterMaking {
         outputURL: URL,
         microphoneGain: Float,
         systemGain: Float,
+        liveAudioHandler: LiveAudioSampleHandler?,
         diskSpaceChecker: any DiskSpaceChecking
     ) throws -> any CaptureSessionRecordingWriter {
         log.append(.writerMake)

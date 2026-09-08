@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated struct OpenRouterClient: OpenRouterServing {
+nonisolated struct OpenRouterClient: OpenRouterServing, DetailedTranscriptionServing {
     private static let baseURL = URL(string: "https://openrouter.ai/api/v1")!
 
     private let session: URLSession
@@ -55,6 +55,32 @@ nonisolated struct OpenRouterClient: OpenRouterServing {
             text: response.text.trimmingCharacters(in: .whitespacesAndNewlines),
             costUSD: response.usage?.cost
         )
+    }
+
+    func transcribeDetailed(
+        audio: Data,
+        format: String,
+        model: String,
+        apiKey: String,
+        language: String?,
+        prompt: String?
+    ) async throws -> DetailedTranscriptionResult {
+        var body = DetailedTranscriptionRequest(
+            model: model,
+            inputAudio: InputAudio(data: audio.base64EncodedString(), format: format),
+            language: language?.isEmpty == false ? language : nil,
+            responseFormat: "verbose_json",
+            timestampGranularities: ["segment", "word"],
+            prompt: prompt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? prompt : nil
+        )
+        let request = try makeJSONRequest(
+            path: "/audio/transcriptions",
+            apiKey: apiKey,
+            body: &body,
+            timeout: 70
+        )
+        let data = try await data(for: request)
+        return try decode(DetailedTranscriptionResponse.self, from: data).result()
     }
 
     func complete(
@@ -359,6 +385,24 @@ nonisolated private struct TranscriptionRequest: Encodable {
     }
 }
 
+nonisolated private struct DetailedTranscriptionRequest: Encodable {
+    let model: String
+    let inputAudio: InputAudio
+    let language: String?
+    let responseFormat: String
+    let timestampGranularities: [String]
+    let prompt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case inputAudio = "input_audio"
+        case language
+        case responseFormat = "response_format"
+        case timestampGranularities = "timestamp_granularities"
+        case prompt
+    }
+}
+
 nonisolated private struct TranscriptionResponse: Decodable {
     let text: String
     let usage: UsageDTO?
@@ -369,6 +413,139 @@ nonisolated private struct TranscriptionResponse: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         text = try container.decode(String.self, forKey: .text)
         usage = try? container.decode(UsageDTO.self, forKey: .usage)
+    }
+}
+
+nonisolated private struct DetailedTranscriptionResponse: Decodable {
+    private static let maxTextLength = 2_000_000
+    private static let maxWordCount = 200_000
+    private static let maxSegmentCount = 20_000
+
+    let text: String
+    let words: [TimedTranscriptionWordDTO]
+    let segments: [TimedTranscriptionSegmentDTO]
+    let usage: UsageDTO?
+
+    enum CodingKeys: String, CodingKey { case text, words, segments, usage }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        words = (try? container.decode([TimedTranscriptionWordDTO].self, forKey: .words)) ?? []
+        segments = (try? container.decode([TimedTranscriptionSegmentDTO].self, forKey: .segments)) ?? []
+        usage = try? container.decode(UsageDTO.self, forKey: .usage)
+    }
+
+    func result() throws -> DetailedTranscriptionResult {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedText.count <= Self.maxTextLength,
+              words.count <= Self.maxWordCount,
+              segments.count <= Self.maxSegmentCount else {
+            throw AIError(message: "OpenRouter 상세 전사 응답이 너무 커서 처리할 수 없어요.")
+        }
+        guard !words.isEmpty || !segments.isEmpty else {
+            throw AIError(message: "선택한 전사 모델이 타임스탬프를 반환하지 않았어요. 타임스탬프를 지원하는 모델을 선택해 주세요.")
+        }
+
+        let mappedWords = try validate(
+            words.map {
+                TimedTranscriptionWord(
+                    text: $0.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                    start: $0.start,
+                    end: $0.end,
+                    speakerID: $0.speakerID
+                )
+            },
+            start: \.start,
+            end: \.end
+        )
+        let mappedSegments = try validate(
+            segments.map {
+                TimedTranscriptionSegment(
+                    text: $0.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                    start: $0.start,
+                    end: $0.end,
+                    speakerID: $0.speakerID
+                )
+            },
+            start: \.start,
+            end: \.end
+        )
+        return DetailedTranscriptionResult(
+            text: trimmedText,
+            words: mappedWords,
+            segments: mappedSegments,
+            costUSD: usage?.cost
+        )
+    }
+
+    private func validate<T>(
+        _ items: [T],
+        start: KeyPath<T, Double>,
+        end: KeyPath<T, Double>
+    ) throws -> [T] {
+        var previousStart = 0.0
+        for item in items {
+            let itemStart = item[keyPath: start]
+            let itemEnd = item[keyPath: end]
+            guard itemStart.isFinite,
+                  itemEnd.isFinite,
+                  itemStart >= 0,
+                  itemEnd >= itemStart,
+                  itemStart >= previousStart else {
+                throw AIError(message: "OpenRouter 상세 전사 응답의 타임스탬프가 올바르지 않아요.")
+            }
+            previousStart = itemStart
+        }
+        return items
+    }
+}
+
+nonisolated private struct TimedTranscriptionWordDTO: Decodable {
+    let text: String
+    let start: Double
+    let end: Double
+    let speakerID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case word
+        case start
+        case end
+        case speaker
+        case speakerID = "speaker_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try (container.decodeIfPresent(String.self, forKey: .text)
+            ?? container.decode(String.self, forKey: .word))
+        start = try container.decode(Double.self, forKey: .start)
+        end = try container.decode(Double.self, forKey: .end)
+        speakerID = container.decodeFlexibleSpeakerID()
+    }
+}
+
+nonisolated private struct TimedTranscriptionSegmentDTO: Decodable {
+    let text: String
+    let start: Double
+    let end: Double
+    let speakerID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case start
+        case end
+        case speaker
+        case speakerID = "speaker_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        start = try container.decode(Double.self, forKey: .start)
+        end = try container.decode(Double.self, forKey: .end)
+        speakerID = container.decodeFlexibleSpeakerID()
     }
 }
 
@@ -426,4 +603,36 @@ nonisolated private struct ChatChoice: Decodable {
 nonisolated private struct ChatResponseMessage: Decodable {
     let content: String?
     let refusal: String?
+}
+
+nonisolated private extension KeyedDecodingContainer where Key == TimedTranscriptionWordDTO.CodingKeys {
+    func decodeFlexibleSpeakerID() -> String? {
+        if let value = (try? decodeIfPresent(String.self, forKey: .speakerID)) ?? (try? decodeIfPresent(String.self, forKey: .speaker)) {
+            return value
+        }
+        if let value = (try? decodeIfPresent(Int.self, forKey: .speakerID)) ?? (try? decodeIfPresent(Int.self, forKey: .speaker)) {
+            return String(value)
+        }
+        if let value = (try? decodeIfPresent(Double.self, forKey: .speakerID)) ?? (try? decodeIfPresent(Double.self, forKey: .speaker)),
+           value.isFinite {
+            return value.rounded(.towardZero) == value ? String(Int(value)) : String(value)
+        }
+        return nil
+    }
+}
+
+nonisolated private extension KeyedDecodingContainer where Key == TimedTranscriptionSegmentDTO.CodingKeys {
+    func decodeFlexibleSpeakerID() -> String? {
+        if let value = (try? decodeIfPresent(String.self, forKey: .speakerID)) ?? (try? decodeIfPresent(String.self, forKey: .speaker)) {
+            return value
+        }
+        if let value = (try? decodeIfPresent(Int.self, forKey: .speakerID)) ?? (try? decodeIfPresent(Int.self, forKey: .speaker)) {
+            return String(value)
+        }
+        if let value = (try? decodeIfPresent(Double.self, forKey: .speakerID)) ?? (try? decodeIfPresent(Double.self, forKey: .speaker)),
+           value.isFinite {
+            return value.rounded(.towardZero) == value ? String(Int(value)) : String(value)
+        }
+        return nil
+    }
 }

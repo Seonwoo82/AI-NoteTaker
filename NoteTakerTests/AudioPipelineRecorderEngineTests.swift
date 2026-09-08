@@ -116,6 +116,24 @@ struct AudioPipelineRecorderEngineTests {
             progress: CaptureProgress(duration: 1.5, microphonePeak: 0.25, systemPeak: 0.75)
         ))
     }
+
+    @Test("AudioPipelineRecorderEngine passes live audio handler into capture configuration")
+    func passesLiveAudioHandlerIntoCaptureConfiguration() async throws {
+        let session = RecorderEngineCaptureSessionSpy(stopBehavior: .succeeds)
+        let factory = RecorderEngineCaptureSessionFactory([session])
+        let collector = LiveAudioSampleCollector()
+        let engine = AudioPipelineRecorderEngine(makeCaptureSession: factory.make)
+        engine.liveAudioHandler = collector.append
+        let request = recorderRequest()
+
+        _ = try await engine.start(request)
+        await session.emitConfiguredLiveAudio(samples: [0.1, 0.2], sampleRate: 16_000, startTime: 1.25)
+        _ = try await engine.stop()
+
+        #expect(collector.chunks() == [
+            LiveAudioSamples(samples: [0.1, 0.2], sampleRate: 16_000, startTime: 1.25)
+        ])
+    }
 }
 
 @MainActor
@@ -149,6 +167,7 @@ private actor RecorderEngineCaptureSessionSpy: AudioPipelineCaptureSessioning {
     private var outputURL: URL?
     private var cleanupPending = false
     private var currentProgress: CaptureProgress?
+    private var liveAudioHandler: LiveAudioSampleHandler?
     private let stream: AsyncStream<CaptureTerminalEvent>
     private let continuation: AsyncStream<CaptureTerminalEvent>.Continuation
 
@@ -164,6 +183,7 @@ private actor RecorderEngineCaptureSessionSpy: AudioPipelineCaptureSessioning {
     func start(configuration: RecordingConfiguration) async throws -> CaptureStartResult {
         startCallCount += 1
         outputURL = configuration.outputURL
+        liveAudioHandler = configuration.liveAudioHandler
         try Self.writeReadableAACFixture(to: configuration.outputURL)
         cleanupPending = true
         return CaptureStartResult(
@@ -210,6 +230,10 @@ private actor RecorderEngineCaptureSessionSpy: AudioPipelineCaptureSessioning {
 
     func setProgress(_ progress: CaptureProgress?) {
         currentProgress = progress
+    }
+
+    func emitConfiguredLiveAudio(samples: [Float], sampleRate: Double, startTime: Double) {
+        liveAudioHandler?(LiveAudioSamples(samples: samples, sampleRate: sampleRate, startTime: startTime))
     }
 
     func resume(outputURL: URL) async throws {
@@ -278,6 +302,23 @@ private actor RecorderEngineCaptureSessionSpy: AudioPipelineCaptureSessioning {
                 AVEncoderBitRateKey: 128_000
             ]
         ).write(from: buffer)
+    }
+}
+
+private final class LiveAudioSampleCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedChunks: [LiveAudioSamples] = []
+
+    func append(_ chunk: LiveAudioSamples) {
+        lock.lock()
+        recordedChunks.append(chunk)
+        lock.unlock()
+    }
+
+    func chunks() -> [LiveAudioSamples] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedChunks
     }
 }
 

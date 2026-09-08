@@ -9,8 +9,8 @@ final class AudioPipelinePlayerEngine: PlayerEngine {
     var currentTime: TimeInterval { engine.currentTime }
     var duration: TimeInterval { engine.duration }
 
-    init(engine: PlaybackEngine = PlaybackEngine()) {
-        self.engine = engine
+    init(engine: PlaybackEngine? = nil) {
+        self.engine = engine ?? PlaybackEngine()
     }
 
     func setFinishHandler(_ handler: (@MainActor () -> Void)?) {

@@ -33,11 +33,19 @@ protocol VoiceRecordingSession: AnyObject {
 @MainActor
 protocol VoiceRecordingBackend: AnyObject {
     func makeRecordingID() -> UUID
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool
     func start(
         outputURL: URL,
         mode: CaptureMode,
+        liveAudioHandler: LiveAudioSampleHandler?,
         interruptionHandler: @escaping @MainActor @Sendable () async -> Void
     ) async throws -> any VoiceRecordingSession
+}
+
+extension VoiceRecordingBackend {
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool {
+        false
+    }
 }
 
 @MainActor
@@ -80,6 +88,7 @@ final class VoiceRecorder {
     var errorMessage: String?
     private(set) var canPause = true
     private(set) var hasPendingRecording = false
+    var liveAudioHandler: LiveAudioSampleHandler?
 
     @ObservationIgnored private let backend: any VoiceRecordingBackend
     @ObservationIgnored private let clock: any VoiceClock
@@ -88,11 +97,11 @@ final class VoiceRecorder {
     @ObservationIgnored private var elapsedTask: Task<Void, Never>?
 
     init(
-        backend: any VoiceRecordingBackend = PlatformVoiceRecordingBackend(),
-        clock: any VoiceClock = SystemVoiceClock()
+        backend: (any VoiceRecordingBackend)? = nil,
+        clock: (any VoiceClock)? = nil
     ) {
-        self.backend = backend
-        self.clock = clock
+        self.backend = backend ?? PlatformVoiceRecordingBackend()
+        self.clock = clock ?? SystemVoiceClock()
     }
 
     func start(library: LibraryStore, mode: CaptureMode) async {
@@ -110,7 +119,11 @@ final class VoiceRecorder {
         interruptionLibrary = library
 
         do {
-            let session = try await backend.start(outputURL: outputURL, mode: mode) { [weak self] in
+            let session = try await backend.start(
+                outputURL: outputURL,
+                mode: mode,
+                liveAudioHandler: liveAudioHandler
+            ) { [weak self] in
                 guard let self, let library = self.interruptionLibrary else { return }
                 _ = await self.finish(library: library)
             }
@@ -271,6 +284,10 @@ final class VoiceRecorder {
         return recovered
     }
 
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool {
+        backend.supportsLiveAudioObservation(for: mode)
+    }
+
     private func persist(_ pending: PendingRecording, into library: LibraryStore) -> Recording? {
         let recording = Recording(
             id: pending.id,
@@ -366,19 +383,40 @@ private final class PlatformVoiceRecordingBackend: VoiceRecordingBackend {
         UUID()
     }
 
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool {
+        #if os(macOS)
+        if mode == .systemOnly {
+            return true
+        }
+        #endif
+        return mode == .micOnly
+    }
+
     func start(
         outputURL: URL,
         mode: CaptureMode,
+        liveAudioHandler: LiveAudioSampleHandler?,
         interruptionHandler: @escaping @MainActor @Sendable () async -> Void
     ) async throws -> any VoiceRecordingSession {
         #if os(macOS)
         if mode == .systemOnly {
-            return try await MacSystemRecordingSession.start(outputURL: outputURL, interruptionHandler: interruptionHandler)
+            return try await MacSystemRecordingSession.start(
+                outputURL: outputURL,
+                liveAudioHandler: liveAudioHandler,
+                interruptionHandler: interruptionHandler
+            )
         }
         #endif
 
         guard mode == .micOnly else {
             throw VoiceRecorderError.unsupportedMode(mode)
+        }
+        if let liveAudioHandler {
+            return try await ObservedVoiceRecordingSession.start(
+                outputURL: outputURL,
+                liveAudioHandler: liveAudioHandler,
+                interruptionHandler: interruptionHandler
+            )
         }
         return try await AVFoundationRecordingSession.start(
             outputURL: outputURL,
@@ -613,6 +651,7 @@ private final class MacSystemRecordingSession: VoiceRecordingSession {
 
     static func start(
         outputURL: URL,
+        liveAudioHandler: LiveAudioSampleHandler?,
         interruptionHandler: @escaping @MainActor @Sendable () async -> Void
     ) async throws -> MacSystemRecordingSession {
         try FileManager.default.createDirectory(
@@ -625,7 +664,8 @@ private final class MacSystemRecordingSession: VoiceRecordingSession {
             microphoneUID: nil,
             outputURL: outputURL,
             microphoneGain: 1,
-            systemGain: 1
+            systemGain: 1,
+            liveAudioHandler: liveAudioHandler
         ))
         return MacSystemRecordingSession(session: session)
     }

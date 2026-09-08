@@ -71,7 +71,7 @@ final class SyncCoordinator {
     var onNotesChanged: ((UUID) -> Void)?
 
     private let settings: SyncSettings
-    private let transportFactory: (SyncConfiguration) -> SyncTransport
+    private let transportFactory: @MainActor (SyncConfiguration) -> SyncTransport
     private var currentSync: Task<Void, Never>?
     private var currentConnectionTest: Task<Void, Never>?
     private var activeEngine: SyncEngine?
@@ -81,11 +81,12 @@ final class SyncCoordinator {
     private var automaticSyncIsActive = false
     private var aiSettingsSynchronizer: AISettingsSynchronizer?
     private var aiConfiguration: AIConfiguration?
+    private var meetingDataSynchronizer: MeetingDataSynchronizer?
     var onSettingsChanged: (() -> Void)?
 
     init(
         settings: SyncSettings,
-        transportFactory: @escaping (SyncConfiguration) -> SyncTransport = { configuration in
+        transportFactory: @escaping @MainActor (SyncConfiguration) -> SyncTransport = { configuration in
             URLSessionSyncTransport(configuration: configuration)
         }
     ) {
@@ -127,17 +128,38 @@ final class SyncCoordinator {
                     )
                     activeEngine = engine
                     var settingsError: Error?
+                    let workspace = configuration.endpoint.absoluteString
                     if let aiSettingsSynchronizer, let settingsTransport = transport as? any AISettingsSyncTransport {
                         do {
                             try await aiSettingsSynchronizer.synchronize(transport: settingsTransport,
-                                workspace: configuration.endpoint.absoluteString)
+                                workspace: workspace)
                         } catch is CancellationError {
                             throw CancellationError()
                         } catch { settingsError = error }
                     }
+                    if let meetingDataSynchronizer, let meetingTransport = transport as? any MeetingDataSyncTransport {
+                        do {
+                            try await meetingDataSynchronizer.synchronizeProfile(transport: meetingTransport,
+                                workspace: workspace)
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch {
+                            if settingsError == nil { settingsError = error }
+                        }
+                    }
                     try Task.checkCancellation()
                     try await engine.sync(library: library)
                     activeEngine = nil
+                    if let meetingDataSynchronizer, let meetingTransport = transport as? any MeetingDataSyncTransport {
+                        do {
+                            try await meetingDataSynchronizer.synchronizeArtifacts(transport: meetingTransport,
+                                workspace: workspace, library: library)
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch {
+                            if settingsError == nil { settingsError = error }
+                        }
+                    }
                     if let settingsError { throw settingsError }
                 } while needsSync
                 try Task.checkCancellation()
@@ -161,6 +183,14 @@ final class SyncCoordinator {
             guard let self, let library, self.settings.isEnabled else { return }
             Task { await self.sync(library: library) }
         }
+    }
+
+    func configureMeetingDataSync(
+        profile: MeetingProfileStore? = nil,
+        store: MeetingIntelligenceStore? = nil,
+        edits: MeetingEditLog? = nil
+    ) {
+        meetingDataSynchronizer = MeetingDataSynchronizer(profile: profile, store: store, edits: edits)
     }
 
     func configureAutomaticSync(
@@ -193,6 +223,7 @@ final class SyncCoordinator {
         needsSync = false
         currentConnectionTest?.cancel()
         activeEngine?.cancel()
+        meetingDataSynchronizer?.cancel()
         currentSync?.cancel()
     }
 
@@ -277,7 +308,7 @@ final class SystemKeychainTokenStore: SyncTokenStore {
     private let service: String
     private let account: String
 
-    init(
+    nonisolated init(
         service: String = "com.seonwoo.notetaker.sync",
         account: String = "cloudflare-worker-token"
     ) {

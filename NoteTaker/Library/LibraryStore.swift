@@ -57,10 +57,14 @@ final class LibraryStore {
         guard recordings[index].deletedAt == nil else {
             throw LibraryStoreError.recordingDeleted(recording.id)
         }
-        let stamped = recording.locallyStamped(after: recordings[index])
+        let previous = recordings[index]
+        let stamped = recording.locallyStamped(after: previous)
         try saveMetadata(stamped)
         recordings[index] = stamped
         sortRecordings()
+        if stamped.deletedAt != nil || stamped.audioVersion != previous.audioVersion {
+            onRecordingUnavailable?(stamped.id)
+        }
     }
 
     func filteredRecordings(in folder: RecordingFolder, matching query: String = "") -> [Recording] {
@@ -153,6 +157,7 @@ final class LibraryStore {
     }
 
     func applyRemote(_ recording: Recording) throws {
+        let previous = self.recording(id: recording.id)
         try saveMetadata(recording)
         if recording.deletedAt == nil {
             try clearLocalPurgeMarker(recording.id)
@@ -163,6 +168,9 @@ final class LibraryStore {
             recordings.append(recording)
         }
         sortRecordings()
+        if recording.deletedAt != nil || previous.map({ $0.audioVersion != recording.audioVersion }) == true {
+            onRecordingUnavailable?(recording.id)
+        }
     }
 
     func audioURL(for recording: Recording) -> URL {

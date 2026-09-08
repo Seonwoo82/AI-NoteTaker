@@ -97,10 +97,10 @@ final class AppSettings {
 
     init(
         defaults: UserDefaults = .standard,
-        audioDeviceProvider: any AudioDeviceProviding = SystemAudioDeviceProvider()
+        audioDeviceProvider: (any AudioDeviceProviding)? = nil
     ) {
         self.defaults = defaults
-        self.audioDeviceProvider = audioDeviceProvider
+        self.audioDeviceProvider = audioDeviceProvider ?? SystemAudioDeviceProvider()
         if let rawValue = defaults.string(forKey: Keys.captureMode),
            let mode = CaptureMode(rawValue: rawValue) {
             captureMode = mode
@@ -110,13 +110,13 @@ final class AppSettings {
         microphoneUID = defaults.string(forKey: Keys.microphoneUID)
         microphoneGain = Self.sanitizedGain(defaults.object(forKey: Keys.microphoneGain))
         systemGain = Self.sanitizedGain(defaults.object(forKey: Keys.systemGain))
-        inputDevices = audioDeviceProvider.inputDevices()
-        defaultMicrophoneUID = audioDeviceProvider.defaultInputDeviceUID()
+        inputDevices = self.audioDeviceProvider.inputDevices()
+        defaultMicrophoneUID = self.audioDeviceProvider.defaultInputDeviceUID()
     }
 
     func refreshInputDevices() {
-        inputDevices = audioDeviceProvider.inputDevices()
-        defaultMicrophoneUID = audioDeviceProvider.defaultInputDeviceUID()
+        inputDevices = self.audioDeviceProvider.inputDevices()
+        defaultMicrophoneUID = self.audioDeviceProvider.defaultInputDeviceUID()
     }
 
     nonisolated private static func sanitizedGain(_ rawValue: Any?) -> Float {

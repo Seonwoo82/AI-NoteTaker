@@ -46,9 +46,21 @@ struct NoteTakerApp: App {
                     SettingsView(settings: container.settings, session: container.session)
                         .tabItem { Label(String(localized: "Recording"), systemImage: "mic") }
                         .tag("recording")
-                    AISettingsView(configuration: container.aiConfiguration)
+                    AISettingsView(configuration: container.aiConfiguration, profile: container.meeting.profile)
                         .tabItem { Label(String(localized: "AI Meeting Notes"), systemImage: "sparkles") }
                         .tag("ai")
+                    MeetingProfileView(
+                        store: container.meeting.profile,
+                        voice: container.meeting.voice.presentation,
+                        recordingIsBusy: container.meeting.enrollmentIsBusy || container.session.phase != .idle,
+                        prepareVoiceModels: { Task { await container.meeting.prepareVoiceModels() } },
+                        beginEnrollment: { Task { await container.meeting.beginEnrollment() } },
+                        finishEnrollment: { Task { await container.meeting.finishEnrollment() } },
+                        cancelEnrollment: { container.meeting.cancelEnrollment() },
+                        deleteEnrollment: { container.meeting.deleteEnrollment() }
+                    )
+                    .tabItem { Label(String(localized: "Profile"), systemImage: "person.crop.circle") }
+                    .tag("profile")
                     SyncSettingsView(
                         settings: container.syncSettings,
                         sync: container.syncCoordinator,
@@ -68,6 +80,7 @@ struct NoteTakerApp: App {
     private func prepareApp() async {
         let container = await runtime.load()
         appDelegate.session = container.session
+        appDelegate.meeting = container.meeting
         appDelegate.meetingNotes = container.meetingNotes
     }
 }
@@ -75,6 +88,7 @@ struct NoteTakerApp: App {
 @MainActor
 final class AppTerminationDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     var session: RecordingSession?
+    var meeting: MeetingFeatureContext?
     var meetingNotes: MeetingNotesService?
     private var isTerminating = false
 
@@ -83,6 +97,7 @@ final class AppTerminationDelegate: NSObject, NSApplicationDelegate, ObservableO
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        meeting?.prepareForTermination()
         meetingNotes?.prepareForTermination()
         guard !isTerminating else { return .terminateLater }
         guard let session else { return .terminateNow }

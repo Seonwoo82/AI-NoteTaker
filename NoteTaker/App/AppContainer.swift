@@ -11,6 +11,7 @@ struct AppContainer {
     let libraryController: LibraryController
     let aiConfiguration: AIConfiguration
     let meetingNotes: MeetingNotesService
+    let meeting: MeetingFeatureContext
     let syncSettings: SyncSettings
     let syncCoordinator: SyncCoordinator
 
@@ -24,6 +25,8 @@ struct AppContainer {
         let aiConfiguration = AIConfiguration(client: ai.client, keyStore: ai.keyStore, defaults: ai.defaults)
         let meetingNotes = MeetingNotesService(configuration: aiConfiguration, client: ai.client,
                                               chunker: ai.chunker, library: library)
+        let meeting = MeetingFeatureContext(library: library, configuration: aiConfiguration,
+            environment: ai, notes: meetingNotes)
         let syncSettings = services.syncSettings
         let automaticallySyncs = services.automaticallySyncs
         let syncCoordinator = SyncCoordinator(settings: syncSettings)
@@ -35,8 +38,14 @@ struct AppContainer {
             guard let recording = library?.recording(id: id) else { return }
             Task { await meetingNotes?.reload(recording) }
         }
-        aiConfiguration.onCredentialsChanged = { [weak meetingNotes] in meetingNotes?.credentialsDidChange() }
-        library.onRecordingUnavailable = { [weak meetingNotes] id in meetingNotes?.cancel(id) }
+        aiConfiguration.onCredentialsChanged = { [weak meetingNotes, weak meeting] in
+            meetingNotes?.credentialsDidChange()
+            meeting?.credentialsDidChange()
+        }
+        library.onRecordingUnavailable = { [weak meetingNotes, weak meeting] id in
+            meetingNotes?.cancel(id)
+            meeting?.recordingUnavailable(id)
+        }
         let session = RecordingSession(
             recorder: services.recorder,
             player: services.player,
@@ -44,18 +53,27 @@ struct AppContainer {
             appModel: model,
             settings: settings,
             stopPlayback: {
+                meeting.cancelEnrollment()
+                meeting.refreshVoiceObservation()
                 await playback.stop()
             },
             loadPreview: { url, duration in
                 try await playback.loadPreview(url: url, duration: duration)
             },
             onRecordingSaved: { recording in
-                meetingNotes.recordingDidFinish(recording)
+                meeting.recordingDidFinish(recording)
                 if automaticallySyncs && syncSettings.isEnabled {
                     Task { await syncCoordinator.sync(library: library) }
                 }
             }
         )
+        meeting.recordingIsBusy = { [weak session] in session?.phase != .idle }
+        meeting.stopPlayback = { [weak playback] in await playback?.stop() }
+        meeting.attachLiveAudio = { [weak recorder = services.recorder] handler in recorder?.liveAudioHandler = handler }
+        meeting.refreshVoiceObservation()
+        if automaticallySyncs { Task { await meeting.restoreLocalVoiceModels() } }
+        meeting.configureSync(syncCoordinator, automatic: automaticallySyncs)
+        await meeting.loadLibrary()
         let libraryController = LibraryController(
             library: library,
             model: model,
@@ -84,6 +102,7 @@ struct AppContainer {
             libraryController: libraryController,
             aiConfiguration: aiConfiguration,
             meetingNotes: meetingNotes,
+            meeting: meeting,
             syncSettings: syncSettings,
             syncCoordinator: syncCoordinator
         )

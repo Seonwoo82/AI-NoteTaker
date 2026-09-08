@@ -28,6 +28,8 @@ final class PlaybackController {
     private var loadedSource: LoadedSource?
     private var loadGeneration = 0
     private var loadingRecording: PlaybackRecordingIdentity?
+    private var segmentPlaybackToken: UUID?
+    private var transportGeneration = 0
     private var cachedWaveform: (source: PlaybackRecordingIdentity, peaks: [Double])?
 
     private(set) var selectedRecordingID: UUID?
@@ -52,6 +54,7 @@ final class PlaybackController {
     }
 
     func load(recording: Recording) async throws {
+        transportGeneration += 1
         let generation = nextLoadGeneration()
         let source = PlaybackRecordingIdentity(recording)
         loadingRecording = source
@@ -109,6 +112,8 @@ final class PlaybackController {
     }
 
     func loadPreview(url: URL, duration previewDuration: TimeInterval) async throws {
+        segmentPlaybackToken = nil
+        transportGeneration += 1
         let generation = nextLoadGeneration()
         loadingRecording = nil
         selectedRecordingID = nil
@@ -141,7 +146,44 @@ final class PlaybackController {
         }
     }
 
+    var exactCurrentTime: TimeInterval { player.currentTime }
+    var exactIsPlaying: Bool { canTransport && player.isPlaying }
+
+    func playSegment(recording: Recording, at time: Double, owner: UUID) async throws {
+        transportGeneration += 1
+        segmentPlaybackToken = owner
+        try await prepareForDisplay(recording: recording)
+        guard segmentPlaybackToken == owner, isReadyForDisplay(recording: recording) else { throw CancellationError() }
+        await seek(to: time)
+        guard segmentPlaybackToken == owner, isReadyForDisplay(recording: recording) else { throw CancellationError() }
+        let generation = transportGeneration
+        try await player.play()
+        guard segmentPlaybackToken == owner, isReadyForDisplay(recording: recording) else {
+            if transportGeneration == generation, selectedRecordingID == recording.id, isReadyForDisplay(recording: recording) {
+                await pause()
+            }
+            throw CancellationError()
+        }
+        isPlaying = player.isPlaying
+        currentTime = player.currentTime
+        startPolling()
+    }
+
+    func seekSegment(recording: Recording, owner: UUID, to time: TimeInterval) async {
+        guard segmentPlaybackToken == owner, isReadyForDisplay(recording: recording) else { return }
+        await seek(to: time)
+    }
+
+    func stopSegment(recording: Recording, owner: UUID) async {
+        guard segmentPlaybackToken == owner else { return }
+        segmentPlaybackToken = nil
+        guard selectedRecordingID == recording.id, isReadyForDisplay(recording: recording) else { return }
+        await pause()
+    }
+
     func play() async {
+        segmentPlaybackToken = nil
+        transportGeneration += 1
         guard await ensureSelectedRecordingLoadedIfNeeded() else { return }
         errorMessage = nil
         let timeline = PlaybackTimeline(duration: duration)
@@ -206,6 +248,8 @@ final class PlaybackController {
     }
 
     func stop() async {
+        segmentPlaybackToken = nil
+        transportGeneration += 1
         loadGeneration += 1
         loadingRecording = nil
         loadedSource = nil

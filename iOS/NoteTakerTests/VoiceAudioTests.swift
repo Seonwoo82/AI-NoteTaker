@@ -166,6 +166,25 @@ func voiceRecorderElapsedExcludesPausedTimeAfterResume() async throws {
 }
 
 @MainActor
+@Test("VoiceRecorder forwards optional live audio handler to the backend")
+func voiceRecorderForwardsOptionalLiveAudioHandlerToTheBackend() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueVoiceLibraryRoot(), arguments: [])
+    let store = await LibraryStore.open(paths: paths)
+    let backend = StubRecordingBackend()
+    let collector = LiveAudioSampleCollector()
+    let recorder = VoiceRecorder(backend: backend)
+    recorder.liveAudioHandler = collector.append
+
+    await recorder.start(library: store, mode: .micOnly)
+    backend.emitConfiguredLiveAudio(samples: [0.3, 0.4], sampleRate: 24_000, startTime: 0.75)
+    _ = await recorder.finish(library: store)
+
+    #expect(collector.chunks() == [
+        LiveAudioSamples(samples: [0.3, 0.4], sampleRate: 24_000, startTime: 0.75)
+    ])
+}
+
+@MainActor
 @Test("VoiceRecorder saves interrupted recording through the active library")
 func voiceRecorderSavesInterruptedRecordingThroughActiveLibrary() async throws {
     let paths = LibraryPaths(libraryRoot: uniqueVoiceLibraryRoot(), arguments: [])
@@ -287,6 +306,7 @@ private final class StubRecordingBackend: VoiceRecordingBackend {
     let fixedID: UUID
     let canPause: Bool
     let result: StubRecordingSession.Result
+    private var liveAudioHandler: LiveAudioSampleHandler?
 
     init(
         fixedID: UUID = UUID(),
@@ -302,8 +322,18 @@ private final class StubRecordingBackend: VoiceRecordingBackend {
         fixedID
     }
 
-    func start(outputURL: URL, mode: CaptureMode, interruptionHandler: @escaping @MainActor @Sendable () async -> Void) async throws -> any VoiceRecordingSession {
-        StubRecordingSession(outputURL: outputURL, canPause: canPause, result: result)
+    func start(
+        outputURL: URL,
+        mode: CaptureMode,
+        liveAudioHandler: LiveAudioSampleHandler?,
+        interruptionHandler: @escaping @MainActor @Sendable () async -> Void
+    ) async throws -> any VoiceRecordingSession {
+        self.liveAudioHandler = liveAudioHandler
+        return StubRecordingSession(outputURL: outputURL, canPause: canPause, result: result)
+    }
+
+    func emitConfiguredLiveAudio(samples: [Float], sampleRate: Double, startTime: Double) {
+        liveAudioHandler?(LiveAudioSamples(samples: samples, sampleRate: sampleRate, startTime: startTime))
     }
 }
 
@@ -320,7 +350,12 @@ private final class InterruptingRecordingBackend: VoiceRecordingBackend {
         UUID()
     }
 
-    func start(outputURL: URL, mode: CaptureMode, interruptionHandler: @escaping @MainActor @Sendable () async -> Void) async throws -> any VoiceRecordingSession {
+    func start(
+        outputURL: URL,
+        mode: CaptureMode,
+        liveAudioHandler: LiveAudioSampleHandler?,
+        interruptionHandler: @escaping @MainActor @Sendable () async -> Void
+    ) async throws -> any VoiceRecordingSession {
         handler = interruptionHandler
         return StubRecordingSession(outputURL: outputURL, canPause: true, result: result)
     }
@@ -373,6 +408,23 @@ private final class StubRecordingSession: VoiceRecordingSession {
     }
 
     func cancel() async {}
+}
+
+private final class LiveAudioSampleCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedChunks: [LiveAudioSamples] = []
+
+    func append(_ chunk: LiveAudioSamples) {
+        lock.lock()
+        recordedChunks.append(chunk)
+        lock.unlock()
+    }
+
+    func chunks() -> [LiveAudioSamples] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedChunks
+    }
 }
 
 @MainActor

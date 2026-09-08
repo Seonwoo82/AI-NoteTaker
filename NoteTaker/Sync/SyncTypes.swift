@@ -104,6 +104,19 @@ nonisolated struct MeetingNotesPage: Codable, Equatable, Sendable {
     let nextCursor: String?
 }
 
+nonisolated struct MeetingProfileResponse: Codable, Equatable, Sendable {
+    let profile: MeetingUserProfile?
+}
+
+nonisolated struct MeetingProfileUpload: Codable, Equatable, Sendable {
+    let profile: MeetingUserProfile?
+}
+
+nonisolated struct MeetingIntelligencePage: Codable, Equatable, Sendable {
+    let intelligence: [MeetingNotesDescriptor]
+    let nextCursor: String?
+}
+
 @MainActor
 protocol SyncTransport: AnyObject {
     func health() async throws -> SyncHealth
@@ -118,4 +131,15 @@ protocol MeetingNotesSyncTransport: SyncTransport {
     func listMeetingNotes(cursor: String?) async throws -> MeetingNotesPage
     func uploadMeetingNotes(_ document: MeetingNotesDocument, data: Data) async throws -> MeetingNotesDescriptor
     func downloadMeetingNotes(_ descriptor: MeetingNotesDescriptor, to url: URL) async throws
+}
+
+@MainActor
+protocol MeetingDataSyncTransport: AnyObject {
+    func getMeetingProfile() async throws -> MeetingProfileResponse
+    func putMeetingProfile(_ upload: MeetingProfileUpload) async throws -> MeetingProfileResponse
+    func listMeetingIntelligence(cursor: String?) async throws -> MeetingIntelligencePage
+    func uploadMeetingIntelligence(_ document: MeetingIntelligenceDocument, data: Data) async throws -> MeetingNotesDescriptor
+    func downloadMeetingIntelligence(_ descriptor: MeetingNotesDescriptor, to url: URL) async throws
+    func listMeetingEdits(after cursor: Int64) async throws -> MeetingEditPage
+    func uploadMeetingEdit(_ edit: MeetingEdit) async throws -> MeetingEditEntry
 }

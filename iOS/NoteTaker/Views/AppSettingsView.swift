@@ -20,7 +20,22 @@ struct AppSettingsView: View {
 
                 switch model.settingsSection {
                 case .ai:
-                    AISettingsView(configuration: model.aiConfiguration)
+                    AISettingsView(configuration: model.aiConfiguration, profile: model.meeting?.profile)
+                case .profile:
+                    if let meeting = model.meeting {
+                        MeetingProfileView(
+                            store: meeting.profile,
+                            voice: meeting.voice.presentation,
+                            recordingIsBusy: meeting.enrollmentIsBusy || model.recorder.isRecording || model.recorder.isBusy,
+                            prepareVoiceModels: { Task { await meeting.prepareVoiceModels() } },
+                            beginEnrollment: { Task { await meeting.beginEnrollment() } },
+                            finishEnrollment: { Task { await meeting.finishEnrollment() } },
+                            cancelEnrollment: { meeting.cancelEnrollment() },
+                            deleteEnrollment: { meeting.deleteEnrollment() }
+                        )
+                    } else {
+                        ContentUnavailableView(String(localized: "Profile Unavailable"), systemImage: "person.crop.circle.badge.exclamationmark")
+                    }
                 case .sync:
                     SyncSettingsView(settings: model.settings, sync: model.sync,
                                      library: model.library, embedded: true)

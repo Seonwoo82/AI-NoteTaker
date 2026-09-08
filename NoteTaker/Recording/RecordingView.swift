@@ -4,6 +4,7 @@ struct RecordingView: View {
     let session: RecordingSession
     let settings: AppSettings
     @Bindable var playback: PlaybackController
+    var ownerSpeechState: OwnerSpeechState? = nil
 
     private var statusText: String {
         switch session.phase {
@@ -51,6 +52,9 @@ struct RecordingView: View {
             Text(statusText)
                 .font(.system(size: 12, weight: .semibold))
                 .accessibilityIdentifier("recording-status-label")
+            if session.phase == .recording, let ownerSpeechState {
+                OwnerSpeechIndicatorView(state: ownerSpeechState, compact: true)
+            }
 
             Spacer(minLength: 8)
 

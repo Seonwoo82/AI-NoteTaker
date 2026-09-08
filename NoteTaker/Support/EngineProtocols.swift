@@ -78,12 +78,25 @@ nonisolated enum RecorderEngineError: Error, Equatable, Sendable {
 protocol RecorderEngine: AnyObject {
     var state: RecorderState { get }
     var events: AsyncStream<RecorderEvent> { get }
+    var liveAudioHandler: LiveAudioSampleHandler? { get set }
 
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool
     func start(_ request: RecorderRequest) async throws -> RecorderStart
     func pause() async throws -> RecorderPreview
     func resume() async throws
     func stop() async throws -> RecorderResult
     func confirmPublished() async
+}
+
+extension RecorderEngine {
+    var liveAudioHandler: LiveAudioSampleHandler? {
+        get { nil }
+        set {}
+    }
+
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool {
+        false
+    }
 }
 
 @MainActor

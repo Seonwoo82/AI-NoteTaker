@@ -105,8 +105,12 @@ private final class AIAppTokenStore: SyncTokenStore {
 @MainActor
 private final class AIAppRecordingBackend: VoiceRecordingBackend {
     func makeRecordingID() -> UUID { UUID() }
-    func start(outputURL: URL, mode: CaptureMode,
-               interruptionHandler: @escaping @MainActor @Sendable () async -> Void) async throws -> any VoiceRecordingSession {
+    func start(
+        outputURL: URL,
+        mode: CaptureMode,
+        liveAudioHandler: LiveAudioSampleHandler?,
+        interruptionHandler: @escaping @MainActor @Sendable () async -> Void
+    ) async throws -> any VoiceRecordingSession {
         AIAppRecordingSession(url: outputURL)
     }
 }

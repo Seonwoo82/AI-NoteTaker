@@ -61,6 +61,9 @@ struct MenuBarRecordingView: View {
 
             if let container {
                 captureControls(container)
+                if container.session.phase == .recording, container.meeting.profile.localVoice != nil {
+                    OwnerSpeechIndicatorView(state: container.meeting.voice.state, compact: true)
+                }
                 if let alert = container.session.alert {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(String(localized: "Recording Error"), systemImage: "exclamationmark.triangle")

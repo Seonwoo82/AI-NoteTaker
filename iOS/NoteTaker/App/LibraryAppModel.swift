@@ -14,6 +14,7 @@ final class LibraryAppModel {
     let sync: SyncCoordinator
     let aiConfiguration: AIConfiguration
     private(set) var meetingNotes: MeetingNotesService?
+    private(set) var meeting: MeetingFeatureContext?
     @ObservationIgnored private let aiEnvironment: AIEnvironment
     @ObservationIgnored private let isTesting: Bool
     @ObservationIgnored private var openingTask: Task<Void, Never>?
@@ -81,16 +82,37 @@ final class LibraryAppModel {
         let openedLibrary = await LibraryStore.open(paths: paths)
         let notes = MeetingNotesService(configuration: aiConfiguration, client: aiEnvironment.client,
                                         chunker: aiEnvironment.chunker, library: openedLibrary)
-        aiConfiguration.onCredentialsChanged = { [weak notes] in notes?.credentialsDidChange() }
+        let meeting = MeetingFeatureContext(library: openedLibrary, configuration: aiConfiguration,
+            environment: aiEnvironment, notes: notes)
+        self.meeting = meeting
+        meeting.recordingIsBusy = { [weak self] in
+            guard let self else { return true }
+            return self.recorder.isRecording || self.recorder.isBusy
+        }
+        meeting.stopPlayback = { [weak self] in self?.player.stop() }
+        meeting.attachLiveAudio = { [weak self] handler in self?.recorder.liveAudioHandler = handler }
+        meeting.refreshVoiceObservation()
+        if !isTesting { Task { await meeting.restoreLocalVoiceModels() } }
+        meeting.configureSync(sync, automatic: !isTesting)
+        aiConfiguration.onCredentialsChanged = { [weak notes, weak meeting] in
+            notes?.credentialsDidChange()
+            meeting?.credentialsDidChange()
+        }
         notes.onDocumentSaved = { [weak self] _ in
-            Task { await self?.synchronize() }
+            guard let self, !self.isTesting else { return }
+            Task { await self.synchronize() }
         }
         sync.onNotesChanged = { [weak notes, weak openedLibrary] id in
             guard let recording = openedLibrary?.recording(id: id) else { return }
             Task { await notes?.reload(recording) }
         }
+        openedLibrary.onRecordingUnavailable = { [weak notes, weak meeting] id in
+            notes?.cancel(id)
+            meeting?.recordingUnavailable(id)
+        }
         meetingNotes = notes
         library = openedLibrary
+        await meeting.loadLibrary()
         _ = await recorder.recoverRecordings(library: openedLibrary)
         if !isTesting {
             sync.configureAISettingsSync(configuration: aiConfiguration, library: openedLibrary)
@@ -113,6 +135,9 @@ final class LibraryAppModel {
         if foreground {
             sync.requestAutomaticSync()
         } else {
+            meeting?.cancelEnrollment()
+            // iOS may suspend foreground AI work; resume explicitly from the detail page.
+            if !recorder.isRecording { meeting?.credentialsDidChange() }
             IOSBackgroundSync.schedule(enabled: settings.isEnabled)
             guard settings.isEnabled else { return }
             backgroundExecution.begin(operation: { [weak self] in
@@ -141,6 +166,8 @@ final class LibraryAppModel {
 
     func startRecording() async {
         guard let library else { return }
+        meeting?.cancelEnrollment()
+        meeting?.refreshVoiceObservation()
         player.stop()
         await recorder.start(library: library, mode: captureMode)
     }
@@ -151,7 +178,7 @@ final class LibraryAppModel {
             filter = .all
             search = ""
             selection = recording.id
-            meetingNotes?.recordingDidFinish(recording)
+            meeting?.recordingDidFinish(recording)
             await synchronize()
         }
     }
@@ -163,6 +190,7 @@ final class LibraryAppModel {
             try library.update(current)
             if current.deletedAt != nil {
                 meetingNotes?.cancel(current.id)
+                meeting?.recordingUnavailable(current.id)
                 if player.recordingID == current.id { player.stop() }
             }
             Task { await synchronize() }
@@ -187,6 +215,7 @@ final class LibraryAppModel {
             let current = newRecordings.first { $0.id == previous.id }
             if current == nil || current?.deletedAt != nil || current?.audioVersion != previous.audioVersion {
                 meetingNotes?.cancel(previous.id)
+                meeting?.recordingUnavailable(previous.id)
             }
         }
         Task { await synchronize() }
@@ -194,12 +223,13 @@ final class LibraryAppModel {
 }
 
 enum AppSettingsSection: String, CaseIterable, Identifiable {
-    case ai, sync
+    case ai, profile, sync
     var id: Self { self }
     var title: String {
         switch self {
         case .ai: String(localized: "AI Meeting Notes")
         case .sync: String(localized: "Sync")
+        case .profile: String(localized: "Profile")
         }
     }
 }

@@ -11,11 +11,24 @@ enum RecorderState: Equatable {
 @MainActor
 protocol RecorderEngine: AnyObject {
     var state: RecorderState { get }
+    var liveAudioHandler: LiveAudioSampleHandler? { get set }
 
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool
     func start() async throws
     func pause() async throws
     func resume() async throws
     func stop() async throws
+}
+
+extension RecorderEngine {
+    var liveAudioHandler: LiveAudioSampleHandler? {
+        get { nil }
+        set {}
+    }
+
+    func supportsLiveAudioObservation(for mode: CaptureMode) -> Bool {
+        false
+    }
 }
 
 @MainActor

@@ -109,7 +109,13 @@ func captureSessionStopsHALWhenWriterReportsRuntimeFailure() async throws {
     let writer = try writerProbe.requireWriter()
 
     writer.triggerRuntimeFailure(.diskSpaceLow)
-    await allowScheduledTasksToRun()
+    await waitForLifecycleEvents(log, suffix: [
+        .deviceStop,
+        .ioProcDestroy,
+        .writerRequestStop,
+        .writerJoin,
+        .aggregateDestroy
+    ])
 
     #expect(log.events().suffix(5) == [
         .deviceStop,
@@ -156,10 +162,14 @@ func captureSessionExposesOneTerminalEventForWriterRuntimeFailure() async throws
     await recorder.cancel()
 }
 
-private func allowScheduledTasksToRun() async {
-    for _ in 0..<20 {
+private func waitForLifecycleEvents(_ log: LifecycleLog, suffix: [LifecycleEvent]) async {
+    for _ in 0..<100 {
+        if log.events().suffix(suffix.count) == suffix {
+            return
+        }
         await Task.yield()
     }
+    Issue.record("Timed out waiting for lifecycle suffix: \(suffix)")
 }
 
 private actor TerminalEventRecorder {

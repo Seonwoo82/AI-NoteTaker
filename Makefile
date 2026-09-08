@@ -67,7 +67,7 @@ uitest:
 	xcodebuild -jobs $(JOBS) -project $(PROJECT) -scheme $(SCHEME) -configuration Debug -destination '$(DESTINATION)' -derivedDataPath $(DERIVED_DATA) -only-testing:NoteTakerUITests test
 
 test-audio:
-	swift test --package-path Packages/AudioPipeline
+	swift test --package-path Packages/AudioPipeline --jobs $(JOBS) --no-parallel
 
 smoke: export MODE := $(value MODE)
 smoke: export SECONDS := $(value SECONDS)
@@ -85,3 +85,13 @@ sign-check: build
 
 clean:
 	rm -rf build
+
+.PHONY: build-release build-ios-release
+
+# Pass the supported architecture to package targets as well as the app target.
+# Single-file compilation keeps compiler parallelism bounded by JOBS.
+build-release:
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release -destination '$(DESTINATION)' -derivedDataPath build/ReleaseDerivedData -jobs $(JOBS) ARCHS=arm64 SWIFT_COMPILATION_MODE=singlefile build
+
+build-ios-release:
+	xcodebuild -project $(IOS_PROJECT) -scheme $(IOS_SCHEME) -configuration Release -destination 'generic/platform=iOS' -derivedDataPath build/IOSReleaseDerivedData -jobs $(JOBS) ARCHS=arm64 SWIFT_COMPILATION_MODE=singlefile -allowProvisioningUpdates build

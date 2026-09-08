@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AISettingsView: View {
     @Bindable var configuration: AIConfiguration
+    var profile: MeetingProfileStore?
     @State private var apiKey = ""
     @State private var modelSearch = ""
     @State private var transcriptionSearch = ""
@@ -162,6 +163,20 @@ struct AISettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            if let profile {
+                Toggle(isOn: Binding(
+                    get: { profile.profile.automaticallyAnalyze },
+                    set: { setAutomaticMeetingAnalysis($0) }
+                )) {
+                    Label(String(localized: "Automatically analyze speaker conversations"), systemImage: "person.2.wave.2")
+                }
+                Text(String(localized: "When automatic generation is enabled, AI-NoteTaker also creates speaker-separated transcripts, commitments, decisions, and briefing sources. This setting syncs; API keys stay device-local."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("ai-automatic-meeting-analysis-help")
+            }
+
             Picker(String(localized: "Output Language"), selection: $configuration.outputLanguage) {
                 Text(String(localized: "Match source")).tag("source")
                 Text(String(localized: "Korean")).tag("ko")
@@ -202,6 +217,18 @@ struct AISettingsView: View {
         return models.filter {
             $0.id.localizedCaseInsensitiveContains(trimmed)
                 || $0.name.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
+    private func setAutomaticMeetingAnalysis(_ enabled: Bool) {
+        guard let profile else { return }
+        do {
+            try profile.updateProfile { $0.automaticallyAnalyze = enabled }
+            localMessage = enabled
+                ? String(localized: "Speaker conversation analysis will run automatically.")
+                : String(localized: "Speaker conversation analysis will run only when started manually.")
+        } catch {
+            localMessage = error.localizedDescription
         }
     }
 

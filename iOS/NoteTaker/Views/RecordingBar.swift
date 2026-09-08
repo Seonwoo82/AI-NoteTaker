@@ -18,6 +18,9 @@ struct RecordingBar: View {
                             .font(.title2.monospacedDigit().weight(.semibold))
                     }
                     Spacer()
+                    if model.recorder.isRecording, let meeting = model.meeting {
+                        OwnerSpeechIndicatorView(state: meeting.voice.state, compact: true)
+                    }
                     if model.recorder.hasPendingRecording {
                         Button("Keep for Later") { model.recorder.deferPendingSave() }
                             .buttonStyle(.bordered)

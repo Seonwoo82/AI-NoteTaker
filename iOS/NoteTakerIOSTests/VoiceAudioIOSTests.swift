@@ -41,7 +41,12 @@ private final class IOSStubRecordingBackend: VoiceRecordingBackend {
         id
     }
 
-    func start(outputURL: URL, mode: CaptureMode, interruptionHandler: @escaping @MainActor @Sendable () async -> Void) async throws -> any VoiceRecordingSession {
+    func start(
+        outputURL: URL,
+        mode: CaptureMode,
+        liveAudioHandler: LiveAudioSampleHandler?,
+        interruptionHandler: @escaping @MainActor @Sendable () async -> Void
+    ) async throws -> any VoiceRecordingSession {
         IOSStubRecordingSession(outputURL: outputURL, duration: duration)
     }
 }
