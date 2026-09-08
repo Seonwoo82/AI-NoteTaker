@@ -1,6 +1,34 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Start Recording" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 시작" } } }
+    },
+    "Finish Recording" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "녹음 완료" } } }
+    },
+    "Open NoteTaker" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "NoteTaker 열기" } } }
+    },
+    "Quit NoteTaker" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "NoteTaker 종료" } } }
+    },
+    "Settings..." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "설정…" } } }
+    },
+    "Loading..." : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "불러오는 중…" } } }
+    },
+    "Dismiss" : {
+      "extractionState" : "manual",
+      "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "닫기" } } }
+    },
     "Microphone" : {
       "extractionState" : "manual",
       "localizations" : { "ko" : { "stringUnit" : { "state" : "translated", "value" : "마이크" } } }

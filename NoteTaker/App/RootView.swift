@@ -2,23 +2,8 @@ import SwiftUI
 
 @MainActor
 struct RootView: View {
-    let services: AppServices
-    let paths: LibraryPaths
-    let onContainerLoaded: (AppContainer) -> Void
-    @Binding var container: AppContainer?
+    let container: AppContainer?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-
-    init(
-        services: AppServices,
-        paths: LibraryPaths = LibraryPaths(),
-        container: Binding<AppContainer?>,
-        onContainerLoaded: @escaping (AppContainer) -> Void = { _ in }
-    ) {
-        self.services = services
-        self.paths = paths
-        self.onContainerLoaded = onContainerLoaded
-        self._container = container
-    }
 
     var body: some View {
         Group {
@@ -44,12 +29,6 @@ struct RootView: View {
                     .controlSize(.large)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
-        .task {
-            guard container == nil else { return }
-            let loadedContainer = await AppContainer.load(services: services, paths: paths)
-            container = loadedContainer
-            onContainerLoaded(loadedContainer)
         }
     }
 }
