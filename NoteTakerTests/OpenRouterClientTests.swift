@@ -9,7 +9,7 @@ struct OpenRouterClientTests {
         let recorder = HTTPRecorder(routes: [
             "GET /api/v1/models?output_modalities=text": .json("""
             {"data":[
-              {"id":"google/gemini-2.5-flash","name":"Gemini","context_length":1048576,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.30","completion":"2.50"}},
+              {"id":"google/gemini-2.5-flash","name":"Gemini","context_length":1048576,"top_provider":{"max_completion_tokens":65536},"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.30","completion":"2.50"}},
               {"id":3,"name":"Bad"}
             ]}
             """),
@@ -25,6 +25,10 @@ struct OpenRouterClientTests {
 
         #expect(models.map(\.id) == ["google/gemini-2.5-flash", "openai/whisper-large-v3"])
         #expect(models[0].promptPrice == "0.30")
+        #expect(models[0].maxCompletionTokens == 65_536)
+        #expect(models[1].maxCompletionTokens == nil)
+        let cached = try JSONDecoder().decode([OpenRouterModel].self, from: JSONEncoder().encode(models))
+        #expect(cached[0].maxCompletionTokens == 65_536)
         #expect(models[1].supportsTranscription)
         #expect(recorder.requests.allSatisfy { $0.value.value(forHTTPHeaderField: "Authorization") == nil })
     }
@@ -172,6 +176,20 @@ struct OpenRouterClientTests {
         #expect(reasoning["enabled"] as? Bool != false)
         #expect(body["max_tokens"] as? Int == 4096)
         #expect(recorder.requests.first?.value.timeoutInterval == 180)
+    }
+
+    @Test("large completions are sent unchanged and allow time for long reasoning")
+    func largeCompletionAllowanceAndTimeout() async throws {
+        let recorder = HTTPRecorder(routes: [
+            "POST /api/v1/chat/completions": .json(#"{"choices":[{"message":{"content":"Long meeting notes"},"finish_reason":"stop"}]}"#)
+        ])
+        _ = try await OpenRouterClient(session: recorder.session).complete(system: "s", user: "u",
+            model: "qwen/qwen3.8-max-0902", apiKey: "fixture", maxTokens: 131_072)
+        #expect(try recorder.jsonBody(at: 0)["max_tokens"] as? Int == 131_072)
+        #expect(recorder.requests.first?.value.timeoutInterval == 3_600)
+        let session = OpenRouterClient.makeSession()
+        #expect(session.configuration.timeoutIntervalForResource >= 3_600)
+        session.invalidateAndCancel()
     }
 
     @Test("HTTP errors are Korean actionable and never include request secrets or raw body")

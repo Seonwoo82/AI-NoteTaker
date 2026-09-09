@@ -313,7 +313,7 @@ struct MeetingNotesServiceTests {
 
         #expect(await h.client.completionCalls == 1)
         let requests = await h.client.completionRequests
-        #expect(requests.map(\.maxTokens) == [8_192])
+        #expect(requests.map(\.maxTokens) == [131_072])
         #expect(requests.first?.user.contains("FINAL_SENTINEL") == true)
     }
 
@@ -334,10 +334,37 @@ struct MeetingNotesServiceTests {
         let requests = await h.client.completionRequests
         let partials = requests.filter { $0.user.contains("Meeting excerpt") }
         #expect(partials.count == 2)
-        #expect(partials.allSatisfy { $0.maxTokens == 4_096 })
+        #expect(partials.allSatisfy { $0.maxTokens == 32_768 })
         #expect(partials.allSatisfy { $0.user.utf8.count <= 97_000 })
-        #expect(requests.last?.maxTokens == 12_288)
+        #expect(requests.last?.maxTokens == 131_072)
         #expect(await h.client.sawFinalSentinel)
+    }
+
+    @Test("hour-long Qwen meetings retain every excerpt with a larger output allowance")
+    func qwenHourLongMeetingHasRoomForReasoningAndNotes() async throws {
+        let h = try await MinutesHarness.make(summaryModel: OpenRouterModel(
+            id: "qwen/qwen3.8-max-0902", name: "Qwen3.8 Max", contextLength: 1_000_000,
+            inputModalities: ["text"], outputModalities: ["text"]), duration: 75 * 60)
+        await h.client.setTranscript(String(repeating: "회의 안건과 결정 사항. ", count: 5_000) + "FINAL_SENTINEL")
+        h.service.generate(h.recording)
+        try await h.waitUntilFinished()
+        let requests = await h.client.completionRequests
+        #expect(requests.last?.maxTokens == 131_072)
+        let partials = requests.filter { $0.user.contains("Meeting excerpt") }
+        #expect(!partials.isEmpty)
+        #expect(partials.allSatisfy { $0.maxTokens == 32_768 })
+        #expect(await h.client.sawFinalSentinel)
+        #expect(h.service.document(for: h.recording.id) != nil)
+    }
+
+    @Test("the provider output ceiling caps larger meeting requests")
+    func respectsProviderOutputLimit() async throws {
+        let model = try JSONDecoder().decode(OpenRouterModel.self, from: Data(#"{"id":"fixture/capped","name":"Capped","contextLength":1000000,"inputModalities":["text"],"outputModalities":["text"],"maxCompletionTokens":16384}"#.utf8))
+        let h = try await MinutesHarness.make(summaryModel: model)
+        h.service.generate(h.recording)
+        try await h.waitUntilFinished()
+        let requests = await h.client.completionRequests
+        #expect(requests.map(\.maxTokens) == [16_384])
     }
 
     @Test("Excessive audio length is rejected before any paid request")
@@ -396,12 +423,13 @@ private struct MinutesHarness {
     static func make(
         delay: Duration = .zero,
         chunker: any MeetingAudioChunking = FakeMeetingAudioChunker(),
-        summaryModel: OpenRouterModel? = nil
+        summaryModel: OpenRouterModel? = nil,
+        duration: TimeInterval = 10
     ) async throws -> MinutesHarness {
         let root = FileManager.default.temporaryDirectory.appending(path: "NoteTakerMinutesTests-\(UUID())")
         let paths = LibraryPaths(libraryRoot: root, arguments: [])
         let library = await LibraryStore.open(paths: paths)
-        let recording = Recording(title: "회의", duration: 10, mode: .micOnly)
+        let recording = Recording(title: "회의", duration: duration, mode: .micOnly)
         try library.add(recording)
         try Data("fixture".utf8).write(to: paths.audioURL(for: recording.id))
         let client = MinutesTestClient(delay: delay)

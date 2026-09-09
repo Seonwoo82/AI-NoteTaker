@@ -53,6 +53,17 @@ struct MeetingAnalysisServiceTests {
         #expect(finished.first?.1 == true)
     }
 
+    @Test("structured meeting insights use the same large provider-aware output allowance", arguments: [131_072, 16_384])
+    func structuredInsightsRespectOutputAllowance(providerLimit: Int) async throws {
+        let model = OpenRouterModel(id: "fixture/analysis", name: "Analysis", contextLength: 1_000_000,
+            inputModalities: ["text"], outputModalities: ["text"], maxCompletionTokens: providerLimit)
+        let h = try await AnalysisHarness.make(summaryModel: model)
+        h.service.analyze(h.recording)
+        try await h.waitUntilFinished()
+        #expect(await h.client.outputAllowances == [providerLimit])
+        #expect(h.store.document(for: h.recording.id)?.insights != nil)
+    }
+
     @Test("reanalysis reuses the timed transcription cache and applies speaker corrections to analysis prompts")
     func reusesTimedCacheAndAppliesCorrectionsToPrompt() async throws {
         let harness = try await AnalysisHarness.make()
@@ -294,7 +305,7 @@ private struct AnalysisHarness {
     let detailedClient: AnalysisDetailedClient
     let service: MeetingAnalysisService
 
-    static func make(configured: Bool = true, delay: Duration = .zero) async throws -> AnalysisHarness {
+    static func make(configured: Bool = true, delay: Duration = .zero, summaryModel: OpenRouterModel? = nil) async throws -> AnalysisHarness {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "MeetingAnalysisServiceTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         let paths = LibraryPaths(libraryRoot: root, arguments: [])
@@ -308,6 +319,11 @@ private struct AnalysisHarness {
         let detailedClient = AnalysisDetailedClient(delay: delay)
         let keyStore = InMemoryAPIKeyStore()
         let defaults = UserDefaults(suiteName: "MeetingAnalysisServiceTests.\(UUID().uuidString)")!
+        if let summaryModel {
+            let models = [summaryModel, OpenRouterModel(id: "fixture/stt", name: "STT", contextLength: 0,
+                inputModalities: ["audio"], outputModalities: ["transcription"])]
+            defaults.set(try JSONEncoder().encode(models), forKey: "ai.modelCatalog")
+        }
         let configuration = AIConfiguration(client: client, keyStore: keyStore, defaults: defaults)
         configuration.modelID = "fixture/analysis"
         configuration.transcriptionModelID = "fixture/stt"
@@ -452,6 +468,7 @@ private actor AnalysisDetailedClient: DetailedTranscriptionServing {
 private actor AnalysisOpenRouterClient: OpenRouterServing {
     private(set) var completionCalls = 0
     private(set) var userPrompts: [String] = []
+    private(set) var outputAllowances: [Int] = []
     private var malformedCitations = false
     private var actionText = "Send the revised proposal tomorrow."
 
@@ -472,6 +489,7 @@ private actor AnalysisOpenRouterClient: OpenRouterServing {
     func complete(system: String, user: String, model: String, apiKey: String, maxTokens: Int) async throws -> AITextResponse {
         completionCalls += 1
         userPrompts.append(user)
+        outputAllowances.append(maxTokens)
         let turnID = malformedCitations ? "missing-turn" : firstTurnID(in: user)
         let speakerPattern = #"\[turn-[A-Fa-f0-9]+\].*?\[([A-Za-z0-9_-]+)\]"#
         let regex = try NSRegularExpression(pattern: speakerPattern)

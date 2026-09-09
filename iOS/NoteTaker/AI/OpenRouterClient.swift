@@ -11,7 +11,7 @@ nonisolated struct OpenRouterClient: OpenRouterServing, DetailedTranscriptionSer
 
     init(configuration: URLSessionConfiguration) {
         configuration.timeoutIntervalForRequest = min(configuration.timeoutIntervalForRequest, 30)
-        configuration.timeoutIntervalForResource = min(configuration.timeoutIntervalForResource, 240)
+        configuration.timeoutIntervalForResource = min(configuration.timeoutIntervalForResource, MeetingCompletionBudget.resourceTimeout)
         self.session = URLSession(
             configuration: configuration,
             delegate: OpenRouterNoRedirectDelegate(),
@@ -101,7 +101,8 @@ nonisolated struct OpenRouterClient: OpenRouterServing, DetailedTranscriptionSer
             reasoning: OpenRouterModel.requiresReasoningBudget(for: model)
                 ? ReasoningOptions(effort: "low", exclude: true) : nil
         )
-        let request = try makeJSONRequest(path: "/chat/completions", apiKey: apiKey, body: &body, timeout: 180)
+        let request = try makeJSONRequest(path: "/chat/completions", apiKey: apiKey, body: &body,
+            timeout: MeetingCompletionBudget.requestTimeout(outputTokens: maxTokens))
         let data = try await data(for: request)
         let response = try decode(ChatResponse.self, from: data)
         guard let choice = response.choices.first else {
@@ -127,7 +128,7 @@ nonisolated struct OpenRouterClient: OpenRouterServing, DetailedTranscriptionSer
 
     nonisolated static func makeSession(configuration: URLSessionConfiguration = .ephemeral) -> URLSession {
         configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 240
+        configuration.timeoutIntervalForResource = MeetingCompletionBudget.resourceTimeout
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         configuration.httpShouldSetCookies = false
         return URLSession(configuration: configuration, delegate: OpenRouterNoRedirectDelegate(), delegateQueue: nil)
@@ -274,6 +275,7 @@ nonisolated private struct ModelDTO: Decodable {
     let contextLength: Int?
     let architecture: ArchitectureDTO
     let pricing: PricingDTO?
+    let topProvider: TopProviderDTO?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -281,6 +283,7 @@ nonisolated private struct ModelDTO: Decodable {
         case contextLength = "context_length"
         case architecture
         case pricing
+        case topProvider = "top_provider"
     }
 
     var model: OpenRouterModel {
@@ -291,9 +294,15 @@ nonisolated private struct ModelDTO: Decodable {
             inputModalities: architecture.inputModalities,
             outputModalities: architecture.outputModalities,
             promptPrice: pricing?.prompt?.value,
-            completionPrice: pricing?.completion?.value
+            completionPrice: pricing?.completion?.value,
+            maxCompletionTokens: topProvider?.maxCompletionTokens
         )
     }
+}
+
+nonisolated private struct TopProviderDTO: Decodable {
+    let maxCompletionTokens: Int?
+    enum CodingKeys: String, CodingKey { case maxCompletionTokens = "max_completion_tokens" }
 }
 
 nonisolated private struct ArchitectureDTO: Decodable {

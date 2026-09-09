@@ -114,14 +114,13 @@ final class MeetingAnalysisService {
         do {
             let key = try configuration.apiKey()
             let model = configuration.models.first { $0.id == configuration.modelID }
-            let context = model?.contextLength ?? 32_000
-            let outputBudget = min(8_192, max(2_048, context / 4))
+            let budget = MeetingCompletionBudget(model: model, modelID: configuration.modelID, fallbackContext: 32_000)
             let job = Job(token: UUID(), recording: current, key: key,
                 analysisModelID: configuration.modelID,
                 transcriptionModelID: configuration.transcriptionModelID,
                 language: configuration.outputLanguage,
-                inputBudget: max(4_096, min(96_000, context - outputBudget - 2_048)),
-                outputBudget: outputBudget,
+                inputBudget: budget.inputBytes,
+                outputBudget: budget.outputTokens,
                 forceTranscription: forceTranscription)
             tokens[recording.id] = job.token
             states[recording.id] = .queued

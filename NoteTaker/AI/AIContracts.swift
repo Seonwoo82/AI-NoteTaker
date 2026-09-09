@@ -8,6 +8,7 @@ nonisolated struct OpenRouterModel: Identifiable, Codable, Equatable, Sendable {
     let outputModalities: [String]
     var promptPrice: String? = nil
     var completionPrice: String? = nil
+    var maxCompletionTokens: Int? = nil
 
     var supportsSummary: Bool {
         inputModalities.contains("text") && outputModalities.contains("text") && contextLength >= 8_192

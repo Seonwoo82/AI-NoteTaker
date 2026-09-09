@@ -128,18 +128,13 @@ final class MeetingNotesService {
         do {
             let key = try configuration.apiKey()
             let model = configuration.models.first { $0.id == configuration.modelID }
-            let context = model?.contextLength ?? 8_192
-            let needsReasoningReserve = OpenRouterModel.requiresReasoningBudget(for: configuration.modelID)
-            let outputBudget = needsReasoningReserve
-                ? min(12_288, max(4_096, context / 4))
-                : min(8_192, max(2_048, context / 4))
-            let partialOutputBudget = min(outputBudget, needsReasoningReserve ? 4_096 : 2_048)
+            let budget = MeetingCompletionBudget(model: model, modelID: configuration.modelID)
             let job = Job(token: UUID(), recording: current, key: key, modelID: configuration.modelID,
                           transcriptionModelID: configuration.transcriptionModelID,
                           language: configuration.outputLanguage,
-                          inputBudget: max(1_024, min(96_000, context - outputBudget - 2_048)),
-                          outputBudget: outputBudget,
-                          partialOutputBudget: partialOutputBudget)
+                          inputBudget: budget.inputBytes,
+                          outputBudget: budget.outputTokens,
+                          partialOutputBudget: budget.partialOutputTokens)
             tokens[recording.id] = job.token
             states[recording.id] = .queued
             queue.append(job)
