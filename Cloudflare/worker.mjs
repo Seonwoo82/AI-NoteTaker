@@ -41,8 +41,10 @@ const FOLDER_FIELDS = new Set([
   "modifiedAt",
   "mutationID",
   "deletedAt",
+  "sortOrder",
 ]);
 const FOLDER_NULL_FIELDS = new Set(["deletedAt"]);
+const FOLDER_OPTIONAL_FIELDS = new Set(["sortOrder"]);
 const FOLDER_ASSIGNMENT_FIELDS = new Set(["id"]);
 const NOTE_FIELDS = new Set([
   "schemaVersion",
@@ -689,7 +691,15 @@ async function putFolder(request, env, pathID) {
     throw new HttpError(400, "invalid_json", "Folder metadata must be valid JSON.");
   }
 
-  const folder = validateFolder(candidate, pathID);
+  const existing = await env.DB.prepare(
+    `SELECT id, metadata_json, modified_at, mutation_id, deleted_at
+       FROM recording_folders
+      WHERE id = ?`,
+  )
+    .bind(pathID)
+    .first();
+  const previousFolder = existing ? JSON.parse(existing.metadata_json) : null;
+  const folder = validateFolder(candidate, pathID, previousFolder);
   await env.DB.prepare(
     `INSERT INTO recording_folders (id, metadata_json, modified_at, mutation_id, deleted_at)
      VALUES (?, ?, ?, ?, ?)
@@ -981,7 +991,7 @@ function validateFolderAssignment(value) {
   return { id: value.id };
 }
 
-function validateFolder(value, pathID) {
+function validateFolder(value, pathID, previousFolder = null) {
   if (!isPlainObject(value)) {
     throw new HttpError(400, "invalid_folder", "Folder metadata must be a JSON object.");
   }
@@ -992,7 +1002,7 @@ function validateFolder(value, pathID) {
     }
   }
   for (const field of FOLDER_FIELDS) {
-    if (!Object.hasOwn(normalized, field)) {
+    if (!Object.hasOwn(normalized, field) && !FOLDER_OPTIONAL_FIELDS.has(field)) {
       throw new HttpError(400, "invalid_folder", `Folder metadata is missing ${field}.`);
     }
   }
@@ -1022,6 +1032,13 @@ function validateFolder(value, pathID) {
   validateInteger(normalized.modifiedAt, "modifiedAt", 0, Number.MAX_SAFE_INTEGER, "invalid_folder");
   validateUUID(normalized.mutationID, "folder mutation ID");
   validateISODate(normalized.deletedAt, "deletedAt", true, "invalid_folder");
+  if (Object.hasOwn(normalized, "sortOrder")) {
+    if (normalized.sortOrder !== null) {
+      validateInteger(normalized.sortOrder, "sortOrder", 0, Number.MAX_SAFE_INTEGER, "invalid_folder");
+    }
+  } else if (previousFolder && Object.hasOwn(previousFolder, "sortOrder")) {
+    normalized.sortOrder = previousFolder.sortOrder;
+  }
   return normalized;
 }
 

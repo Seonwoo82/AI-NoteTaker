@@ -110,12 +110,29 @@ struct RootView: View {
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Menu {
-                        Picker("Library", selection: Binding(
-                            get: { model.filter },
-                            set: { model.selectFilter($0) }
-                        )) {
-                            ForEach(LibraryFilter.allCases) { filter in
-                                Label(filter.title, systemImage: filter.symbol).tag(filter)
+                        ForEach(LibraryFilter.allCases) { filter in
+                            Button {
+                                model.selectFilter(filter)
+                            } label: {
+                                Label(
+                                    filter.title,
+                                    systemImage: isSelected(filter) ? "checkmark" : filter.symbol
+                                )
+                            }
+                            .accessibilityIdentifier("library-filter-\(filter.rawValue)")
+                        }
+                        if !model.activeCustomFolders.isEmpty {
+                            Divider()
+                            ForEach(model.activeCustomFolders) { folder in
+                                Button {
+                                    model.selectCustomFolder(folder.id)
+                                } label: {
+                                    Label(
+                                        folder.name,
+                                        systemImage: isSelected(folder) ? "checkmark" : "folder"
+                                    )
+                                }
+                                .accessibilityIdentifier("library-filter-custom-\(folder.id.uuidString)")
                             }
                         }
                     } label: {
@@ -208,6 +225,14 @@ struct RootView: View {
         model.errorMessage = nil
         model.recorder.errorMessage = nil
         model.player.errorMessage = nil
+    }
+
+    private func isSelected(_ filter: LibraryFilter) -> Bool {
+        model.selectedCustomFolderID == nil && model.filter == filter
+    }
+
+    private func isSelected(_ folder: RecordingCollectionFolder) -> Bool {
+        model.selectedCustomFolderID == folder.id
     }
 
     private var folderEditorTitle: String {

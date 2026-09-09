@@ -47,9 +47,14 @@ targets:
         CFBundleDisplayName: AI-NoteTaker
         CFBundleIdentifier: com.seonwoo.notetaker
         CFBundleName: AI-NoteTaker
-        CFBundleShortVersionString: "1.5.0"
-        CFBundleVersion: "14"
+        CFBundleShortVersionString: "1.5.1"
+        CFBundleVersion: "15"
         LSMinimumSystemVersion: "26.0"
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.seonwoo.notetaker.library-item
+            UTTypeDescription: AI-NoteTaker Library Item
+            UTTypeConformsTo:
+              - public.data
         NSMicrophoneUsageDescription: AI-NoteTaker needs microphone access to record your voice.
         NSAudioCaptureUsageDescription: AI-NoteTaker needs system audio access to record meeting audio.
         NSSpeechRecognitionUsageDescription: AI-NoteTaker uses speech recognition to create transcripts.

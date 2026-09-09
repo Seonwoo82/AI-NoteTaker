@@ -30,80 +30,50 @@ struct SidebarView: View {
             .padding(.top, 9)
             .padding(.bottom, 4)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(RecordingFolder.allCases) { folder in
-                            SidebarFolderButton(
-                                folder: folder,
-                                count: controller.count(for: folder),
-                                isSelected: model.selectedCustomFolderID == nil && model.selectedFolder == folder
-                            ) {
-                                Task { await controller.selectFolder(folder) }
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(String(localized: "Folders"))
-                                .font(.system(size: 10, weight: .semibold))
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .textCase(.uppercase)
-                            Spacer()
-                            Button {
-                                presentCreateFolder()
-                            } label: {
-                                Image(systemName: "plus")
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(session.phase != .idle)
-                            .help(String(localized: "New Folder"))
-                            .accessibilityLabel(String(localized: "New Folder"))
-                            .accessibilityIdentifier("new-folder-button")
-                        }
-                        .padding(.horizontal, 8)
-
-                        ForEach(controller.activeCustomFolders) { folder in
-                            CustomFolderButton(
-                                folder: folder,
-                                count: controller.count(forCustomFolder: folder.id),
-                                isSelected: model.selectedCustomFolderID == folder.id,
-                                isDisabled: session.phase != .idle
-                            ) {
-                                Task { await controller.selectCustomFolder(folder.id) }
-                            }
-                            .contextMenu {
-                                Button(String(localized: "Rename Folder")) {
-                                    presentRenameFolder(folder)
-                                }
-                                .disabled(session.phase != .idle)
-                                Button(String(localized: "Delete Folder"), role: .destructive) {
-                                    pendingFolderDeleteID = folder.id
-                                }
-                                .disabled(session.phase != .idle)
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(controller.selectedFolderTitle)
-                            .font(.system(size: 10, weight: .semibold))
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                            .textCase(.uppercase)
-                            .padding(.horizontal, 8)
-
-                        RecordingsListView(
-                            controller: controller,
-                            recordings: controller.visibleRecordings,
-                            selectedRecordingID: $model.selectedRecordingID
-                        )
+            // Navigation stays reachable even with many expanded folders or a long recording list.
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(RecordingFolder.allCases) { folder in
+                    SidebarFolderButton(
+                        folder: folder,
+                        count: controller.count(for: folder),
+                        isSelected: model.selectedCustomFolderID == nil && model.selectedFolder == folder
+                    ) {
+                        Task { await controller.selectFolder(folder) }
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 6)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Divider().padding(.horizontal, 10)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        folderTree
+
+                        if model.selectedCustomFolderID == nil {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(controller.selectedFolderTitle)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 8)
+                                RecordingsListView(
+                                    controller: controller,
+                                    recordings: controller.visibleRecordings,
+                                    selectedRecordingID: $model.selectedRecordingID
+                                )
+                            }
+                            .id("recording-list")
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 8)
+                }
+                .onChange(of: model.sidebarScrollRequestID) { _, _ in
+                    proxy.scrollTo(model.sidebarScrollTarget, anchor: .top)
+                }
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -117,6 +87,9 @@ struct SidebarView: View {
         .navigationTitle("AI-NoteTaker")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("folders-sidebar")
+        .dragContainer(for: SidebarDragItem.self, itemID: \.self) { (items: [SidebarDragItem]) in items }
+        .dragConfiguration(DragConfiguration(operationsWithinApp: .init(allowCopy: false, allowMove: true),
+                                             operationsOutsideApp: .init(allowCopy: false)))
         .onChange(of: isSearchFocused) { _, isFocused in
             model.isEditingText = isFocused || isFolderEditorPresented || controller.renameSession != nil
         }
@@ -164,6 +137,73 @@ struct SidebarView: View {
             }
         } message: {
             Text(String(localized: "Recordings in this folder stay in All Recordings and become unfiled."))
+        }
+    }
+
+    private var folderTree: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(String(localized: "Folders"))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button { presentCreateFolder() } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
+                .disabled(!controller.canOrganizeLibrary)
+                .help(String(localized: "New Folder"))
+                .accessibilityLabel(String(localized: "New Folder"))
+                .accessibilityIdentifier("new-folder-button")
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 3)
+
+            ForEach(controller.activeCustomFolders) { folder in
+                VStack(spacing: 0) {
+                    CustomFolderRow(
+                        folder: folder,
+                        count: controller.count(forCustomFolder: folder.id),
+                        isSelected: model.selectedCustomFolderID == folder.id,
+                        isExpanded: model.expandedCustomFolderIDs.contains(folder.id),
+                        controller: controller,
+                        toggle: { Task { await controller.toggleCustomFolder(folder.id) } },
+                        select: { Task { await controller.selectCustomFolder(folder.id) } }
+                    )
+                    .contextMenu {
+                        Button(String(localized: "Rename Folder")) { presentRenameFolder(folder) }
+                            .disabled(!controller.canOrganizeLibrary)
+                        Button(String(localized: "Delete Folder"), role: .destructive) {
+                            pendingFolderDeleteID = folder.id
+                        }
+                        .disabled(!controller.canOrganizeLibrary)
+                    }
+
+                    if model.expandedCustomFolderIDs.contains(folder.id) {
+                        RecordingsListView(
+                            controller: controller,
+                            recordings: controller.recordings(inCustomFolder: folder.id),
+                            selectedRecordingID: $model.selectedRecordingID,
+                            folderID: folder.id
+                        )
+                        .padding(.leading, 20)
+                        .modifier(SidebarDropTargetModifier(controller: controller, target: .folder(folder.id), allowsFolderReorder: false))
+                    }
+                }
+                .id(folder.id.uuidString)
+            }
+
+            if !controller.activeCustomFolders.isEmpty {
+                Label(String(localized: "Drop to Remove from Folder"), systemImage: "tray.and.arrow.down")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 5))
+                    .modifier(SidebarDropTargetModifier(controller: controller, target: .unfiled))
+                    .accessibilityIdentifier("unfiled-drop-target")
+            }
         }
     }
 
@@ -236,32 +276,51 @@ private struct SidebarFolderButton: View {
     }
 }
 
-private struct CustomFolderButton: View {
+private struct CustomFolderRow: View {
     let folder: RecordingCollectionFolder
     let count: Int
     let isSelected: Bool
-    let isDisabled: Bool
-    let action: () -> Void
+    let isExpanded: Bool
+    let controller: LibraryController
+    let toggle: () -> Void
+    let select: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack {
-                Label(folder.name, systemImage: "folder")
-                Spacer()
-                Text("\(count)")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(isSelected ? .white.opacity(0.82) : .secondary)
+        HStack(spacing: 4) {
+            Button(action: toggle) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 16, height: 28)
+                    .contentShape(Rectangle())
             }
-            .font(.system(size: 12))
-            .foregroundStyle(isSelected ? .white : .primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(isSelected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 5))
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? String(localized: "Collapse Folder") : String(localized: "Expand Folder"))
+            .accessibilityValue(folder.name)
+            .accessibilityIdentifier("folder-disclosure-\(folder.id.uuidString)")
+
+            Button(action: select) {
+                HStack(spacing: 6) {
+                    Image(systemName: isExpanded ? "folder.fill" : "folder")
+                    Text(folder.name).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(count, format: .number)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("folder-custom-\(folder.id.uuidString)")
         }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .accessibilityIdentifier("folder-custom-\(folder.id.uuidString)")
+        .font(.system(size: 12))
+        .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+        .padding(.leading, 2)
+        .padding(.trailing, 8)
+        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+        .contentShape(Rectangle())
+        .draggable(SidebarDragItem.self, id: \.self, item: controller.canOrganizeLibrary ? .folder(folder.id) : nil)
+        .modifier(SidebarDropTargetModifier(controller: controller, target: .folder(folder.id)))
+        .help(String(localized: "Drop recordings inside; drag folders above or below to reorder."))
     }
 }

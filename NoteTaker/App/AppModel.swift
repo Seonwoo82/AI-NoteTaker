@@ -7,6 +7,9 @@ final class AppModel {
     var selectedRecordingID: UUID?
     var selectedFolder: RecordingFolder = .all
     var selectedCustomFolderID: UUID?
+    var expandedCustomFolderIDs: Set<UUID> = []
+    var sidebarScrollTarget = "recording-list"
+    var sidebarScrollRequestID = 0
     var searchText = ""
     var searchFocusRequestID = 0
     var searchBlurRequestID = 0

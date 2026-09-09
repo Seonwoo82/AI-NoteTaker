@@ -140,6 +140,181 @@ func folderStoreMergesEachFolderByLastWriteWins() async throws {
     #expect(store.folderStore.activeFolders.map(\.id) == [id])
 }
 
+@MainActor
+@Test("folder move persists custom order and appends new folders")
+func folderMovePersistsCustomOrderAndAppendsNewFolders() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueFolderLibraryRoot(), arguments: [])
+    let store = await LibraryStore.open(paths: paths)
+    let gamma = try store.folderStore.create(name: "Gamma")
+    let alpha = try store.folderStore.create(name: "Alpha")
+    let beta = try store.folderStore.create(name: "Beta")
+
+    #expect(store.folderStore.activeFolders.map(\.id) == [alpha.id, beta.id, gamma.id])
+
+    try store.folderStore.move(id: gamma.id, before: beta.id)
+    #expect(store.folderStore.activeFolders.map(\.id) == [alpha.id, gamma.id, beta.id])
+    #expect(store.folderStore.folder(id: alpha.id)?.sortOrder == 0)
+    #expect(store.folderStore.folder(id: gamma.id)?.sortOrder == 1)
+    #expect(store.folderStore.folder(id: beta.id)?.sortOrder == 2)
+
+    let reopened = await LibraryStore.open(paths: paths)
+    #expect(reopened.folderStore.activeFolders.map(\.id) == [alpha.id, gamma.id, beta.id])
+
+    let aardvark = try reopened.folderStore.create(name: "Aardvark")
+    #expect(reopened.folderStore.activeFolders.map(\.id) == [alpha.id, gamma.id, beta.id, aardvark.id])
+    #expect(reopened.folderStore.folder(id: aardvark.id)?.sortOrder == 3)
+}
+
+@MainActor
+@Test("creating after mixed folder ranks normalizes then appends")
+func creatingAfterMixedFolderRanksNormalizesThenAppends() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueFolderLibraryRoot(), arguments: [])
+    let store = await LibraryStore.open(paths: paths)
+    let alpha = try store.folderStore.create(name: "Alpha")
+    let beta = try store.folderStore.create(name: "Beta")
+    try store.folderStore.move(id: beta.id, before: alpha.id)
+    let legacy = RecordingCollectionFolder(
+        id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-8DDD-EEEEEEEEEEEE")!,
+        name: "Legacy",
+        createdAt: Date(timeIntervalSince1970: 10),
+        modifiedAt: 1_000,
+        mutationID: "11111111-2222-4333-8444-555555555555"
+    )
+    try store.folderStore.applyRemote(legacy)
+
+    let aardvark = try store.folderStore.create(name: "Aardvark")
+
+    #expect(store.folderStore.activeFolders.map(\.id) == [beta.id, alpha.id, legacy.id, aardvark.id])
+    #expect(store.folderStore.folder(id: beta.id)?.sortOrder == 0)
+    #expect(store.folderStore.folder(id: alpha.id)?.sortOrder == 1)
+    #expect(store.folderStore.folder(id: legacy.id)?.sortOrder == 2)
+    #expect(store.folderStore.folder(id: aardvark.id)?.sortOrder == 3)
+}
+
+@MainActor
+@Test("failed create after mixed folder ranks leaves order unchanged")
+func failedCreateAfterMixedFolderRanksLeavesOrderUnchanged() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueFolderLibraryRoot(), arguments: [])
+    let store = await LibraryStore.open(paths: paths)
+    let alpha = try store.folderStore.create(name: "Alpha")
+    let beta = try store.folderStore.create(name: "Beta")
+    try store.folderStore.move(id: beta.id, before: alpha.id)
+    let legacy = RecordingCollectionFolder(
+        id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-8DDD-EEEEEEEEEEEE")!,
+        name: "Legacy",
+        createdAt: Date(timeIntervalSince1970: 10),
+        modifiedAt: 1_000,
+        mutationID: "11111111-2222-4333-8444-555555555555"
+    )
+    try store.folderStore.applyRemote(legacy)
+    let originalIDs = store.folderStore.activeFolders.map(\.id)
+    let originalAlphaStamp = try #require(store.folderStore.folder(id: alpha.id)?.mutationID)
+    let originalBetaStamp = try #require(store.folderStore.folder(id: beta.id)?.mutationID)
+    let metadataURL = paths.libraryRoot.appending(path: "recording-folders.json")
+    try FileManager.default.removeItem(at: metadataURL)
+    try FileManager.default.createDirectory(at: metadataURL, withIntermediateDirectories: false)
+
+    #expect(throws: RecordingFolderStoreError.self) {
+        try store.folderStore.create(name: "Aardvark")
+    }
+
+    #expect(store.folderStore.activeFolders.map(\.id) == originalIDs)
+    #expect(store.folderStore.folder(id: alpha.id)?.mutationID == originalAlphaStamp)
+    #expect(store.folderStore.folder(id: beta.id)?.mutationID == originalBetaStamp)
+    #expect(store.folderStore.folder(id: legacy.id)?.sortOrder == nil)
+    #expect(!store.folderStore.activeFolders.map(\.name).contains("Aardvark"))
+}
+
+@MainActor
+@Test("creating after maximum folder rank normalizes then appends")
+func creatingAfterMaximumFolderRankNormalizesThenAppends() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueFolderLibraryRoot(), arguments: [])
+    let store = await LibraryStore.open(paths: paths)
+    let alpha = RecordingCollectionFolder(
+        id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-8DDD-EEEEEEEEEEEE")!,
+        name: "Alpha",
+        createdAt: Date(timeIntervalSince1970: 10),
+        modifiedAt: 1_000,
+        mutationID: "11111111-2222-4333-8444-555555555555",
+        sortOrder: 9_007_199_254_740_991
+    )
+    try store.folderStore.applyRemote(alpha)
+
+    let aardvark = try store.folderStore.create(name: "Aardvark")
+
+    #expect(store.folderStore.activeFolders.map(\.id) == [alpha.id, aardvark.id])
+    #expect(store.folderStore.folder(id: alpha.id)?.sortOrder == 0)
+    #expect(store.folderStore.folder(id: aardvark.id)?.sortOrder == 1)
+}
+
+@MainActor
+@Test("folder move updates only folders whose order changes and keeps tombstones")
+func folderMoveUpdatesOnlyFoldersWhoseOrderChangesAndKeepsTombstones() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueFolderLibraryRoot(), arguments: [])
+    let store = await LibraryStore.open(paths: paths)
+    let alpha = try store.folderStore.create(name: "Alpha")
+    let beta = try store.folderStore.create(name: "Beta")
+    let gamma = try store.folderStore.create(name: "Gamma")
+    let deleted = try store.folderStore.create(name: "Deleted")
+    try store.folderStore.delete(id: deleted.id)
+    try store.folderStore.move(id: gamma.id, before: beta.id)
+    let originalAlphaStamp = try #require(store.folderStore.folder(id: alpha.id)?.mutationID)
+
+    try store.folderStore.move(id: beta.id, before: gamma.id)
+
+    #expect(store.folderStore.folder(id: alpha.id)?.mutationID == originalAlphaStamp)
+    #expect(store.folderStore.folder(id: deleted.id)?.deletedAt != nil)
+    #expect(store.folderStore.folder(id: deleted.id)?.sortOrder == nil)
+    #expect(store.folderStore.folders.count == 4)
+}
+
+@MainActor
+@Test("folder order survives rename and remote legacy folder updates")
+func folderOrderSurvivesRenameAndRemoteLegacyFolderUpdates() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueFolderLibraryRoot(), arguments: [])
+    let store = await LibraryStore.open(paths: paths)
+    let alpha = try store.folderStore.create(name: "Alpha")
+    let beta = try store.folderStore.create(name: "Beta")
+    try store.folderStore.move(id: beta.id, before: alpha.id)
+    let orderedBeta = try #require(store.folderStore.folder(id: beta.id))
+
+    let renamed = try store.folderStore.rename(id: beta.id, name: "Zulu")
+    #expect(renamed.sortOrder == orderedBeta.sortOrder)
+    #expect(store.folderStore.activeFolders.map(\.id) == [beta.id, alpha.id])
+
+    let legacyRemote = RecordingCollectionFolder(
+        id: beta.id,
+        name: "Remote Zulu",
+        createdAt: beta.createdAt,
+        modifiedAt: renamed.modifiedAt + 1,
+        mutationID: "FFFFFFFF-AAAA-BBBB-8CCC-DDDDDDDDDDDD"
+    )
+    try store.folderStore.applyRemote(legacyRemote)
+
+    #expect(store.folderStore.folder(id: beta.id)?.sortOrder == orderedBeta.sortOrder)
+    #expect(store.folderStore.activeFolders.map(\.id) == [beta.id, alpha.id])
+}
+
+@MainActor
+@Test("folder move validates live source and destination")
+func folderMoveValidatesLiveSourceAndDestination() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueFolderLibraryRoot(), arguments: [])
+    let store = await LibraryStore.open(paths: paths)
+    let alpha = try store.folderStore.create(name: "Alpha")
+    let beta = try store.folderStore.create(name: "Beta")
+    try store.folderStore.delete(id: beta.id)
+
+    #expect(throws: RecordingFolderStoreError.folderNotFound(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-8DDD-EEEEEEEEEEEE")!)) {
+        try store.folderStore.move(id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-8DDD-EEEEEEEEEEEE")!, before: alpha.id)
+    }
+    #expect(throws: RecordingFolderStoreError.folderDeleted(beta.id)) {
+        try store.folderStore.move(id: beta.id, before: alpha.id)
+    }
+    #expect(throws: RecordingFolderStoreError.folderDeleted(beta.id)) {
+        try store.folderStore.move(id: alpha.id, before: beta.id)
+    }
+}
+
 @Test("legacy recording metadata decodes without an explicit folder assignment")
 func legacyRecordingMetadataDecodesWithoutExplicitFolderAssignment() throws {
     let id = try #require(UUID(uuidString: "11111111-2222-4333-8444-555555555555"))

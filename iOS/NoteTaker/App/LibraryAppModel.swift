@@ -260,7 +260,6 @@ final class LibraryAppModel {
         guard canChangeLibrary(), let library else { return nil }
         do {
             let folder = try library.folderStore.create(name: name)
-            selectedCustomFolderID = folder.id
             errorMessage = nil
             Task { await synchronize() }
             return folder

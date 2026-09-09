@@ -10,6 +10,46 @@ import UIKit
 
 @MainActor
 final class FolderStaticRenderTests: XCTestCase {
+    #if os(macOS)
+    func testAllRecordingsAfterFolderCreationAndWithManyFolders() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "folder-navigation-render-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let container = await AppContainer.load(services: .uiTesting(), paths: LibraryPaths(libraryRoot: root, arguments: []))
+        let controller = container.libraryController
+        let first = Recording(title: "전체 목록에 남아 있는 회의", duration: 120, mode: .micOnly)
+        try container.library.add(first)
+        container.model.selectedRecordingID = first.id
+        _ = try controller.createFolder(named: "새 폴더")
+        for scenario in ["after-create", "many-folders"] {
+            if scenario == "many-folders" {
+                for index in 1...24 { _ = try controller.createFolder(named: "회의 폴더 \(index)") }
+            }
+            let view = SidebarView(controller: controller, model: container.model, settings: container.settings, session: container.session)
+                .environment(\.locale, Locale(identifier: "ko_KR")).environment(\.colorScheme, .dark)
+                .frame(width: 300, height: 540).background(Color(nsColor: .windowBackgroundColor))
+            let host = NSHostingView(rootView: view)
+            host.frame = NSRect(x: 0, y: 0, width: 300, height: 540)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+            await controller.selectFolder(.all)
+            try await Task.sleep(for: .milliseconds(100))
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: rep)
+            let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+            let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            let output = repo.appending(path: "build/visual-qa")
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            try png.write(to: output.appending(path: "folder-navigation-\(scenario)-mac.png"))
+            XCTAssertNil(container.model.selectedCustomFolderID)
+            XCTAssertEqual(controller.visibleRecordings.map(\.id), [first.id])
+        }
+    }
+    #endif
+
     func testFolderSidebarRendersKoreanWithoutTouchingUserLibrary() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "folder-render-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }

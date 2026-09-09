@@ -76,6 +76,12 @@ final class LibraryController {
         filteredRecordings(inCustomFolder: id).count
     }
 
+    func recordings(inCustomFolder id: UUID) -> [Recording] {
+        filteredRecordings(inCustomFolder: id, matching: model.searchText)
+    }
+
+    var canOrganizeLibrary: Bool { session.phase == .idle && renameSession == nil }
+
     func setSearchText(_ text: String) {
         model.searchText = text
         Task { await reconcileSelectionWithVisibleRows() }
@@ -84,6 +90,8 @@ final class LibraryController {
     func selectFolder(_ folder: RecordingFolder) async {
         model.selectedFolder = folder
         model.selectedCustomFolderID = nil
+        model.expandedCustomFolderIDs.removeAll()
+        requestSidebarScroll(to: "recording-list")
         await reconcileSelectionWithVisibleRows()
     }
 
@@ -95,7 +103,29 @@ final class LibraryController {
             return
         }
         model.selectedCustomFolderID = id
+        model.expandedCustomFolderIDs.insert(id)
+        requestSidebarScroll(to: id.uuidString)
         await reconcileSelectionWithVisibleRows()
+    }
+
+    func toggleCustomFolder(_ id: UUID) async {
+        if model.expandedCustomFolderIDs.remove(id) != nil {
+            if model.selectedCustomFolderID == id {
+                model.selectedCustomFolderID = nil
+                model.selectedFolder = .all
+                await reconcileSelectionWithVisibleRows()
+            }
+        } else {
+            await selectCustomFolder(id)
+        }
+    }
+
+    func selectRecording(_ id: UUID, inCustomFolder folderID: UUID) {
+        guard library.folderStore.isActive(id: folderID),
+              library.recording(id: id)?.folderID == folderID else { return }
+        model.selectedCustomFolderID = folderID
+        model.expandedCustomFolderIDs.insert(folderID)
+        model.selectedRecordingID = id
     }
 
     func selectRecording(_ id: UUID) {
@@ -126,7 +156,6 @@ final class LibraryController {
         try ensureIdle()
         do {
             let folder = try library.folderStore.create(name: name)
-            model.selectedCustomFolderID = folder.id
             errorMessage = nil
             onLibraryChanged()
             return folder
@@ -152,6 +181,7 @@ final class LibraryController {
         try ensureIdle()
         do {
             try library.folderStore.delete(id: id)
+            model.expandedCustomFolderIDs.remove(id)
             errorMessage = nil
             onLibraryChanged()
             if model.selectedCustomFolderID == id {
@@ -178,7 +208,49 @@ final class LibraryController {
         }
     }
 
+    // Commit the metadata and navigation together, before any asynchronous playback work.
+    func moveDroppedRecording(_ id: UUID, toFolder folderID: UUID?) -> Bool {
+        guard canOrganizeLibrary else { return false }
+        do {
+            try library.moveRecording(id: id, toFolder: folderID)
+            model.selectedFolder = .all
+            model.selectedCustomFolderID = folderID
+            if let folderID {
+                model.expandedCustomFolderIDs.insert(folderID)
+            } else {
+                model.expandedCustomFolderIDs.removeAll()
+            }
+            model.selectedRecordingID = id
+            requestSidebarScroll(to: folderID?.uuidString ?? "recording-list")
+            errorMessage = nil
+            onLibraryChanged()
+            return true
+        } catch {
+            errorMessage = message(for: error)
+            return false
+        }
+    }
+
+    func moveDroppedFolder(_ id: UUID, before destinationID: UUID?) -> Bool {
+        guard canOrganizeLibrary else { return false }
+        do {
+            try library.folderStore.move(id: id, before: destinationID)
+            errorMessage = nil
+            onLibraryChanged()
+            return true
+        } catch {
+            errorMessage = message(for: error)
+            return false
+        }
+    }
+
+    private func requestSidebarScroll(to target: String) {
+        model.sidebarScrollTarget = target
+        model.sidebarScrollRequestID += 1
+    }
+
     func reconcileFolderSelection() async {
+        model.expandedCustomFolderIDs.formIntersection(activeCustomFolders.map(\.id))
         guard let folderID = model.selectedCustomFolderID else { return }
         guard library.folderStore.isActive(id: folderID) else {
             model.selectedFolder = .all

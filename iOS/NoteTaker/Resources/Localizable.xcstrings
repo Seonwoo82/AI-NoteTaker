@@ -4717,6 +4717,86 @@
           }
         }
       }
+    },
+    "Collapse Folder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse Folder"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 접기"
+          }
+        }
+      }
+    },
+    "Drag recordings into this folder.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag recordings into this folder."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "녹음을 이 폴더로 끌어놓으세요."
+          }
+        }
+      }
+    },
+    "Drop recordings inside; drag folders above or below to reorder.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drop recordings inside; drag folders above or below to reorder."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "녹음은 폴더 안으로, 폴더는 위아래로 끌어 순서를 바꾸세요."
+          }
+        }
+      }
+    },
+    "Drop to Remove from Folder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drop to Remove from Folder"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "여기로 끌어놓아 폴더 밖으로 이동"
+          }
+        }
+      }
+    },
+    "Expand Folder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expand Folder"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 펼치기"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

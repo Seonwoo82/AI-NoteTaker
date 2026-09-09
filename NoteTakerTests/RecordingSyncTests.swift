@@ -113,6 +113,30 @@ func syncMovesRecordingFoldersBetweenTwoLocalStores() async throws {
 }
 
 @MainActor
+@Test("folder order converges across two libraries and survives a rename and restart")
+func folderOrderConvergesAcrossLibraries() async throws {
+    let server = InMemorySyncTransport()
+    let first = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueSyncLibraryRoot(), arguments: []))
+    let secondPaths = LibraryPaths(libraryRoot: uniqueSyncLibraryRoot(), arguments: [])
+    let second = await LibraryStore.open(paths: secondPaths)
+    let a = try first.folderStore.create(name: "A")
+    let b = try first.folderStore.create(name: "B")
+    let c = try first.folderStore.create(name: "C")
+    try first.folderStore.move(id: c.id, before: a.id)
+    try await SyncEngine(transport: server).sync(library: first)
+    try await SyncEngine(transport: server).sync(library: second)
+    #expect(second.folderStore.activeFolders.map(\.id) == [c.id, a.id, b.id])
+    try second.folderStore.rename(id: c.id, name: "Z")
+    try second.folderStore.move(id: a.id, before: nil)
+    try await SyncEngine(transport: server).sync(library: second)
+    try await SyncEngine(transport: server).sync(library: first)
+    #expect(first.folderStore.activeFolders.map(\.id) == [c.id, b.id, a.id])
+    #expect(first.folderStore.folder(id: c.id)?.name == "Z")
+    let reopened = RecordingFolderStore(paths: secondPaths)
+    #expect(reopened.activeFolders.map(\.id) == [c.id, b.id, a.id])
+}
+
+@MainActor
 @Test("sync continues recording metadata when folder endpoint fails")
 func syncContinuesRecordingMetadataWhenFolderEndpointFails() async throws {
     let transport = InMemorySyncTransport()

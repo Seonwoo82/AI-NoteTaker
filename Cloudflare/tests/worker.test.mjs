@@ -480,6 +480,55 @@ describe("Cloudflare sync worker", () => {
     assert.deepEqual(await readJson(listed), { folders: [deleted], nextCursor: null });
   });
 
+  test("folders round trip sortOrder and preserve it when older clients omit the field", async () => {
+    const env = makeEnv();
+    const ordered = folder({ sortOrder: 7 });
+    const legacy = folder({
+      name: "Renamed by old client",
+      modifiedAt: ordered.modifiedAt + 1,
+      mutationID: "AAAAAAAA-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    });
+
+    const first = await request(env, `/v1/folders/${FOLDER_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(ordered),
+    });
+    const second = await request(env, `/v1/folders/${FOLDER_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(legacy),
+    });
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal((await readJson(second)).folder.sortOrder, 7);
+    assert.equal(JSON.parse(env.__db.folderRows.get(FOLDER_ID).metadata_json).sortOrder, 7);
+  });
+
+  test("rejects malformed folder sortOrder before changing stored state", async () => {
+    const env = makeEnv();
+    const valid = await request(env, `/v1/folders/${FOLDER_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(folder({ sortOrder: 1 })),
+    });
+    const invalid = await request(env, `/v1/folders/${FOLDER_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(folder({
+        name: "Invalid rank",
+        sortOrder: Number.MAX_SAFE_INTEGER + 1,
+        modifiedAt: 1_788_310_924_000,
+        mutationID: "AAAAAAAA-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+      })),
+    });
+
+    assert.equal(valid.status, 200);
+    assert.equal(invalid.status, 400);
+    assert.equal(JSON.parse(env.__db.folderRows.get(FOLDER_ID).metadata_json).sortOrder, 1);
+  });
+
   test("folder names use user-visible characters consistently with Apple clients", async () => {
     const env = makeEnv();
     const response = await request(env, `/v1/folders/${FOLDER_ID}`, {

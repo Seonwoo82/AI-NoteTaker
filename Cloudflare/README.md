@@ -109,4 +109,6 @@ Apply `0005_recording_folders.sql` before deploying this version. Empty folders 
 
 Recording metadata may include `folderAssignment: { "id": "<UUID>" }`; an explicit `{ "id": null }` moves a recording out of its folder. If an older client omits `folderAssignment`, the Worker preserves the existing assignment. Deleting a folder writes a tombstone and does not delete recordings or audio. Clients hide deleted folders while keeping their recordings in All Recordings.
 
+Folder documents may also include optional `sortOrder`, a nonnegative JavaScript-safe integer. Clients use it for explicit drag ordering; folders without `sortOrder` keep legacy alphabetical ordering, and older folder updates that omit `sortOrder` preserve the server's existing value. No D1 migration is required because the rank lives inside `metadata_json`.
+
 Clients sync folders before recordings. A folder endpoint error is reported after attempting ordinary recording/document sync, so an older Worker does not block existing data transfers. Apply the migration and update both apps to use folders across devices.

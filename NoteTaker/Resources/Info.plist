@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.5.0</string>
+	<string>1.5.1</string>
 	<key>CFBundleVersion</key>
-	<string>14</string>
+	<string>15</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>NSAudioCaptureUsageDescription</key>
@@ -28,5 +28,18 @@
 	<string>AI-NoteTaker needs microphone access to record your voice.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>AI-NoteTaker uses speech recognition to create transcripts.</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>AI-NoteTaker Library Item</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.seonwoo.notetaker.library-item</string>
+		</dict>
+	</array>
 </dict>
 </plist>

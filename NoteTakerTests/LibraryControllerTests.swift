@@ -7,6 +7,92 @@ import Testing
 @MainActor
 @Suite
 struct LibraryControllerTests {
+    @Test("creating an empty folder preserves the full list and current recording")
+    func creatingFolderPreservesLibraryNavigation() async throws {
+        let h = await LibraryControllerHarness.make()
+        let first = try await h.addRecording(title: "First")
+        let second = try await h.addRecording(title: "Second")
+        h.model.selectedRecordingID = first.id
+        _ = try h.controller.createFolder(named: "Empty Folder")
+
+        #expect(h.model.selectedCustomFolderID == nil)
+        #expect(Set(h.controller.visibleRecordings.map(\.id)) == [first.id, second.id])
+        #expect(h.model.selectedRecordingID == first.id)
+    }
+
+    @Test("disclosure navigation always has a path back to all recordings")
+    func disclosureNavigationReturnsToAll() async throws {
+        let h = await LibraryControllerHarness.make()
+        let recording = try await h.addRecording(title: "Only")
+        let folder = try h.controller.createFolder(named: "Meetings")
+        try await h.controller.moveRecording(recording.id, toFolder: folder.id)
+        await h.controller.selectCustomFolder(folder.id)
+        #expect(h.model.expandedCustomFolderIDs.contains(folder.id))
+        await h.controller.toggleCustomFolder(folder.id)
+        #expect(h.model.selectedCustomFolderID == nil)
+        #expect(h.controller.visibleRecordings.map(\.id) == [recording.id])
+        await h.controller.selectCustomFolder(folder.id)
+        await h.controller.selectFolder(.all)
+        #expect(h.model.selectedCustomFolderID == nil)
+        #expect(h.model.expandedCustomFolderIDs.isEmpty)
+        #expect(h.controller.visibleRecordings.map(\.id) == [recording.id])
+    }
+
+    @Test("recording drops move metadata, reveal the destination, and preserve audio")
+    func recordingDropsMoveAndUnfileWithoutTouchingAudio() async throws {
+        let h = await LibraryControllerHarness.make()
+        let recording = try await h.addRecording(title: "Movable")
+        let audio = try Data(contentsOf: h.store.audioURL(for: recording))
+        let folder = try h.controller.createFolder(named: "Meetings")
+        #expect(h.controller.receiveSidebarDrop(.recording(recording.id), on: .folder(folder.id)))
+        #expect(h.store.recording(id: recording.id)?.folderID == folder.id)
+        #expect(h.model.selectedCustomFolderID == folder.id)
+        #expect(h.model.selectedRecordingID == recording.id)
+        #expect(h.model.expandedCustomFolderIDs.contains(folder.id))
+        #expect(h.controller.receiveSidebarDrop(.recording(recording.id), on: .unfiled))
+        #expect(h.store.recording(id: recording.id)?.folderID == nil)
+        #expect(h.model.selectedCustomFolderID == nil)
+        #expect(h.controller.visibleRecordings.map(\.id) == [recording.id])
+        #expect(h.store.recording(id: recording.id)?.audioVersion == recording.audioVersion)
+        #expect(try Data(contentsOf: h.store.audioURL(for: recording)) == audio)
+    }
+
+    @Test("drops reject missing, deleted, self and capture-active items without mutations")
+    func invalidDropsAreRejected() async throws {
+        let h = await LibraryControllerHarness.make()
+        let recording = try await h.addRecording(title: "Live")
+        let deleted = try await h.addRecording(title: "Deleted", deletedAt: referenceDate)
+        let folder = try h.controller.createFolder(named: "Target")
+        #expect(!h.controller.receiveSidebarDrop(.recording(UUID()), on: .folder(folder.id)))
+        #expect(!h.controller.receiveSidebarDrop(.recording(deleted.id), on: .folder(folder.id)))
+        #expect(!h.controller.receiveSidebarDrop(.recording(recording.id), on: .folder(UUID())))
+        #expect(!h.controller.receiveSidebarDrop(.folder(folder.id), on: .folder(folder.id)))
+        let before = h.libraryChangeSpy.count
+        await h.session.start()
+        #expect(!h.controller.receiveSidebarDrop(.recording(recording.id), on: .folder(folder.id)))
+        #expect(h.store.recording(id: recording.id)?.folderID == nil)
+        #expect(h.libraryChangeSpy.count == before)
+    }
+
+    @Test("folder drops support before, after and last position without moving recordings")
+    func folderDropOrderingPreservesMembershipAndSelection() async throws {
+        let h = await LibraryControllerHarness.make()
+        let recording = try await h.addRecording(title: "Keep")
+        let a = try h.controller.createFolder(named: "A")
+        let b = try h.controller.createFolder(named: "B")
+        let c = try h.controller.createFolder(named: "C")
+        try await h.controller.moveRecording(recording.id, toFolder: b.id)
+        await h.controller.selectCustomFolder(b.id)
+        let before = h.store.recording(id: recording.id)
+        #expect(h.controller.receiveSidebarDrop(.folder(c.id), on: .folder(a.id)))
+        #expect(h.controller.activeCustomFolders.map(\.id) == [c.id, a.id, b.id])
+        #expect(h.controller.receiveSidebarDrop(.folder(c.id), on: .folder(b.id), below: true))
+        #expect(h.controller.activeCustomFolders.map(\.id) == [a.id, b.id, c.id])
+        #expect(h.store.recording(id: recording.id) == before)
+        #expect(h.model.selectedCustomFolderID == b.id)
+        #expect(h.model.selectedRecordingID == recording.id)
+    }
+
     @Test("folder selection composes counts search and keeps a visible selected row")
     func folderSelectionComposesCountsSearchAndKeepsVisibleSelection() async throws {
         let harness = await LibraryControllerHarness.make()

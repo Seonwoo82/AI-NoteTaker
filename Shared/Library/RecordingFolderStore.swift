@@ -9,6 +9,7 @@ nonisolated struct RecordingCollectionFolder: Identifiable, Codable, Hashable, S
     var modifiedAt: Int64
     var mutationID: String
     var deletedAt: Date?
+    var sortOrder: Int?
 
     init(
         id: UUID = UUID(),
@@ -16,7 +17,8 @@ nonisolated struct RecordingCollectionFolder: Identifiable, Codable, Hashable, S
         createdAt: Date = .now,
         modifiedAt: Int64? = nil,
         mutationID: String = UUID().uuidString.uppercased(),
-        deletedAt: Date? = nil
+        deletedAt: Date? = nil,
+        sortOrder: Int? = nil
     ) {
         self.schemaVersion = 1
         self.id = id
@@ -25,6 +27,7 @@ nonisolated struct RecordingCollectionFolder: Identifiable, Codable, Hashable, S
         self.modifiedAt = modifiedAt ?? Self.milliseconds(since1970: createdAt)
         self.mutationID = mutationID.uppercased()
         self.deletedAt = deletedAt
+        self.sortOrder = sortOrder
     }
 
     func wins(over other: RecordingCollectionFolder?) -> Bool {
@@ -68,15 +71,7 @@ final class RecordingFolderStore {
     @ObservationIgnored private let loadError: RecordingFolderStoreError?
 
     var activeFolders: [RecordingCollectionFolder] {
-        folders
-            .filter { $0.deletedAt == nil }
-            .sorted { lhs, rhs in
-                let comparison = lhs.name.localizedStandardCompare(rhs.name)
-                if comparison == .orderedSame {
-                    return lhs.id.uuidString < rhs.id.uuidString
-                }
-                return comparison == .orderedAscending
-            }
+        Self.sortedActiveFolders(folders)
     }
 
     init(paths: LibraryPaths) {
@@ -103,9 +98,10 @@ final class RecordingFolderStore {
             throw RecordingFolderStoreError.tooManyFolders
         }
         try rejectDuplicateLiveName(normalizedName, excluding: nil)
-        let folder = RecordingCollectionFolder(name: normalizedName)
-        try replace(folder)
-        return folder
+        let result = createFolderInsertion(name: normalizedName)
+        try persist(result.folders)
+        folders = result.folders
+        return result.folder
     }
 
     @discardableResult
@@ -137,12 +133,107 @@ final class RecordingFolderStore {
         try replace(deleted)
     }
 
+    func move(id: UUID, before destinationID: UUID?) throws {
+        try ensureWritable()
+        guard let source = folder(id: id) else {
+            throw RecordingFolderStoreError.folderNotFound(id)
+        }
+        guard source.deletedAt == nil else {
+            throw RecordingFolderStoreError.folderDeleted(id)
+        }
+        if destinationID == id {
+            return
+        }
+        if let destinationID {
+            guard let destination = folder(id: destinationID) else {
+                throw RecordingFolderStoreError.folderNotFound(destinationID)
+            }
+            guard destination.deletedAt == nil else {
+                throw RecordingFolderStoreError.folderDeleted(destinationID)
+            }
+        }
+
+        var reordered = activeFolders
+        guard let sourceIndex = reordered.firstIndex(where: { $0.id == id }) else {
+            throw RecordingFolderStoreError.folderNotFound(id)
+        }
+        if destinationID == nil && sourceIndex == reordered.index(before: reordered.endIndex) {
+            return
+        }
+        if let destinationID,
+           sourceIndex < reordered.index(before: reordered.endIndex),
+           reordered[reordered.index(after: sourceIndex)].id == destinationID {
+            return
+        }
+
+        let moved = reordered.remove(at: sourceIndex)
+        if let destinationID,
+           let destinationIndex = reordered.firstIndex(where: { $0.id == destinationID }) {
+            reordered.insert(moved, at: destinationIndex)
+        } else {
+            reordered.append(moved)
+        }
+
+        let reranked = rerank(reordered)
+        guard !reranked.isEmpty else { return }
+
+        var updated = folders
+        for folder in reranked {
+            if let index = updated.firstIndex(where: { $0.id == folder.id }) {
+                updated[index] = folder
+            }
+        }
+        try persist(updated)
+        folders = updated
+    }
+
     func applyRemote(_ remote: RecordingCollectionFolder) throws {
         try ensureWritable()
         try validate(remote)
         let existing = folder(id: remote.id)
         guard remote.wins(over: existing) else { return }
-        try replace(remote)
+        var merged = remote
+        if merged.sortOrder == nil {
+            merged.sortOrder = existing?.sortOrder
+        }
+        try replace(merged)
+    }
+
+    private func rerank(_ reordered: [RecordingCollectionFolder]) -> [RecordingCollectionFolder] {
+        var changed: [RecordingCollectionFolder] = []
+        for (index, folder) in reordered.enumerated() where folder.sortOrder != index {
+            var reranked = folder
+            reranked.sortOrder = index
+            reranked = reranked.locallyStamped(after: folder)
+            changed.append(reranked)
+        }
+        return changed
+    }
+
+    private func createFolderInsertion(name: String) -> (folder: RecordingCollectionFolder, folders: [RecordingCollectionFolder]) {
+        var folder = RecordingCollectionFolder(name: name)
+        var updated = folders
+        let active = activeFolders
+        guard active.contains(where: { $0.sortOrder != nil }) else {
+            updated.append(folder)
+            return (folder, updated)
+        }
+
+        let needsNormalization = active.contains(where: { $0.sortOrder == nil })
+            || active.contains(where: { $0.sortOrder == Self.maximumSortOrder })
+        if needsNormalization {
+            folder.sortOrder = active.count
+            let changed = rerank(active)
+            for folder in changed {
+                if let index = updated.firstIndex(where: { $0.id == folder.id }) {
+                    updated[index] = folder
+                }
+            }
+        } else {
+            folder.sortOrder = (active.compactMap(\.sortOrder).max() ?? -1) + 1
+        }
+        updated.append(folder)
+        return (folder, updated)
     }
 
     private func replace(_ folder: RecordingCollectionFolder) throws {
@@ -212,6 +303,9 @@ final class RecordingFolderStore {
         guard folder.deletedAt?.timeIntervalSinceReferenceDate.isFinite ?? true else {
             throw RecordingFolderStoreError.invalidMetadata("Folder deletedAt is invalid.")
         }
+        guard Self.validSortOrder(folder.sortOrder) else {
+            throw RecordingFolderStoreError.invalidMetadata("Folder sortOrder is out of range.")
+        }
     }
 
     private func rejectDuplicateLiveName(_ name: String, excluding id: UUID?) throws {
@@ -275,10 +369,35 @@ final class RecordingFolderStore {
               folder.modifiedAt <= maximumSafeInteger,
               UUID(uuidString: folder.mutationID)?.uuidString == folder.mutationID,
               folder.createdAt.timeIntervalSinceReferenceDate.isFinite,
-              folder.deletedAt?.timeIntervalSinceReferenceDate.isFinite ?? true
+              folder.deletedAt?.timeIntervalSinceReferenceDate.isFinite ?? true,
+              validSortOrder(folder.sortOrder)
         else {
             throw RecordingFolderStoreError.invalidMetadata("Invalid folder metadata.")
         }
+    }
+
+    nonisolated private static func sortedActiveFolders(_ folders: [RecordingCollectionFolder]) -> [RecordingCollectionFolder] {
+        let active = folders.filter { $0.deletedAt == nil }
+        let hasCustomOrdering = active.contains { $0.sortOrder != nil }
+        return active.sorted { lhs, rhs in
+            if hasCustomOrdering {
+                let lhsOrder = lhs.sortOrder ?? Int.max
+                let rhsOrder = rhs.sortOrder ?? Int.max
+                if lhsOrder != rhsOrder {
+                    return lhsOrder < rhsOrder
+                }
+            }
+            let comparison = lhs.name.localizedStandardCompare(rhs.name)
+            if comparison == .orderedSame {
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
+            return comparison == .orderedAscending
+        }
+    }
+
+    nonisolated private static func validSortOrder(_ sortOrder: Int?) -> Bool {
+        guard let sortOrder else { return true }
+        return sortOrder >= 0 && sortOrder <= maximumSortOrder
     }
 
     nonisolated private static func foldedName(_ name: String) -> String {
@@ -291,6 +410,7 @@ final class RecordingFolderStore {
     nonisolated private static let maximumLiveFolderCount = 256
     nonisolated private static let maximumStoredFolderCount = 512
     nonisolated private static let maximumSafeInteger: Int64 = 9_007_199_254_740_991
+    nonisolated private static let maximumSortOrder = 9_007_199_254_740_991
 
     nonisolated private struct FolderFile: Codable, Sendable {
         let folders: [RecordingCollectionFolder]

@@ -4,18 +4,31 @@ struct RecordingsListView: View {
     @Bindable var controller: LibraryController
     let recordings: [Recording]
     @Binding var selectedRecordingID: UUID?
+    var folderID: UUID? = nil
     @State private var deleteConfirmationID: UUID?
 
     var body: some View {
         Group {
             if recordings.isEmpty {
-                ContentUnavailableView(
-                    emptyTitle,
-                    systemImage: controller.model.searchText.isEmpty ? "tray" : "magnifyingglass"
-                )
-                .font(.system(size: 12))
-                .frame(maxWidth: .infinity, minHeight: 160)
-                .accessibilityIdentifier("recordings-empty-state")
+                if folderID != nil {
+                    Text(controller.model.searchText.isEmpty
+                         ? String(localized: "Drag recordings into this folder.")
+                         : String(localized: "No Search Results"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 8)
+                        .accessibilityIdentifier("recordings-empty-state")
+                } else {
+                    ContentUnavailableView(
+                        emptyTitle,
+                        systemImage: controller.model.searchText.isEmpty ? "tray" : "magnifyingglass"
+                    )
+                    .font(.system(size: 12))
+                    .frame(maxWidth: .infinity, minHeight: 160)
+                    .accessibilityIdentifier("recordings-empty-state")
+                }
             } else {
                 VStack(spacing: 0) {
                     ForEach(recordings) { recording in
@@ -27,13 +40,20 @@ struct RecordingsListView: View {
                                 row(recording)
                             } else {
                                 Button {
-                                    controller.selectRecording(recording.id)
+                                    if let folderID {
+                                        controller.selectRecording(recording.id, inCustomFolder: folderID)
+                                    } else {
+                                        controller.selectRecording(recording.id)
+                                    }
                                 } label: {
                                     row(recording)
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
+                        .draggable(SidebarDragItem.self, id: \.self, item:
+                            controller.canOrganizeLibrary && recording.deletedAt == nil
+                                ? .recording(recording.id) : nil)
                         .contextMenu {
                             LibraryContextMenu(
                                 recording: recording,
@@ -87,7 +107,8 @@ struct RecordingsListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background(selectedRecordingID == recording.id ? Color.accentColor : Color.clear)
+            .background(selectedRecordingID == recording.id ? Color.accentColor : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 4))
     }
 
     private var emptyTitle: String {
