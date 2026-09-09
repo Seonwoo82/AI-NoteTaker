@@ -2,6 +2,11 @@ import CryptoKit
 import Foundation
 import Observation
 
+nonisolated struct ParticipantPreparationProgress: Equatable, Sendable {
+    let status: String
+    let fraction: Double?
+}
+
 @MainActor
 @Observable
 final class MeetingAnalysisService {
@@ -161,6 +166,18 @@ final class MeetingAnalysisService {
 
     func isRunning(for id: UUID) -> Bool {
         (states[id] ?? .idle).isRunning
+    }
+
+    func participantPreparationProgress(for id: UUID) -> ParticipantPreparationProgress? {
+        let state = states[id] ?? .idle
+        guard transcriptPreparationID == id, state.isRunning else { return nil }
+        let fraction: Double?
+        if case let .transcribing(completed, total) = state, total > 0 {
+            fraction = min(1, max(0, Double(completed) / Double(total)))
+        } else {
+            fraction = nil
+        }
+        return ParticipantPreparationProgress(status: state.displayStatus, fraction: fraction)
     }
 
     func wasCancelled(for id: UUID) -> Bool {

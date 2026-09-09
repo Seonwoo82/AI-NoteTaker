@@ -137,13 +137,74 @@ struct MeetingNotesEnhancementTests {
     func participantFailureKeepsMinutesCompleted() async throws {
         let h = try await EnhancementHarness.make()
         let original = try #require(h.service.document(for: h.recording.id))
-        h.service.speakerTranscriptProvider = { _, _ in throw AIError(message: "OpenRouter 400") }
+        h.service.speakerTranscriptProvider = { _, _ in throw AIError(message: "Provider rejected request", reason: .httpStatus(400)) }
         h.service.identifyParticipants(h.recording)
         try await h.wait()
         #expect(h.service.document(for: h.recording.id) == original)
         #expect(h.service.progress(for: h.recording.id) == .completed)
-        #expect(h.service.transcriptNotice(for: h.recording.id)?.contains("400") == true)
+        #expect(h.service.transcriptNotice(for: h.recording.id)?.contains("Whisper") == true)
         #expect(await h.client.modelsUsed.count == 1)
+    }
+
+    @Test("participant validation errors keep trusted local detail")
+    func participantValidationErrorKeepsTrustedDetail() async throws {
+        let h = try await EnhancementHarness.make()
+        let original = try #require(h.service.document(for: h.recording.id))
+        h.service.speakerTranscriptProvider = { recording, model in
+            MeetingTranscript(recordingID: recording.id, audioVersion: recording.audioVersion,
+                transcriptionModelID: model,
+                speakers: [MeetingSpeaker(id: "p1", name: "Participant", isOwner: false)],
+                turns: [TranscriptTurn(id: "t1", start: 0, end: recording.duration + 1, speakerID: "p1", text: "끝난 뒤 발화")])
+        }
+        h.service.identifyParticipants(h.recording)
+        try await h.wait()
+        let notice = try #require(h.service.transcriptNotice(for: h.recording.id))
+        #expect(h.service.document(for: h.recording.id) == original)
+        #expect(h.service.progress(for: h.recording.id) == .completed)
+        #expect(notice.contains("참여자 전사 데이터가 올바르지 않습니다."))
+        #expect(notice.contains("Transcript turn has an out-of-range time."))
+    }
+
+    @Test("participant unknown failures use generic redacted notice")
+    func participantUnknownFailureUsesGenericRedactedNotice() async throws {
+        let h = try await EnhancementHarness.make()
+        let original = try #require(h.service.document(for: h.recording.id))
+        h.service.speakerTranscriptProvider = { _, _ in
+            throw NSError(domain: "ProviderRaw", code: 7,
+                userInfo: [NSLocalizedDescriptionKey: "raw provider failure fixture"])
+        }
+        h.service.identifyParticipants(h.recording)
+        try await h.wait()
+        let notice = try #require(h.service.transcriptNotice(for: h.recording.id))
+        #expect(h.service.document(for: h.recording.id) == original)
+        #expect(h.service.progress(for: h.recording.id) == .completed)
+        #expect(notice.contains("원인을 안전하게 확인할 수 없어요"))
+        #expect(!notice.contains("raw provider failure"))
+        #expect(!notice.contains("fixture"))
+    }
+
+    @Test("participant known network and model errors stay actionable without raw messages")
+    func participantKnownErrorsStayActionable() async throws {
+        let network = try await EnhancementHarness.make()
+        network.service.speakerTranscriptProvider = { _, _ in throw URLError(.notConnectedToInternet) }
+        network.service.identifyParticipants(network.recording)
+        try await network.wait()
+        let networkNotice = try #require(network.service.transcriptNotice(for: network.recording.id))
+        #expect(network.service.progress(for: network.recording.id) == .completed)
+        #expect(networkNotice.contains("네트워크 연결을 확인"))
+
+        let model = try await EnhancementHarness.make()
+        model.service.speakerTranscriptProvider = { _, _ in
+            throw AIError(message: "raw provider mentions fixture", reason: .timestampsUnavailable)
+        }
+        model.service.identifyParticipants(model.recording)
+        try await model.wait()
+        let modelNotice = try #require(model.service.transcriptNotice(for: model.recording.id))
+        #expect(model.service.progress(for: model.recording.id) == .completed)
+        #expect(modelNotice.contains("타임스탬프"))
+        #expect(modelNotice.contains("Whisper"))
+        #expect(!modelNotice.contains("raw provider"))
+        #expect(!modelNotice.contains("fixture"))
     }
 
     @Test("numbered transcript preparation uses the provider once and survives notes persistence")

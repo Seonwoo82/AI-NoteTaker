@@ -458,12 +458,13 @@ final class MeetingNotesService {
             if error is CancellationError || Task.isCancelled {
                 states[job.recording.id] = .cancelled
             } else {
-                let message = (error as? AIError)?.message ?? "회의록 처리 또는 저장에 실패했습니다. 연결과 저장 공간을 확인하고 다시 시도해 주세요."
-                let safeMessage = message.replacingOccurrences(of: job.key, with: "[redacted]")
                 if job.participantsBase != nil {
+                    let safeMessage = participantFailureMessage(for: error, apiKey: job.key)
                     transcriptNotices[job.recording.id] = "참여자 구분에 실패했습니다. 기존 회의록과 전사문은 유지됩니다.\n\(safeMessage)"
                     states[job.recording.id] = .completed
                 } else {
+                    let message = (error as? AIError)?.message ?? "회의록 처리 또는 저장에 실패했습니다. 연결과 저장 공간을 확인하고 다시 시도해 주세요."
+                    let safeMessage = message.replacingOccurrences(of: job.key, with: "[redacted]")
                     states[job.recording.id] = .failed(safeMessage)
                 }
             }
@@ -526,5 +527,56 @@ final class MeetingNotesService {
               document.transcriptionModelID == job.transcriptionModelID else { return nil }
         let transcript = document.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         return transcript.isEmpty ? nil : transcript
+    }
+
+    private func participantFailureMessage(for error: any Error, apiKey: String) -> String {
+        let message: String
+        if let validationError = error as? MeetingIntelligenceValidationError {
+            message = "참여자 전사 데이터가 올바르지 않습니다. \(validationError.message) 다시 시도해 주세요."
+        } else if let aiError = error as? AIError, let reason = aiError.reason {
+            message = participantAIErrorMessage(reason: reason)
+        } else if let urlError = error as? URLError {
+            message = participantNetworkMessage(urlError)
+        } else {
+            message = "참여자 구분을 완료하지 못했지만 원인을 안전하게 확인할 수 없어요. 잠시 후 다시 시도해 주세요."
+        }
+        return message.replacingOccurrences(of: apiKey, with: "[redacted]")
+    }
+
+    private func participantAIErrorMessage(reason: AIErrorReason) -> String {
+        switch reason {
+        case .timestampsUnavailable:
+            return "선택한 전사 모델이 참여자 구분에 필요한 타임스탬프를 반환하지 않았어요. 시간 정보를 지원하는 Whisper 모델로 다시 시도해 주세요."
+        case .httpStatus(let code):
+            return participantHTTPMessage(statusCode: code)
+        }
+    }
+
+    private func participantHTTPMessage(statusCode: Int) -> String {
+        switch statusCode {
+        case 400:
+            return "OpenRouter가 참여자 전사 요청을 처리하지 못했어요. 시간 정보를 지원하는 Whisper 전사 모델로 다시 시도해 주세요."
+        case 401, 403:
+            return "OpenRouter API 키 또는 모델 접근 권한을 확인한 뒤 다시 시도해 주세요."
+        case 402:
+            return "OpenRouter 크레딧이 부족해요. 결제 상태를 확인한 뒤 다시 시도해 주세요."
+        case 408, 429:
+            return "OpenRouter 요청이 일시적으로 제한됐어요. 잠시 후 참여자 구분을 다시 시도해 주세요."
+        case 500...599:
+            return "OpenRouter 서버 오류로 참여자 구분을 완료하지 못했어요. 잠시 후 다시 시도해 주세요."
+        default:
+            return "OpenRouter 요청이 실패했어요. 상태 코드 \(statusCode)를 확인한 뒤 다시 시도해 주세요."
+        }
+    }
+
+    private func participantNetworkMessage(_ error: URLError) -> String {
+        switch error.code {
+        case .timedOut:
+            return "참여자 구분 요청 시간이 초과됐어요. 네트워크 상태를 확인하고 잠시 후 다시 시도해 주세요."
+        case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+            return "OpenRouter에 연결할 수 없어요. 네트워크 연결을 확인한 뒤 다시 시도해 주세요."
+        default:
+            return "네트워크 오류로 참여자 구분을 완료하지 못했어요. 연결 상태를 확인하고 다시 시도해 주세요."
+        }
     }
 }

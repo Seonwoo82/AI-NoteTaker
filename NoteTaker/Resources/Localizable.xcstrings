@@ -4797,6 +4797,16 @@
           }
         }
       }
+    },
+    "Identifying participants": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여자를 구분하는 중"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

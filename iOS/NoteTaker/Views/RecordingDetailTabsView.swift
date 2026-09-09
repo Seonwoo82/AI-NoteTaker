@@ -33,7 +33,8 @@ struct RecordingDetailTabsView: View {
                     MeetingNotesView(recording: recording, service: notes,
                                      configuration: model.aiConfiguration,
                                      openAISettings: openAISettings,
-                                     resolvedTranscript: model.meeting?.resolved(recording)?.transcript)
+                                     resolvedTranscript: model.meeting?.resolved(recording)?.transcript,
+                                     participantPreparationProgress: model.meeting?.analysis.participantPreparationProgress(for: recording.id))
                 } else {
                     RecordingDetailView(model: model, recording: recording)
                 }

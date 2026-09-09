@@ -10,6 +10,63 @@ import Testing
 struct TranscriptAssemblerTests {
     private let recordingID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
 
+    @Test("zero-duration Whisper words preserve text without invalid turns or invented speakers")
+    func zeroDurationWordsDoNotFailTheWholeTranscript() throws {
+        let words = [
+            TimedTranscriptionWord(text: "Hello", start: 0.1, end: 0.4, speakerID: nil),
+            TimedTranscriptionWord(text: "repeated", start: 0.4, end: 0.4, speakerID: nil),
+            TimedTranscriptionWord(text: "there", start: 0.5, end: 0.8, speakerID: nil),
+            TimedTranscriptionWord(text: "Goodbye", start: 1.2, end: 1.6, speakerID: nil)
+        ]
+        let transcript = try assembleTimingFixture(words: words)
+        #expect(transcript.turns.map(\.text).joined(separator: " ") == "Hello repeated there Goodbye")
+        #expect(transcript.turns.allSatisfy { $0.start < $0.end && $0.end <= 2 })
+        #expect(transcript.turns.contains { $0.speakerID == "speaker-a" })
+        #expect(transcript.turns.contains { $0.speakerID == "speaker-b" })
+        #expect(transcript.turns.first(where: { $0.text.contains("repeated") })?.speakerID == nil)
+    }
+
+    @Test("trailing zero-duration tokens are kept without an empty time interval")
+    func trailingZeroDurationTokensArePreserved() throws {
+        let transcript = try assembleTimingFixture(words: [
+            TimedTranscriptionWord(text: "Last", start: 1.2, end: 1.8, speakerID: nil),
+            TimedTranscriptionWord(text: "word", start: 2, end: 2, speakerID: nil)
+        ])
+        #expect(transcript.turns.map(\.text).joined(separator: " ") == "Last word")
+        #expect(transcript.turns.last?.end == 2)
+        #expect(transcript.turns.last?.speakerID == nil)
+    }
+
+    @Test("provider end padding is clipped to the actual recording boundary")
+    func endPaddingDoesNotInvalidateUsableSpeech() throws {
+        let transcript = try assembleTimingFixture(words: [
+            TimedTranscriptionWord(text: "Final", start: 1.2, end: 4.07, speakerID: nil)
+        ])
+        #expect(transcript.turns.first?.start == 1.2)
+        #expect(transcript.turns.first?.end == 2)
+    }
+
+    @Test("positive segment timing recovers a response with only zero-duration words")
+    func segmentTimingRecoversZeroDurationWords() throws {
+        let transcript = try assembleTimingFixture(words: [
+            TimedTranscriptionWord(text: "Hello", start: 0.4, end: 0.4, speakerID: nil)
+        ], segments: [TimedTranscriptionSegment(text: "Hello", start: 0.1, end: 0.8, speakerID: nil)])
+        #expect(transcript.turns.first?.text == "Hello")
+        #expect(transcript.turns.first?.speakerID == "speaker-a")
+    }
+
+    private func assembleTimingFixture(words: [TimedTranscriptionWord], segments: [TimedTranscriptionSegment] = []) throws -> MeetingTranscript {
+        try TranscriptAssembler.assemble(recordingID: recordingID, audioVersion: 1,
+            transcriptionModelID: "fixture/stt",
+            chunks: [TimedTranscriptChunk(startTime: 0, result: DetailedTranscriptionResult(
+                text: words.map(\.text).joined(separator: " "), words: words, segments: segments))],
+            diarization: AcousticDiarization(speakers: [AcousticSpeaker(id: "a", embedding: [1, 0]),
+                AcousticSpeaker(id: "b", embedding: [0, 1])], spans: [
+                    AcousticSpeakerSpan(start: 0, end: 1, speakerID: "a"),
+                    AcousticSpeakerSpan(start: 1, end: 2, speakerID: "b")]),
+            ownerVoice: nil, embeddingModelID: "fixture", duration: 2)
+    }
+
     @Test("word timing splits speakers even when a broad segment is also supplied")
     func wordTimingTakesPrecedenceOverBroadSegments() throws {
         let chunk = TimedTranscriptChunk(startTime: 0, result: DetailedTranscriptionResult(text: "Hello there",

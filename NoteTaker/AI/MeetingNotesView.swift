@@ -8,6 +8,7 @@ struct MeetingNotesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var resolvedTranscript: MeetingTranscript? = nil
+    var participantPreparationProgress: ParticipantPreparationProgress? = nil
     @State private var showingEnhancement = false
     @State private var showEnhancementSettingsAfterDismiss = false
     @State private var selectedTab = NotesTab.minutes
@@ -127,16 +128,22 @@ struct MeetingNotesView: View {
         case .idle, .completed, .cancelled:
             EmptyView()
         case .queued:
-            runningCard(title: String(localized: "Queued"), fraction: nil)
+            runningCard(
+                title: participantPreparationTitle ?? String(localized: "Queued"),
+                detail: participantPreparationProgress?.status,
+                fraction: nil
+            )
         case .transcribing(let completed, let total):
             runningCard(
-                title: String(localized: "Transcribing audio"),
-                fraction: fraction(completed: completed, total: total)
+                title: participantPreparationTitle ?? String(localized: "Transcribing audio"),
+                detail: participantPreparationProgress?.status,
+                fraction: participantPreparationProgress?.fraction ?? fraction(completed: completed, total: total)
             )
         case .summarizing(let completed, let total):
             runningCard(
-                title: String(localized: "Writing minutes"),
-                fraction: fraction(completed: completed, total: total)
+                title: participantPreparationTitle ?? String(localized: "Writing minutes"),
+                detail: participantPreparationProgress?.status,
+                fraction: participantPreparationProgress?.fraction ?? fraction(completed: completed, total: total)
             )
         case .failed(let message):
             NotesCard {
@@ -241,7 +248,7 @@ struct MeetingNotesView: View {
                             .font(.body).lineSpacing(4).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if let notice = service.transcriptNotice(for: recording.id) {
+                    if !progress.isRunning, let notice = service.transcriptNotice(for: recording.id) {
                         Label(notice, systemImage: "info.circle")
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -302,7 +309,12 @@ struct MeetingNotesView: View {
         return "\(date) · \(duration) · \(model)"
     }
 
-    private func runningCard(title: String, fraction: Double?) -> some View {
+    private var participantPreparationTitle: String? {
+        guard progress.isRunning, participantPreparationProgress != nil else { return nil }
+        return String(localized: "Identifying participants")
+    }
+
+    private func runningCard(title: String, detail: String? = nil, fraction: Double?) -> some View {
         NotesCard {
             HStack(spacing: 12) {
                 ProgressView(value: fraction)
@@ -310,6 +322,11 @@ struct MeetingNotesView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.headline)
+                    if let detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Text(String(localized: "The existing minutes remain available while this runs."))
                         .font(.caption)
                         .foregroundStyle(.secondary)

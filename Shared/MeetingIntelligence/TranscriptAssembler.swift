@@ -50,16 +50,29 @@ nonisolated enum TranscriptAssembler {
         duration: Double
     ) throws -> [TranscriptTurn] {
         var turns: [TranscriptTurn] = []
-        for chunk in chunks.sorted(by: { $0.startTime < $1.startTime }) {
-            let pieces = !chunk.result.words.isEmpty
-                ? turnsFromWords(chunk.result.words, chunkStart: chunk.startTime, mapper: mapper)
-                : chunk.result.segments.map { segment in
-                    TurnPiece(start: chunk.startTime + segment.start, end: chunk.startTime + segment.end,
-                        speakerID: mapper.speakerID(start: chunk.startTime + segment.start,
-                            end: chunk.startTime + segment.end,
-                            fallback: segment.speakerID),
+        guard chunks.allSatisfy({ $0.startTime.isFinite && $0.startTime >= 0 && $0.startTime < duration }) else {
+            throw MeetingIntelligenceValidationError(message: "Transcript chunk timestamps are outside the recording duration.")
+        }
+        let orderedChunks = chunks.sorted { $0.startTime < $1.startTime }
+        for (index, chunk) in orderedChunks.enumerated() {
+            let chunkEnd = index + 1 < orderedChunks.count ? min(duration, orderedChunks[index + 1].startTime) : duration
+            let words = try chunk.result.words.map { word in
+                let range = try boundedRange(start: word.start, end: word.end,
+                    chunkStart: chunk.startTime, chunkEnd: chunkEnd, allowsPoint: true)
+                return TimedTranscriptionWord(text: word.text, start: range.start, end: range.end, speakerID: word.speakerID)
+            }
+            let pieces: [TurnPiece]
+            if words.contains(where: { $0.start < $0.end && !normalizedText($0.text).isEmpty }) || chunk.result.segments.isEmpty {
+                pieces = try turnsFromWords(words, mapper: mapper)
+            } else {
+                pieces = try chunk.result.segments.filter { !normalizedText($0.text).isEmpty }.map { segment in
+                    let range = try boundedRange(start: segment.start, end: segment.end,
+                        chunkStart: chunk.startTime, chunkEnd: chunkEnd, allowsPoint: false)
+                    return TurnPiece(start: range.start, end: range.end,
+                        speakerID: mapper.speakerID(start: range.start, end: range.end, fallback: segment.speakerID),
                         text: normalizedText(segment.text))
                 }
+            }
             for piece in pieces where !piece.text.isEmpty {
                 try validateTime(start: piece.start, end: piece.end, duration: duration)
                 let text = truncate(piece.text, maxCharacters: 4_000)
@@ -75,44 +88,70 @@ nonisolated enum TranscriptAssembler {
         }
     }
 
-    private static func turnsFromWords(
-        _ words: [TimedTranscriptionWord],
-        chunkStart: Double,
-        mapper: SpeakerMapper
-    ) -> [TurnPiece] {
+    private static func boundedRange(start: Double, end: Double, chunkStart: Double, chunkEnd: Double,
+                                     allowsPoint: Bool) throws -> (start: Double, end: Double) {
+        let absoluteStart = chunkStart + start
+        let absoluteEnd = chunkStart + end
+        guard start.isFinite, end.isFinite, absoluteStart.isFinite, absoluteEnd.isFinite,
+              start >= 0, end >= start,
+              absoluteStart < chunkEnd || (allowsPoint && start == end && absoluteStart == chunkEnd) else {
+            throw MeetingIntelligenceValidationError(message: "Transcript timestamps are outside the recording duration.")
+        }
+        // Providers may include padding at the end of a chunk. Keep only the
+        // interval that actually exists in the recording; never shift distant starts into it.
+        let boundedEnd = min(absoluteEnd, chunkEnd)
+        guard absoluteStart < boundedEnd || (allowsPoint && absoluteStart == boundedEnd) else {
+            throw MeetingIntelligenceValidationError(message: "Transcription does not contain a usable time range.")
+        }
+        return (absoluteStart, boundedEnd)
+    }
+
+    private static func turnsFromWords(_ words: [TimedTranscriptionWord], mapper: SpeakerMapper) throws -> [TurnPiece] {
+        var timedWords: [TurnPiece] = []
+        var pendingText: [String] = []
+        var pendingStart: Double?
+        var pendingEnd: Double?
+        // Preserve provider order for equal timestamps (common with Whisper).
+        let orderedWords = words.enumerated().sorted {
+            $0.element.start == $1.element.start ? $0.offset < $1.offset : $0.element.start < $1.element.start
+        }.map(\.element)
+        for word in orderedWords {
+            let text = normalizedText(word.text)
+            guard !text.isEmpty else { continue }
+            if word.start == word.end {
+                pendingText.append(text)
+                pendingStart = min(pendingStart ?? word.start, word.start)
+                pendingEnd = max(pendingEnd ?? word.end, word.end)
+                continue
+            }
+            let hasUnalignedText = !pendingText.isEmpty
+            let start = min(pendingStart ?? word.start, word.start)
+            let speakerID = hasUnalignedText ? nil : mapper.speakerID(start: start, end: word.end, fallback: word.speakerID)
+            timedWords.append(TurnPiece(start: start, end: word.end, speakerID: speakerID,
+                text: (pendingText + [text]).joined(separator: " ")))
+            pendingText.removeAll(keepingCapacity: true)
+            pendingStart = nil
+            pendingEnd = nil
+        }
+        if !pendingText.isEmpty {
+            guard let last = timedWords.popLast(), let pendingEnd else {
+                throw MeetingIntelligenceValidationError(message: "Transcription does not contain a usable time range.")
+            }
+            // Unaligned text remains visible, but is never assigned to a person
+            // using a made-up positive word duration.
+            timedWords.append(TurnPiece(start: last.start, end: max(last.end, pendingEnd), speakerID: nil,
+                text: ([last.text] + pendingText).joined(separator: " ")))
+        }
+
         var pieces: [TurnPiece] = []
-        var currentWords: [String] = []
-        var currentStart: Double?
-        var currentEnd: Double?
-        var currentSpeakerID: String?
-
-        func flush() {
-            guard let start = currentStart, let end = currentEnd else { return }
-            let text = normalizedText(currentWords.joined(separator: " "))
-            if !text.isEmpty {
-                pieces.append(TurnPiece(start: start, end: end, speakerID: currentSpeakerID, text: text))
+        for word in timedWords {
+            if let last = pieces.last, last.speakerID == word.speakerID {
+                pieces[pieces.count - 1] = TurnPiece(start: last.start, end: max(last.end, word.end),
+                    speakerID: last.speakerID, text: last.text + " " + word.text)
+            } else {
+                pieces.append(word)
             }
-            currentWords.removeAll(keepingCapacity: true)
-            currentStart = nil
-            currentEnd = nil
-            currentSpeakerID = nil
         }
-
-        for word in words.sorted(by: { $0.start < $1.start }) {
-            let start = chunkStart + word.start
-            let end = chunkStart + word.end
-            let speakerID = mapper.speakerID(start: start, end: end, fallback: word.speakerID)
-            if currentStart != nil, speakerID != currentSpeakerID {
-                flush()
-            }
-            if currentStart == nil {
-                currentStart = start
-                currentSpeakerID = speakerID
-            }
-            currentEnd = end
-            currentWords.append(word.text)
-        }
-        flush()
         return pieces
     }
 

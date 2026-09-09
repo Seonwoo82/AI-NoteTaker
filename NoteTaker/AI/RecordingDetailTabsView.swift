@@ -33,7 +33,8 @@ struct RecordingDetailTabsView: View {
                 audioDetail
             case .notes:
                 MeetingNotesView(recording: recording, service: meetingNotes, configuration: aiConfiguration,
-                    resolvedTranscript: meeting.resolved(recording)?.transcript)
+                    resolvedTranscript: meeting.resolved(recording)?.transcript,
+                    participantPreparationProgress: meeting.analysis.participantPreparationProgress(for: recording.id))
             case .meeting:
                 meetingDetail
             }
