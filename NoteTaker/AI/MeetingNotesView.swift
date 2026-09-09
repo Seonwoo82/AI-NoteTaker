@@ -221,6 +221,8 @@ struct MeetingNotesView: View {
                     if let transcript = document.participantTranscript(resolvingWith: resolvedTranscript) {
                         Text(String(localized: "Participant labels are estimates. Overlapping or unclear speech may remain unidentified."))
                             .font(.caption).foregroundStyle(.secondary)
+                        Text("\(String(localized: "Participant Transcript Model")): \(transcript.transcriptionModelID)")
+                            .font(.caption).foregroundStyle(.secondary)
                         NumberedTranscriptView(transcript: transcript)
                     } else {
                         Text(String(localized: "Participant labels are not available yet. Identify participants to add speaker numbers to this transcript."))
@@ -240,7 +242,10 @@ struct MeetingNotesView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if let notice = service.transcriptNotice(for: recording.id) {
-                        Text(notice).font(.caption).foregroundStyle(.secondary)
+                        Label(notice, systemImage: "info.circle")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("participant-identification-status")
                     }
                 }
             }

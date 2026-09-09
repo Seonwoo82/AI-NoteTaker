@@ -172,7 +172,8 @@ final class MeetingNotesService {
         guard !isShuttingDown, !progress(for: recording.id).isRunning,
               let base = document(for: recording.id), speakerTranscriptProvider != nil else { return }
         guard configuration.isConfigured else {
-            states[recording.id] = .failed("참여자를 구분하려면 AI 설정에서 전사 모델과 API 키를 확인해 주세요.")
+            transcriptNotices[recording.id] = "참여자를 구분하려면 AI 설정에서 전사 모델과 API 키를 확인해 주세요. 기존 회의록은 유지됩니다."
+            states[recording.id] = .completed
             return
         }
         enqueueRevision(recording, base: base, instructions: nil)
@@ -198,7 +199,11 @@ final class MeetingNotesService {
             queue.append(job)
             startNext()
         } catch {
-            states[recording.id] = .failed((error as? AIError)?.message ?? "회의록 보완을 시작하지 못했습니다. 설정과 저장 공간을 확인해 주세요.")
+            let message = (error as? AIError)?.message ?? "작업을 시작하지 못했습니다. 설정과 저장 공간을 확인해 주세요."
+            if instructions == nil {
+                transcriptNotices[recording.id] = "참여자 구분을 시작하지 못했습니다. 기존 회의록은 유지됩니다.\n\(message)"
+                states[recording.id] = .completed
+            } else { states[recording.id] = .failed(message) }
         }
     }
 
@@ -337,14 +342,21 @@ final class MeetingNotesService {
                 return
             }
             var speakerTranscript = document(for: job.recording.id)?.speakerTranscript
-            if speakerTranscript?.transcriptionModelID != job.transcriptionModelID { speakerTranscript = nil }
-            if let speakerTranscriptProvider {
+            if let existing = speakerTranscript,
+               !ParticipantTranscriptionPolicy.accepts(actual: existing.transcriptionModelID, requested: job.transcriptionModelID) {
+                speakerTranscript = nil
+            }
+            let timingModel = ParticipantTranscriptionPolicy.modelID(for: job.transcriptionModelID)
+            if timingModel != job.transcriptionModelID, speakerTranscript == nil {
+                transcriptNotices[job.recording.id] = "기본 전사문은 선택한 모델로 작성했습니다. 참여자 구분을 누르면 시간 정보를 지원하는 Whisper로 참여자 전사를 추가합니다."
+            }
+            if timingModel == job.transcriptionModelID, let speakerTranscriptProvider {
                 do {
-                    let prepared = try await speakerTranscriptProvider(job.recording, job.transcriptionModelID)
+                    let prepared = try await speakerTranscriptProvider(job.recording, ParticipantTranscriptionPolicy.modelID(for: job.transcriptionModelID))
                     try check(job)
                     try prepared.validate(duration: job.recording.duration)
                     guard prepared.recordingID == job.recording.id, prepared.audioVersion == job.recording.audioVersion,
-                          prepared.transcriptionModelID == job.transcriptionModelID else {
+                          ParticipantTranscriptionPolicy.accepts(actual: prepared.transcriptionModelID, requested: job.transcriptionModelID) else {
                         throw AIError(message: "참여자 전사문이 현재 녹음과 일치하지 않습니다.")
                     }
                     speakerTranscript = prepared
@@ -356,7 +368,7 @@ final class MeetingNotesService {
                 }
             }
             let transcript: String
-            if let speakerTranscript {
+            if let speakerTranscript, speakerTranscript.transcriptionModelID == job.transcriptionModelID {
                 transcript = NumberedTranscript.text(speakerTranscript)
             } else if let existingTranscript = reusableCompletedTranscript(for: job) {
                 transcript = existingTranscript
@@ -431,7 +443,8 @@ final class MeetingNotesService {
             let markdown = MeetingNotesPrompts.normalize(response.text)
             guard !markdown.isEmpty else { throw AIError(message: "모델이 빈 회의록을 반환했습니다. 다시 시도해 주세요.") }
             let doc = MeetingNotesDocument(recordingID: job.recording.id, audioVersion: job.recording.audioVersion,
-                generatedAt: .now, modelID: job.modelID, transcriptionModelID: job.transcriptionModelID,
+                generatedAt: .now, modelID: job.modelID,
+                transcriptionModelID: job.transcriptionModelID,
                 markdown: markdown, transcript: transcript, costUSD: hasReportedCost ? cost : nil,
                 speakerTranscript: speakerTranscript)
             // No await here: job validity, atomic publication, and observable
@@ -446,7 +459,13 @@ final class MeetingNotesService {
                 states[job.recording.id] = .cancelled
             } else {
                 let message = (error as? AIError)?.message ?? "회의록 처리 또는 저장에 실패했습니다. 연결과 저장 공간을 확인하고 다시 시도해 주세요."
-                states[job.recording.id] = .failed(message.replacingOccurrences(of: job.key, with: "[redacted]"))
+                let safeMessage = message.replacingOccurrences(of: job.key, with: "[redacted]")
+                if job.participantsBase != nil {
+                    transcriptNotices[job.recording.id] = "참여자 구분에 실패했습니다. 기존 회의록과 전사문은 유지됩니다.\n\(safeMessage)"
+                    states[job.recording.id] = .completed
+                } else {
+                    states[job.recording.id] = .failed(safeMessage)
+                }
             }
         }
     }
@@ -481,11 +500,11 @@ final class MeetingNotesService {
         guard let speakerTranscriptProvider else { throw AIError(message: "참여자 구분을 사용할 수 없습니다.") }
         try requireCurrentBase(base, recording: job.recording)
         states[job.recording.id] = .transcribing(completed: 0, total: 1)
-        let transcript = try await speakerTranscriptProvider(job.recording, job.transcriptionModelID)
+        let transcript = try await speakerTranscriptProvider(job.recording, ParticipantTranscriptionPolicy.modelID(for: job.transcriptionModelID))
         try check(job)
         try transcript.validate(duration: job.recording.duration)
         guard transcript.recordingID == job.recording.id, transcript.audioVersion == job.recording.audioVersion,
-              transcript.transcriptionModelID == job.transcriptionModelID else {
+              ParticipantTranscriptionPolicy.accepts(actual: transcript.transcriptionModelID, requested: job.transcriptionModelID) else {
             throw AIError(message: "참여자 전사문이 현재 녹음과 일치하지 않습니다.")
         }
         try requireCurrentBase(base, recording: job.recording)

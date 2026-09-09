@@ -1,6 +1,7 @@
 const SCHEMA_VERSION = 1;
 const PAGE_SIZE = 100;
 const METADATA_LIMIT_BYTES = 64 * 1024;
+const FOLDERS_LIMIT_BYTES = 64 * 1024;
 const AUDIO_LIMIT_BYTES = 95 * 1024 * 1024;
 const NOTES_LIMIT_BYTES = 2 * 1024 * 1024;
 const INTELLIGENCE_LIMIT_BYTES = 4 * 1024 * 1024;
@@ -26,10 +27,23 @@ const RECORDING_FIELDS = new Set([
   "skipsSilence",
   "enhances",
   "warnings",
+  "folderAssignment",
   "modifiedAt",
   "mutationID",
 ]);
 const OPTIONAL_NULL_FIELDS = new Set(["deletedAt", "transcriptionError"]);
+const RECORDING_OPTIONAL_FIELDS = new Set(["folderAssignment"]);
+const FOLDER_FIELDS = new Set([
+  "schemaVersion",
+  "id",
+  "name",
+  "createdAt",
+  "modifiedAt",
+  "mutationID",
+  "deletedAt",
+]);
+const FOLDER_NULL_FIELDS = new Set(["deletedAt"]);
+const FOLDER_ASSIGNMENT_FIELDS = new Set(["id"]);
 const NOTE_FIELDS = new Set([
   "schemaVersion",
   "recordingID",
@@ -93,6 +107,10 @@ async function handleRequest(request, env) {
     return listRecordings(env, url);
   }
 
+  if (url.pathname === "/v1/folders" && request.method === "GET") {
+    return listFolders(env, url);
+  }
+
   if (url.pathname === "/v1/notes" && request.method === "GET") {
     return listNotes(env, url);
   }
@@ -123,6 +141,11 @@ async function handleRequest(request, env) {
   const metadataMatch = url.pathname.match(/^\/v1\/recordings\/([^/]+)$/);
   if (metadataMatch && request.method === "PUT") {
     return putRecording(request, env, metadataMatch[1]);
+  }
+
+  const folderMatch = url.pathname.match(/^\/v1\/folders\/([^/]+)$/);
+  if (folderMatch && request.method === "PUT") {
+    return putFolder(request, env, folderMatch[1]);
   }
 
   const audioMatch = url.pathname.match(/^\/v1\/recordings\/([^/]+)\/audio\/([^/]+)$/);
@@ -515,6 +538,7 @@ async function putMeetingEdit(request, env, pathID) {
 async function health(env) {
   requireBindings(env);
   await env.DB.prepare("SELECT id FROM recordings ORDER BY id ASC LIMIT 1").first();
+  await env.DB.prepare("SELECT id FROM recording_folders ORDER BY id ASC LIMIT 1").first();
   await env.DB.prepare("SELECT recording_id FROM meeting_notes ORDER BY sync_key ASC LIMIT 1").first();
   await env.AUDIO.head(".healthcheck");
   return json({ ok: true, schemaVersion: SCHEMA_VERSION });
@@ -566,6 +590,29 @@ async function listNotes(env, url) {
   return json({ notes, nextCursor });
 }
 
+async function listFolders(env, url) {
+  requireBindings(env);
+  const cursor = url.searchParams.get("cursor");
+  if (cursor !== null && !UUID_PATTERN.test(cursor)) {
+    throw new HttpError(400, "invalid_cursor", "cursor must be a canonical uppercase UUID.");
+  }
+
+  const result = await env.DB.prepare(
+    `SELECT id, metadata_json, modified_at, mutation_id, deleted_at
+       FROM recording_folders
+      WHERE (? IS NULL OR id > ?)
+      ORDER BY id ASC
+      LIMIT ?`,
+  )
+    .bind(cursor, cursor, PAGE_SIZE + 1)
+    .all();
+  const rows = result.results ?? [];
+  const page = rows.slice(0, PAGE_SIZE);
+  const folders = page.map((row) => JSON.parse(row.metadata_json));
+  const nextCursor = rows.length > PAGE_SIZE ? page[page.length - 1].id : null;
+  return json({ folders, nextCursor });
+}
+
 async function putRecording(request, env, pathID) {
   requireBindings(env);
   validateUUID(pathID, "recording id");
@@ -579,7 +626,15 @@ async function putRecording(request, env, pathID) {
     throw new HttpError(400, "invalid_json", "Recording metadata must be valid JSON.");
   }
 
-  const recording = validateRecording(candidate, pathID);
+  const existing = await env.DB.prepare(
+    `SELECT id, metadata_json, modified_at, mutation_id, audio_version, deleted_at
+       FROM recordings
+      WHERE id = ?`,
+  )
+    .bind(pathID)
+    .first();
+  const previousRecording = existing ? JSON.parse(existing.metadata_json) : null;
+  const recording = validateRecording(candidate, pathID, previousRecording);
   const isDeleted = recording.deletedAt !== null;
   if (!isDeleted) {
     const audio = await env.AUDIO.get(audioKey(pathID, recording.audioVersion));
@@ -619,6 +674,45 @@ async function putRecording(request, env, pathID) {
     .bind(pathID)
     .first();
   return json({ recording: JSON.parse(winner.metadata_json) });
+}
+
+async function putFolder(request, env, pathID) {
+  requireBindings(env);
+  validateUUID(pathID, "folder id");
+  assertBodySize(request, FOLDERS_LIMIT_BYTES, "Folder metadata must not exceed 64 KiB.");
+
+  const body = await readLimitedText(request, FOLDERS_LIMIT_BYTES, "Folder metadata must not exceed 64 KiB.");
+  let candidate;
+  try {
+    candidate = JSON.parse(body);
+  } catch {
+    throw new HttpError(400, "invalid_json", "Folder metadata must be valid JSON.");
+  }
+
+  const folder = validateFolder(candidate, pathID);
+  await env.DB.prepare(
+    `INSERT INTO recording_folders (id, metadata_json, modified_at, mutation_id, deleted_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       metadata_json = excluded.metadata_json,
+       modified_at = excluded.modified_at,
+       mutation_id = excluded.mutation_id,
+       deleted_at = excluded.deleted_at
+     WHERE excluded.modified_at > recording_folders.modified_at
+        OR (excluded.modified_at = recording_folders.modified_at
+            AND excluded.mutation_id > recording_folders.mutation_id)`,
+  )
+    .bind(pathID, JSON.stringify(folder), folder.modifiedAt, folder.mutationID, folder.deletedAt)
+    .run();
+
+  const winner = await env.DB.prepare(
+    `SELECT id, metadata_json, modified_at, mutation_id, deleted_at
+       FROM recording_folders
+      WHERE id = ?`,
+  )
+    .bind(pathID)
+    .first();
+  return json({ folder: JSON.parse(winner.metadata_json) });
 }
 
 async function putAudio(request, env, pathID, pathAudioVersion) {
@@ -820,7 +914,7 @@ function requireBindings(env) {
   }
 }
 
-function validateRecording(value, pathID) {
+function validateRecording(value, pathID, previousRecording = null) {
   if (!isPlainObject(value)) {
     throw new HttpError(400, "invalid_recording", "Recording metadata must be a JSON object.");
   }
@@ -831,7 +925,7 @@ function validateRecording(value, pathID) {
     }
   }
   for (const field of RECORDING_FIELDS) {
-    if (!Object.hasOwn(normalized, field)) {
+    if (!Object.hasOwn(normalized, field) && !RECORDING_OPTIONAL_FIELDS.has(field)) {
       throw new HttpError(400, "invalid_recording", `Recording metadata is missing ${field}.`);
     }
   }
@@ -865,9 +959,69 @@ function validateRecording(value, pathID) {
   if (!Array.isArray(normalized.warnings) || normalized.warnings.some((warning) => typeof warning !== "string")) {
     throw new HttpError(400, "invalid_recording", "warnings must be an array of strings.");
   }
+  if (Object.hasOwn(normalized, "folderAssignment")) {
+    normalized.folderAssignment = validateFolderAssignment(normalized.folderAssignment);
+  } else if (previousRecording && Object.hasOwn(previousRecording, "folderAssignment")) {
+    normalized.folderAssignment = previousRecording.folderAssignment;
+  }
   validateInteger(normalized.modifiedAt, "modifiedAt", 0, Number.MAX_SAFE_INTEGER);
   validateUUID(normalized.mutationID, "mutationID");
 
+  return normalized;
+}
+
+function validateFolderAssignment(value) {
+  exactPlainObject(value, FOLDER_ASSIGNMENT_FIELDS, "Folder assignment", "invalid_recording");
+  if (!Object.hasOwn(value, "id")) {
+    throw new HttpError(400, "invalid_recording", "Folder assignment is missing id.");
+  }
+  if (value.id !== null) {
+    validateUUID(value.id, "folder assignment id");
+  }
+  return { id: value.id };
+}
+
+function validateFolder(value, pathID) {
+  if (!isPlainObject(value)) {
+    throw new HttpError(400, "invalid_folder", "Folder metadata must be a JSON object.");
+  }
+  const normalized = { ...value };
+  for (const field of FOLDER_NULL_FIELDS) {
+    if (!Object.hasOwn(normalized, field)) {
+      normalized[field] = null;
+    }
+  }
+  for (const field of FOLDER_FIELDS) {
+    if (!Object.hasOwn(normalized, field)) {
+      throw new HttpError(400, "invalid_folder", `Folder metadata is missing ${field}.`);
+    }
+  }
+  for (const field of Object.keys(normalized)) {
+    if (!FOLDER_FIELDS.has(field)) {
+      throw new HttpError(400, "invalid_folder", `Folder metadata contains unknown field ${field}.`);
+    }
+  }
+
+  validateInteger(normalized.schemaVersion, "schemaVersion", 1, SCHEMA_VERSION, "invalid_folder");
+  validateUUID(normalized.id, "id");
+  if (normalized.id !== pathID) {
+    throw new HttpError(400, "invalid_folder", "Folder id must match the URL.");
+  }
+  validateString(normalized.name, "name", 1, 512, "invalid_folder");
+  const characterCount = Array.from(new Intl.Segmenter("und", { granularity: "grapheme" }).segment(normalized.name)).length;
+  if (characterCount > 120) {
+    throw new HttpError(400, "invalid_folder", "Folder name exceeds 120 characters.");
+  }
+  if (normalized.name.trim() !== normalized.name || normalized.name.length === 0) {
+    throw new HttpError(400, "invalid_folder", "Folder name must be trimmed and non-empty.");
+  }
+  if (new TextEncoder().encode(normalized.name).byteLength > 512) {
+    throw new HttpError(400, "invalid_folder", "Folder name exceeds 512 UTF-8 bytes.");
+  }
+  validateISODate(normalized.createdAt, "createdAt", false, "invalid_folder");
+  validateInteger(normalized.modifiedAt, "modifiedAt", 0, Number.MAX_SAFE_INTEGER, "invalid_folder");
+  validateUUID(normalized.mutationID, "folder mutation ID");
+  validateISODate(normalized.deletedAt, "deletedAt", true, "invalid_folder");
   return normalized;
 }
 

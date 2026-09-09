@@ -1,6 +1,28 @@
 import AudioPipeline
 import Foundation
 
+nonisolated struct RecordingFolderAssignment: Codable, Hashable, Sendable {
+    var id: UUID?
+
+    init(id: UUID?) {
+        self.id = id
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+    }
+}
+
 nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
     var schemaVersion: Int
     let id: UUID
@@ -17,8 +39,14 @@ nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
     var skipsSilence: Bool
     var enhances: Bool
     var warnings: [String]
+    var folderAssignment: RecordingFolderAssignment?
     var modifiedAt: Int64
     var mutationID: String
+
+    var folderID: UUID? {
+        get { folderAssignment?.id }
+        set { folderAssignment = RecordingFolderAssignment(id: newValue) }
+    }
 
     init(
         id: UUID = UUID(),
@@ -35,6 +63,7 @@ nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
         skipsSilence: Bool = false,
         enhances: Bool = false,
         warnings: [String] = [],
+        folderAssignment: RecordingFolderAssignment? = nil,
         modifiedAt: Int64? = nil,
         mutationID: String = UUID().uuidString.uppercased()
     ) {
@@ -53,6 +82,7 @@ nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
         self.skipsSilence = skipsSilence
         self.enhances = enhances
         self.warnings = warnings
+        self.folderAssignment = folderAssignment
         self.modifiedAt = modifiedAt ?? Self.milliseconds(since1970: createdAt)
         self.mutationID = mutationID.uppercased()
     }
@@ -74,6 +104,7 @@ nonisolated struct Recording: Identifiable, Codable, Hashable, Sendable {
         skipsSilence = try container.decodeIfPresent(Bool.self, forKey: .skipsSilence) ?? false
         enhances = try container.decodeIfPresent(Bool.self, forKey: .enhances) ?? false
         warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
+        folderAssignment = try container.decodeIfPresent(RecordingFolderAssignment.self, forKey: .folderAssignment)
         modifiedAt = try container.decodeIfPresent(Int64.self, forKey: .modifiedAt) ?? Self.milliseconds(since1970: createdAt)
         mutationID = try (container.decodeIfPresent(String.self, forKey: .mutationID) ?? id.uuidString).uppercased()
     }

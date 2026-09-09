@@ -44,7 +44,23 @@ final class LibraryController {
     }
 
     var visibleRecordings: [Recording] {
-        library.filteredRecordings(in: model.selectedFolder, matching: model.searchText)
+        if let folderID = model.selectedCustomFolderID {
+            return filteredRecordings(inCustomFolder: folderID, matching: model.searchText)
+        }
+        return library.filteredRecordings(in: model.selectedFolder, matching: model.searchText)
+    }
+
+    var activeCustomFolders: [RecordingCollectionFolder] {
+        library.folderStore.activeFolders
+    }
+
+    var selectedFolderTitle: String {
+        if let folderID = model.selectedCustomFolderID,
+           let folder = library.folderStore.folder(id: folderID),
+           library.folderStore.isActive(id: folderID) {
+            return folder.name
+        }
+        return model.selectedFolder.localizedTitle
     }
 
     var selectedRecording: Recording? {
@@ -56,6 +72,10 @@ final class LibraryController {
         library.filteredRecordings(in: folder).count
     }
 
+    func count(forCustomFolder id: UUID) -> Int {
+        filteredRecordings(inCustomFolder: id).count
+    }
+
     func setSearchText(_ text: String) {
         model.searchText = text
         Task { await reconcileSelectionWithVisibleRows() }
@@ -63,6 +83,18 @@ final class LibraryController {
 
     func selectFolder(_ folder: RecordingFolder) async {
         model.selectedFolder = folder
+        model.selectedCustomFolderID = nil
+        await reconcileSelectionWithVisibleRows()
+    }
+
+    func selectCustomFolder(_ id: UUID) async {
+        guard library.folderStore.isActive(id: id) else {
+            model.selectedFolder = .all
+            model.selectedCustomFolderID = nil
+            await reconcileSelectionWithVisibleRows()
+            return
+        }
+        model.selectedCustomFolderID = id
         await reconcileSelectionWithVisibleRows()
     }
 
@@ -87,6 +119,74 @@ final class LibraryController {
         model.isEditingText = false
         model.selectedRecordingID = nil
         await session.start()
+    }
+
+    @discardableResult
+    func createFolder(named name: String) throws -> RecordingCollectionFolder {
+        try ensureIdle()
+        do {
+            let folder = try library.folderStore.create(name: name)
+            model.selectedCustomFolderID = folder.id
+            errorMessage = nil
+            onLibraryChanged()
+            return folder
+        } catch {
+            errorMessage = message(for: error)
+            throw error
+        }
+    }
+
+    func renameFolder(id: UUID, to name: String) throws {
+        try ensureIdle()
+        do {
+            try library.folderStore.rename(id: id, name: name)
+            errorMessage = nil
+            onLibraryChanged()
+        } catch {
+            errorMessage = message(for: error)
+            throw error
+        }
+    }
+
+    func deleteFolder(id: UUID) async throws {
+        try ensureIdle()
+        do {
+            try library.folderStore.delete(id: id)
+            errorMessage = nil
+            onLibraryChanged()
+            if model.selectedCustomFolderID == id {
+                model.selectedFolder = .all
+                model.selectedCustomFolderID = nil
+                await reconcileSelectionWithVisibleRows()
+            }
+        } catch {
+            errorMessage = message(for: error)
+            throw error
+        }
+    }
+
+    func moveRecording(_ id: UUID, toFolder folderID: UUID?) async throws {
+        try ensureIdle()
+        do {
+            try library.moveRecording(id: id, toFolder: folderID)
+            errorMessage = nil
+            onLibraryChanged()
+            await reconcileSelectionWithVisibleRows()
+        } catch {
+            errorMessage = message(for: error)
+            throw error
+        }
+    }
+
+    func reconcileFolderSelection() async {
+        guard let folderID = model.selectedCustomFolderID else { return }
+        guard library.folderStore.isActive(id: folderID) else {
+            model.selectedFolder = .all
+            model.selectedCustomFolderID = nil
+            await reconcileSelectionWithVisibleRows()
+            return
+        }
+        await reconcileSelectionWithVisibleRows()
     }
 
     func beginRename(_ id: UUID, at location: RecordingRenameSession.Location = .detail) {
@@ -262,6 +362,11 @@ final class LibraryController {
     }
 
     private func reconcileSelectionWithVisibleRows(shouldStopPlaybackWhenEmpty: Bool = true) async {
+        if let folderID = model.selectedCustomFolderID,
+           !library.folderStore.isActive(id: folderID) {
+            model.selectedFolder = .all
+            model.selectedCustomFolderID = nil
+        }
         let visibleIDs = Set(visibleRecordings.map(\.id))
         if let selectedID = model.selectedRecordingID, visibleIDs.contains(selectedID) {
             return
@@ -274,6 +379,16 @@ final class LibraryController {
 
     private func ensureIdle() throws {
         guard session.phase == .idle else { throw LibraryControllerError.captureActive }
+    }
+
+    private func filteredRecordings(inCustomFolder folderID: UUID, matching query: String = "") -> [Recording] {
+        guard library.folderStore.isActive(id: folderID) else { return [] }
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return library.recordings.filter { recording in
+            guard recording.deletedAt == nil, recording.folderID == folderID else { return false }
+            guard !trimmedQuery.isEmpty else { return true }
+            return recording.title.localizedStandardContains(trimmedQuery)
+        }
     }
 
     private func message(for error: Error) -> String {
@@ -289,6 +404,8 @@ final class LibraryController {
             switch storeError {
             case .recordingNotFound:
                 return String(localized: "That recording is no longer available.")
+            case .folderNotFound:
+                return String(localized: "That folder is no longer available.")
             case .duplicateRecording:
                 return String(localized: "A recording with that ID already exists.")
             case .emptyTitle:
@@ -301,6 +418,26 @@ final class LibraryController {
                 return String(localized: "The change could not be saved. The original recording was preserved.")
             case .deletionFailed:
                 return String(localized: "The recording could not be removed from this Mac. Its local files were preserved.")
+            }
+        }
+        if let folderError = error as? RecordingFolderStoreError {
+            switch folderError {
+            case .folderNotFound:
+                return String(localized: "That folder is no longer available.")
+            case .folderDeleted:
+                return String(localized: "That folder has been deleted.")
+            case .duplicateName:
+                return String(localized: "A folder with that name already exists.")
+            case .emptyName:
+                return String(localized: "Enter a folder name before saving.")
+            case .nameTooLong:
+                return String(localized: "Folder names must be shorter.")
+            case .tooManyFolders:
+                return String(localized: "Delete a folder before creating another one.")
+            case .invalidMetadata:
+                return String(localized: "The folder data could not be read.")
+            case .metadataWriteFailed:
+                return String(localized: "The folder change could not be saved.")
             }
         }
         return error.localizedDescription

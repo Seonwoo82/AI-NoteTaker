@@ -1454,7 +1454,6 @@
       }
     },
     "Library": {
-      "extractionState": "manual",
       "localizations": {
         "ko": {
           "stringUnit": {
@@ -4495,6 +4494,226 @@
           "stringUnit": {
             "state": "translated",
             "value": "마이크 입력이 매우 작아요. 조금 더 가까이 말하고 마이크가 가려져 있지 않은지 확인해 주세요."
+          }
+        }
+      }
+    },
+    "Folders": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더"
+          }
+        }
+      }
+    },
+    "New Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 폴더"
+          }
+        }
+      }
+    },
+    "Rename Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 이름 변경"
+          }
+        }
+      }
+    },
+    "Delete Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 삭제"
+          }
+        }
+      }
+    },
+    "Delete Folder?": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더를 삭제할까요?"
+          }
+        }
+      }
+    },
+    "Folder Name": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 이름"
+          }
+        }
+      }
+    },
+    "Create": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "생성"
+          }
+        }
+      }
+    },
+    "Move to Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더로 이동"
+          }
+        }
+      }
+    },
+    "No Folder": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 없음"
+          }
+        }
+      }
+    },
+    "This Folder Has No Recordings": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 폴더에 녹음이 없습니다"
+          }
+        }
+      }
+    },
+    "Recordings stay in All Recordings when folders change.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더를 변경해도 녹음은 전체 녹음에서 볼 수 있습니다."
+          }
+        }
+      }
+    },
+    "Recordings in this folder stay in All Recordings and become unfiled.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더만 삭제합니다. 녹음은 삭제되지 않고 전체 녹음에 남습니다."
+          }
+        }
+      }
+    },
+    "That folder is no longer available.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 폴더를 찾을 수 없습니다."
+          }
+        }
+      }
+    },
+    "That folder has been deleted.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "삭제된 폴더입니다."
+          }
+        }
+      }
+    },
+    "A folder with that name already exists.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "같은 이름의 폴더가 이미 있습니다."
+          }
+        }
+      }
+    },
+    "Enter a folder name before saving.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 이름을 입력해 주세요."
+          }
+        }
+      }
+    },
+    "Folder names must be shorter.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 이름을 더 짧게 입력해 주세요."
+          }
+        }
+      }
+    },
+    "Delete a folder before creating another one.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더가 너무 많습니다. 사용하지 않는 폴더를 정리해 주세요."
+          }
+        }
+      }
+    },
+    "The folder data could not be read.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 정보를 읽을 수 없습니다. 기존 데이터는 보존했습니다."
+          }
+        }
+      }
+    },
+    "The folder change could not be saved.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴더 변경을 저장하지 못했습니다."
+          }
+        }
+      }
+    },
+    "Participant identification uses Whisper for timestamps. Your selected model remains in use for the original transcript.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여자 구분에는 시간 정보를 지원하는 Whisper를 사용합니다. 원래 전사문은 선택한 모델을 그대로 사용합니다."
+          }
+        }
+      }
+    },
+    "Participant Transcript Model": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여자 전사 모델"
           }
         }
       }

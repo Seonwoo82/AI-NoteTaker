@@ -220,7 +220,7 @@ nonisolated struct OpenRouterClient: OpenRouterServing, DetailedTranscriptionSer
     }
 
     private func statusError(_ statusCode: Int) -> AIError {
-        switch statusCode {
+        let error: AIError = switch statusCode {
         case 300..<400:
             AIError(message: "OpenRouter 리디렉션 응답은 보안상 따르지 않았어요. 잠시 후 다시 시도해 주세요.")
         case 401:
@@ -234,6 +234,7 @@ nonisolated struct OpenRouterClient: OpenRouterServing, DetailedTranscriptionSer
         default:
             AIError(message: "OpenRouter 요청이 실패했어요. 상태 코드 \(statusCode)를 확인해 주세요.")
         }
+        return AIError(message: error.message, reason: .httpStatus(statusCode))
     }
 
     private func providerError(_ error: ProviderErrorDTO) -> AIError {
@@ -453,7 +454,7 @@ nonisolated private struct DetailedTranscriptionResponse: Decodable {
             throw AIError(message: "OpenRouter 상세 전사 응답이 너무 커서 처리할 수 없어요.")
         }
         guard !words.isEmpty || !segments.isEmpty else {
-            throw AIError(message: "선택한 전사 모델이 타임스탬프를 반환하지 않았어요. 타임스탬프를 지원하는 모델을 선택해 주세요.")
+            throw AIError(message: "선택한 전사 모델이 타임스탬프를 반환하지 않았어요. 타임스탬프를 지원하는 모델을 선택해 주세요.", reason: .timestampsUnavailable)
         }
 
         let mappedWords = try validate(

@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 @MainActor
-final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTransport, MeetingDataSyncTransport {
+final class URLSessionSyncTransport: MeetingNotesSyncTransport, RecordingFolderSyncTransport, AISettingsSyncTransport, MeetingDataSyncTransport {
     nonisolated static let maxAudioByteCount = 95 * 1_024 * 1_024
     nonisolated static let maxMeetingNotesByteCount = 2 * 1_024 * 1_024
     nonisolated static let maxMeetingIntelligenceByteCount = 4 * 1_024 * 1_024
@@ -67,6 +67,29 @@ final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTr
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(SyncRecordingResponse.self, from: data).recording
+    }
+
+    func listRecordingFolders(cursor: String?) async throws -> RecordingFolderPage {
+        var components = URLComponents(url: configuration.url(path: "v1/folders"), resolvingAgainstBaseURL: false)
+        if let cursor {
+            components?.queryItems = [URLQueryItem(name: "cursor", value: cursor)]
+        }
+        guard let url = components?.url else {
+            throw SyncError.invalidResponse
+        }
+        let (data, response) = try await session.data(for: request(url: url))
+        try validate(response: response, data: data)
+        return try decoder.decode(RecordingFolderPage.self, from: data)
+    }
+
+    func putRecordingFolder(_ folder: RecordingCollectionFolder) async throws -> RecordingCollectionFolder {
+        var request = request(path: "v1/folders/\(folder.id.uuidString.uppercased())")
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(folder)
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decoder.decode(RecordingFolderResponse.self, from: data).folder
     }
 
     func uploadAudio(for recording: Recording, from url: URL) async throws {
@@ -400,6 +423,10 @@ final class URLSessionSyncTransport: MeetingNotesSyncTransport, AISettingsSyncTr
 
 private struct SyncRecordingResponse: Decodable {
     let recording: Recording
+}
+
+private struct RecordingFolderResponse: Decodable {
+    let folder: RecordingCollectionFolder
 }
 
 private struct MeetingNotesResponse: Decodable {

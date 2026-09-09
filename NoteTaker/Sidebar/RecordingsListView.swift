@@ -94,6 +94,9 @@ struct RecordingsListView: View {
         if !controller.model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return String(localized: "No Search Results")
         }
+        if controller.model.selectedCustomFolderID != nil {
+            return String(localized: "This Folder Has No Recordings")
+        }
         switch controller.model.selectedFolder {
         case .all:
             return String(localized: "No Recordings")
@@ -117,6 +120,16 @@ private struct LibraryContextMenu: View {
             }
             Button(recording.isFavorite ? String(localized: "Remove Favorite") : String(localized: "Favorite")) {
                 Task { try? await controller.toggleFavorite(recording.id) }
+            }
+            Menu(String(localized: "Move to Folder")) {
+                Button(String(localized: "No Folder")) {
+                    Task { try? await controller.moveRecording(recording.id, toFolder: nil) }
+                }
+                ForEach(controller.activeCustomFolders) { folder in
+                    Button(folder.name) {
+                        Task { try? await controller.moveRecording(recording.id, toFolder: folder.id) }
+                    }
+                }
             }
             ShareLink(
                 item: controller.shareFile(for: recording),

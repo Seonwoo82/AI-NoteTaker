@@ -36,11 +36,22 @@ final class SyncEngine {
     }
 
     private func performSync(library: LibraryStore) async throws {
+        var firstRecoverableError: Error?
+
+        if let folderTransport = transport as? RecordingFolderSyncTransport {
+            do {
+                try await syncRecordingFolders(transport: folderTransport, library: library)
+            } catch let error as CancellationError {
+                throw error
+            } catch {
+                firstRecoverableError = error
+            }
+        }
+
         let remoteByID = try await fetchRemoteIndex()
         let localSnapshot = library.recordings
         let localByID = Dictionary(uniqueKeysWithValues: localSnapshot.map { ($0.id, $0) })
         let ids = Set(remoteByID.keys).union(localByID.keys)
-        var firstRecoverableError: Error?
 
         for id in ids.sorted(by: { $0.uuidString < $1.uuidString }) {
             try Task.checkCancellation()
@@ -121,6 +132,100 @@ final class SyncEngine {
             cursor = nextCursor
         } while cursor != nil
         return recordings
+    }
+
+    private func syncRecordingFolders(transport: RecordingFolderSyncTransport, library: LibraryStore) async throws {
+        let remoteByID = try await fetchRemoteFolders(transport: transport)
+        let localSnapshot = library.folderStore.folders
+        let localByID = Dictionary(uniqueKeysWithValues: localSnapshot.map { ($0.id, $0) })
+        let ids = Set(remoteByID.keys).union(localByID.keys)
+
+        for id in ids.sorted(by: { $0.uuidString < $1.uuidString }) {
+            try Task.checkCancellation()
+            let local = localByID[id]
+            let remote = remoteByID[id]
+
+            if let local, let remote, local == remote {
+                continue
+            }
+
+            if let local, local.wins(over: remote) {
+                try await publishFolder(local, localSnapshot: local, transport: transport, library: library)
+                continue
+            }
+
+            if let remote {
+                try await adoptFolder(remote, localSnapshot: local, transport: transport, library: library)
+            }
+        }
+    }
+
+    private func fetchRemoteFolders(transport: RecordingFolderSyncTransport) async throws -> [UUID: RecordingCollectionFolder] {
+        var cursor: String?
+        var previousCursors = Set<String>()
+        var folders: [UUID: RecordingCollectionFolder] = [:]
+        var pageCount = 0
+        repeat {
+            try Task.checkCancellation()
+            pageCount += 1
+            guard pageCount <= 1_000 else {
+                throw SyncError.invalidResponse
+            }
+            let page = try await transport.listRecordingFolders(cursor: cursor)
+            for folder in page.folders {
+                guard folders[folder.id] == nil else {
+                    throw SyncError.invalidResponse
+                }
+                folders[folder.id] = folder
+            }
+
+            guard let nextCursor = page.nextCursor else {
+                cursor = nil
+                continue
+            }
+            guard !nextCursor.isEmpty, previousCursors.insert(nextCursor).inserted else {
+                throw SyncError.invalidResponse
+            }
+            guard !page.folders.isEmpty else {
+                throw SyncError.invalidResponse
+            }
+            cursor = nextCursor
+        } while cursor != nil
+        return folders
+    }
+
+    private func publishFolder(
+        _ local: RecordingCollectionFolder,
+        localSnapshot: RecordingCollectionFolder,
+        transport: RecordingFolderSyncTransport,
+        library: LibraryStore
+    ) async throws {
+        try Task.checkCancellation()
+        let winner = try await transport.putRecordingFolder(local)
+        let current = library.folderStore.folder(id: local.id)
+        if let current, current != localSnapshot, current.wins(over: winner) {
+            try await publishFolder(current, localSnapshot: current, transport: transport, library: library)
+            return
+        }
+        if winner.wins(over: current), winner != current {
+            try library.folderStore.applyRemote(winner)
+        }
+    }
+
+    private func adoptFolder(
+        _ remote: RecordingCollectionFolder,
+        localSnapshot: RecordingCollectionFolder?,
+        transport: RecordingFolderSyncTransport,
+        library: LibraryStore
+    ) async throws {
+        try Task.checkCancellation()
+        if let current = library.folderStore.folder(id: remote.id),
+           current != localSnapshot,
+           current.wins(over: remote) {
+            try await publishFolder(current, localSnapshot: current, transport: transport, library: library)
+            return
+        }
+        try library.folderStore.applyRemote(remote)
     }
 
     private func publish(_ local: Recording, remote: Recording?, library: LibraryStore) async throws {

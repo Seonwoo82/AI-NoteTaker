@@ -91,6 +91,11 @@ nonisolated struct SyncRecordingPage: Codable, Equatable, Sendable {
     let nextCursor: String?
 }
 
+nonisolated struct RecordingFolderPage: Codable, Equatable, Sendable {
+    let folders: [RecordingCollectionFolder]
+    let nextCursor: String?
+}
+
 nonisolated struct MeetingNotesDescriptor: Codable, Equatable, Sendable {
     let recordingID: UUID
     let audioVersion: Int
@@ -124,6 +129,12 @@ protocol SyncTransport: AnyObject {
     func putRecording(_ recording: Recording) async throws -> Recording
     func uploadAudio(for recording: Recording, from url: URL) async throws
     func downloadAudio(for recording: Recording, to url: URL) async throws
+}
+
+@MainActor
+protocol RecordingFolderSyncTransport: SyncTransport {
+    func listRecordingFolders(cursor: String?) async throws -> RecordingFolderPage
+    func putRecordingFolder(_ folder: RecordingCollectionFolder) async throws -> RecordingCollectionFolder
 }
 
 @MainActor

@@ -99,6 +99,66 @@ func syncMovesMetadataAndMissingAudioBetweenTwoLocalStores() async throws {
 }
 
 @MainActor
+@Test("sync moves recording folders between two local stores")
+func syncMovesRecordingFoldersBetweenTwoLocalStores() async throws {
+    let server = InMemorySyncTransport()
+    let first = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueSyncLibraryRoot(), arguments: []))
+    let second = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueSyncLibraryRoot(), arguments: []))
+    let folder = try first.folderStore.create(name: "Clients")
+
+    try await SyncEngine(transport: server).sync(library: first)
+    try await SyncEngine(transport: server).sync(library: second)
+
+    #expect(second.folderStore.activeFolders == [folder])
+}
+
+@MainActor
+@Test("sync continues recording metadata when folder endpoint fails")
+func syncContinuesRecordingMetadataWhenFolderEndpointFails() async throws {
+    let transport = InMemorySyncTransport()
+    transport.failNextFolderList = true
+    let store = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueSyncLibraryRoot(), arguments: []))
+    let recording = syncRecording(
+        id: try #require(UUID(uuidString: "33333333-4444-5555-6666-888888888888")),
+        title: "Folder endpoint down",
+        modifiedAt: 3_100,
+        mutationID: "33333333-4444-5555-6666-888888888888"
+    )
+    try store.add(recording)
+    try Data("audio bytes".utf8).write(to: store.audioURL(for: recording))
+
+    await #expect(throws: SyncError.self) {
+        try await SyncEngine(transport: transport).sync(library: store)
+    }
+
+    #expect(transport.recording(id: recording.id) == recording)
+    #expect(transport.folderListCount == 1)
+}
+
+@MainActor
+@Test("sync preserves explicit folder membership through recording metadata")
+func syncPreservesExplicitFolderMembershipThroughRecordingMetadata() async throws {
+    let server = InMemorySyncTransport()
+    let first = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueSyncLibraryRoot(), arguments: []))
+    let second = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueSyncLibraryRoot(), arguments: []))
+    let folder = try first.folderStore.create(name: "Calls")
+    let recording = syncRecording(
+        id: try #require(UUID(uuidString: "33333333-4444-5555-6666-999999999999")),
+        title: "Assigned",
+        modifiedAt: 3_200,
+        mutationID: "33333333-4444-5555-6666-999999999999"
+    )
+    try first.add(recording)
+    try Data("audio bytes".utf8).write(to: first.audioURL(for: recording))
+    try first.moveRecording(id: recording.id, toFolder: folder.id)
+
+    try await SyncEngine(transport: server).sync(library: first)
+    try await SyncEngine(transport: server).sync(library: second)
+
+    #expect(second.recording(id: recording.id)?.folderID == folder.id)
+}
+
+@MainActor
 @Test("sync skips audio transfer when local metadata and audio already match remote")
 func syncSkipsAudioTransferWhenLocalMetadataAndAudioAlreadyMatchRemote() async throws {
     let recording = syncRecording(
@@ -795,14 +855,17 @@ private final class ScriptedListTransport: SyncTransport {
 }
 
 @MainActor
-private final class InMemorySyncTransport: SyncTransport {
+private final class InMemorySyncTransport: RecordingFolderSyncTransport {
     var beforeDownloadAudio: (() throws -> Void)?
     var beforeUploadAudio: (() throws -> Void)?
     var failNextDownload = false
     var listCount = 0
+    var folderListCount = 0
+    var failNextFolderList = false
     var healthResponse = SyncHealth(ok: true, schemaVersion: 1)
     var beforeHealth: (() async throws -> Void)?
 
+    private var folders: [UUID: RecordingCollectionFolder] = [:]
     private var recordings: [UUID: Recording]
     private var audio: [AudioKey: Data] = [:]
     private var uploadCounts: [AudioKey: Int] = [:]
@@ -830,6 +893,24 @@ private final class InMemorySyncTransport: SyncTransport {
         }
         recordings[recording.id] = recording
         return recording
+    }
+
+    func listRecordingFolders(cursor: String?) async throws -> RecordingFolderPage {
+        folderListCount += 1
+        if failNextFolderList {
+            failNextFolderList = false
+            throw SyncError.transferFailed("Injected folder list failure")
+        }
+        let sorted = folders.values.sorted { $0.id.uuidString < $1.id.uuidString }
+        return RecordingFolderPage(folders: sorted, nextCursor: nil)
+    }
+
+    func putRecordingFolder(_ folder: RecordingCollectionFolder) async throws -> RecordingCollectionFolder {
+        if let current = folders[folder.id], current.wins(over: folder) {
+            return current
+        }
+        folders[folder.id] = folder
+        return folder
     }
 
     func uploadAudio(for recording: Recording, from url: URL) async throws {

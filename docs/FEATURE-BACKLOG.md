@@ -187,3 +187,17 @@
 [상세 기록](implementation/VOICE-ENROLLMENT-QUALITY.md)
 
 - [x] Mac·iPhone 1.4.1 (13) Release 설치, Mac 실행 확인.
+
+## 참여자 오류 복구와 녹음 폴더 — 1.5.0 (빌드 14)
+
+- [x] GPT 원본 전사와 참여자용 Whisper 모델 출처를 분리하고 설정을 보존.
+- [x] 참여자 요청의 첫 400·타임스탬프 누락에만 한 번 호환 모델 재시도.
+- [x] 참여자 구분 실패를 별도 안내로 표시하고 완료 회의록·원본 전사 유지.
+- [x] Mac·iPhone 폴더 생성, 이름 변경, 녹음 이동, 폴더 삭제와 개수 표시.
+- [x] 빈 폴더와 폴더 연결 자동 동기화, 구버전 앱 필드 생략 호환.
+- [x] 녹음 시작 시 선택한 폴더 저장, 폴더 삭제 후 녹음 보존.
+- [x] Mac 419개·iOS 293개·Worker 55개 테스트 및 양쪽 한국어 정적 화면 검증.
+- [x] Cloudflare migration 0005 및 Worker 배포, 인증된 API 조회 검증.
+- [x] Mac·iPhone 1.5.0 (14) 설치·실행 확인 및 Mac 기존 앱·라이브러리 백업.
+
+[설계·검증·배포 기록](implementation/PARTICIPANTS-AND-FOLDERS.md)

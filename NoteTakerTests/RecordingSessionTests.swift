@@ -33,6 +33,19 @@ struct RecordingSessionTests {
         #expect(FileManager.default.fileExists(atPath: harness.paths.metadataURL(for: recording.id).path))
     }
 
+    @Test("a recording stays in the folder selected when capture started")
+    func captureKeepsOriginalFolder() async throws {
+        let h = await RecordingSessionHarness.make()
+        let original = try h.store.folderStore.create(name: "Project A")
+        let other = try h.store.folderStore.create(name: "Project B")
+        h.appModel.selectedCustomFolderID = original.id
+        await h.session.start()
+        h.appModel.selectedCustomFolderID = other.id
+        await h.session.finish()
+        #expect(h.store.recordings.first?.folderID == original.id)
+        #expect(h.appModel.selectedCustomFolderID == original.id)
+    }
+
     @Test("RecordingSession derives elapsed time from a successful start and resets after finish")
     func derivesElapsedTimeFromSuccessfulStartAndResetsAfterFinish() async throws {
         let startedAt = Date(timeIntervalSinceReferenceDate: 100)

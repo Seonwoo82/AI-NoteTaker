@@ -23,6 +23,8 @@ final class LibraryAppModel {
     var settingsSection: AppSettingsSection = .ai
     var selection: UUID?
     var filter: LibraryFilter = .all
+    var selectedCustomFolderID: UUID?
+    private var captureFolderID: UUID?
     var search = ""
     var captureMode: CaptureMode = .micOnly
     var errorMessage: String?
@@ -51,7 +53,24 @@ final class LibraryAppModel {
 
     var visibleRecordings: [Recording] {
         guard let library else { return [] }
+        if let selectedCustomFolderID {
+            return recordings(inCustomFolder: selectedCustomFolderID, library: library, search: search)
+        }
         return filter.recordings(in: library, search: search)
+    }
+
+    var activeCustomFolders: [RecordingCollectionFolder] {
+        library?.folderStore.activeFolders ?? []
+    }
+
+    var selectedFolderTitle: String {
+        guard let library,
+              let selectedCustomFolderID,
+              library.folderStore.isActive(id: selectedCustomFolderID),
+              let folder = library.folderStore.folder(id: selectedCustomFolderID) else {
+            return filter.title
+        }
+        return folder.name
     }
 
     var selectedRecording: Recording? {
@@ -169,13 +188,27 @@ final class LibraryAppModel {
         meeting?.cancelEnrollment()
         meeting?.refreshVoiceObservation()
         player.stop()
+        captureFolderID = selectedCustomFolderID
         await recorder.start(library: library, mode: captureMode)
+        if !recorder.isRecording { captureFolderID = nil }
     }
 
     func finishRecording() async {
         guard let library else { return }
+        let folderID = captureFolderID
+        defer { captureFolderID = nil }
         if let recording = await recorder.finish(library: library) {
-            filter = .all
+            if let folderID, library.folderStore.isActive(id: folderID) {
+                do {
+                    try library.moveRecording(id: recording.id, toFolder: folderID)
+                    selectedCustomFolderID = folderID
+                } catch {
+                    errorMessage = userMessage(for: error)
+                }
+            } else {
+                filter = .all
+                selectedCustomFolderID = nil
+            }
             search = ""
             selection = recording.id
             meeting?.recordingDidFinish(recording)
@@ -202,7 +235,86 @@ final class LibraryAppModel {
     func play(_ recording: Recording) {
         guard let library else { return }
         do { try player.play(recording: recording, url: library.audioURL(for: recording)) }
-        catch { errorMessage = error.localizedDescription }
+        catch { errorMessage = userMessage(for: error) }
+    }
+
+    func selectFilter(_ newFilter: LibraryFilter) {
+        filter = newFilter
+        selectedCustomFolderID = nil
+        reconcileSelectionWithVisibleRecordings()
+    }
+
+    func selectCustomFolder(_ id: UUID) {
+        guard library?.folderStore.isActive(id: id) == true else {
+            filter = .all
+            selectedCustomFolderID = nil
+            reconcileSelectionWithVisibleRecordings()
+            return
+        }
+        selectedCustomFolderID = id
+        reconcileSelectionWithVisibleRecordings()
+    }
+
+    @discardableResult
+    func createFolder(named name: String) -> RecordingCollectionFolder? {
+        guard canChangeLibrary(), let library else { return nil }
+        do {
+            let folder = try library.folderStore.create(name: name)
+            selectedCustomFolderID = folder.id
+            errorMessage = nil
+            Task { await synchronize() }
+            return folder
+        } catch {
+            errorMessage = userMessage(for: error)
+            return nil
+        }
+    }
+
+    func renameFolder(id: UUID, to name: String) {
+        guard canChangeLibrary(), let library else { return }
+        do {
+            try library.folderStore.rename(id: id, name: name)
+            errorMessage = nil
+            Task { await synchronize() }
+        } catch {
+            errorMessage = userMessage(for: error)
+        }
+    }
+
+    func deleteFolder(id: UUID) {
+        guard canChangeLibrary(), let library else { return }
+        do {
+            try library.folderStore.delete(id: id)
+            errorMessage = nil
+            if selectedCustomFolderID == id {
+                filter = .all
+                selectedCustomFolderID = nil
+                reconcileSelectionWithVisibleRecordings()
+            }
+            Task { await synchronize() }
+        } catch {
+            errorMessage = userMessage(for: error)
+        }
+    }
+
+    func moveRecording(_ recording: Recording, toFolder folderID: UUID?) {
+        guard canChangeLibrary(), let library else { return }
+        do {
+            try library.moveRecording(id: recording.id, toFolder: folderID)
+            errorMessage = nil
+            reconcileSelectionWithVisibleRecordings()
+            Task { await synchronize() }
+        } catch {
+            errorMessage = userMessage(for: error)
+        }
+    }
+
+    func reconcileFolderSelection() {
+        guard let selectedCustomFolderID,
+              library?.folderStore.isActive(id: selectedCustomFolderID) != true else { return }
+        filter = .all
+        self.selectedCustomFolderID = nil
+        reconcileSelectionWithVisibleRecordings()
     }
 
     func synchronize() async {
@@ -218,7 +330,62 @@ final class LibraryAppModel {
                 meeting?.recordingUnavailable(previous.id)
             }
         }
+        reconcileFolderSelection()
         Task { await synchronize() }
+    }
+
+    private func canChangeLibrary() -> Bool {
+        guard !recorder.isRecording, !recorder.isBusy else {
+            errorMessage = String(localized: "Library changes are unavailable while recording.")
+            return false
+        }
+        return true
+    }
+
+    private func reconcileSelectionWithVisibleRecordings() {
+        let visibleIDs = Set(visibleRecordings.map(\.id))
+        if let selection, visibleIDs.contains(selection) { return }
+        selection = visibleRecordings.first?.id
+        if selection == nil { player.stop() }
+    }
+
+    private func recordings(inCustomFolder folderID: UUID, library: LibraryStore, search: String) -> [Recording] {
+        guard library.folderStore.isActive(id: folderID) else { return [] }
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        return library.recordings.filter { recording in
+            guard recording.deletedAt == nil, recording.folderID == folderID else { return false }
+            return query.isEmpty || recording.title.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func userMessage(for error: Error) -> String {
+        if let libraryError = error as? LibraryStoreError {
+            switch libraryError {
+            case .folderNotFound: return String(localized: "That folder is no longer available.")
+            case .recordingNotFound: return String(localized: "That recording is no longer available.")
+            }
+        }
+        if let folderError = error as? RecordingFolderStoreError {
+            switch folderError {
+            case .folderNotFound:
+                return String(localized: "That folder is no longer available.")
+            case .folderDeleted:
+                return String(localized: "That folder has been deleted.")
+            case .duplicateName:
+                return String(localized: "A folder with that name already exists.")
+            case .emptyName:
+                return String(localized: "Enter a folder name before saving.")
+            case .nameTooLong:
+                return String(localized: "Folder names must be shorter.")
+            case .tooManyFolders:
+                return String(localized: "Delete a folder before creating another one.")
+            case .invalidMetadata:
+                return String(localized: "The folder data could not be read.")
+            case .metadataWriteFailed:
+                return String(localized: "The folder change could not be saved.")
+            }
+        }
+        return error.localizedDescription
     }
 }
 

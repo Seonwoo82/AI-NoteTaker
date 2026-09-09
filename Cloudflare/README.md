@@ -1,6 +1,6 @@
 # AI-NoteTaker Cloudflare Sync
 
-This Worker stores voice-note metadata, completed meeting-note descriptors, shared AI preferences, text profile data, meeting intelligence descriptors, and manual meeting edits in Cloudflare D1. Immutable audio, completed meeting notes, and meeting intelligence documents live in a private R2 bucket for a personal iOS/macOS install.
+This Worker stores voice-note metadata, recording folders, completed meeting-note descriptors, shared AI preferences, text profile data, meeting intelligence descriptors, and manual meeting edits in Cloudflare D1. Immutable audio, completed meeting notes, and meeting intelligence documents live in a private R2 bucket for a personal iOS/macOS install.
 
 Use your own Cloudflare account and deployment. Copy the database ID returned by Wrangler into `wrangler.toml`; store the sync token as a Worker secret. Local `.dev.vars` and Wrangler state are ignored by Git.
 
@@ -47,6 +47,8 @@ The app settings should use the deployed Worker HTTPS origin and the same token.
 All routes require `Authorization: Bearer <SYNC_TOKEN>`.
 
 - `GET /v1/health` returns `{ "ok": true, "schemaVersion": 1 }` after DB and R2 binding checks.
+- `GET /v1/folders?cursor=<UUID>` returns up to 100 folder metadata records, including deletion tombstones, ordered by uppercase UUID with nullable `nextCursor`.
+- `PUT /v1/folders/<UUID>` accepts a folder document and returns the server winner as `{ "folder": document }`.
 - `GET /v1/recordings?cursor=<UUID>` returns up to 100 metadata records ordered by uppercase UUID with `nextCursor` set to the last returned UUID when another page exists.
 - `PUT /v1/recordings/<UUID>` accepts `Recording` JSON and returns the server winner. Swift may omit nil `deletedAt` and `transcriptionError`; the Worker normalizes those fields to `null` before storing. Live metadata is accepted only after `audio/<audioVersion>` exists. Tombstones with `deletedAt` can be stored without audio.
 - `PUT /v1/recordings/<UUID>/audio/<audioVersion>` accepts `audio/mp4` with `Content-Length` and stores `recordings/<UUID>/audio/<audioVersion>.m4a`. The key is immutable: duplicate retries succeed but keep the first bytes.
@@ -100,3 +102,11 @@ A new client reads existing preferences before publishing. Explicit offline edit
 Notes documents may include `speakerTranscript` (the existing validated timed transcript schema) and `enhancement` (`modelID`, `instructions`). Both are optional so older notes remain valid; credentials and voice embeddings remain prohibited. Enhancement instructions are limited to 8,000 UTF-8 bytes and the total notes envelope remains 2 MiB.
 
 AI shared preferences may include `enhancementModelID`. Omission from an older client preserves the current server choice; an explicit empty string resets it to follow the meeting-notes model. No database migration is required for these optional JSON fields.
+
+## Recording folders
+
+Apply `0005_recording_folders.sql` before deploying this version. Empty folders have their own D1 rows, independent of recordings. Folder documents include `schemaVersion: 1`, `id`, `name`, `createdAt`, `modifiedAt`, `mutationID`, and optional `deletedAt`. Folder conflicts use the same atomic `(modifiedAt, mutationID)` order as recording metadata. Names are trimmed, non-empty, at most 120 grapheme clusters and 512 UTF-8 bytes.
+
+Recording metadata may include `folderAssignment: { "id": "<UUID>" }`; an explicit `{ "id": null }` moves a recording out of its folder. If an older client omits `folderAssignment`, the Worker preserves the existing assignment. Deleting a folder writes a tombstone and does not delete recordings or audio. Clients hide deleted folders while keeping their recordings in All Recordings.
+
+Clients sync folders before recordings. A folder endpoint error is reported after attempting ordinary recording/document sync, so an older Worker does not block existing data transfers. Apply the migration and update both apps to use folders across devices.

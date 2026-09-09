@@ -7,6 +7,7 @@ nonisolated enum LibraryStoreError: Error, Equatable, Sendable {
     case emptyTitle
     case recordingDeleted(UUID)
     case recordingNotDeleted(UUID)
+    case folderNotFound(UUID)
     case metadataWriteFailed(UUID, String)
     case deletionFailed(UUID, String)
 }
@@ -16,11 +17,13 @@ nonisolated enum LibraryStoreError: Error, Equatable, Sendable {
 final class LibraryStore {
     private(set) var recordings: [Recording]
     private(set) var maintenanceError: String?
+    let folderStore: RecordingFolderStore
     let paths: LibraryPaths
     @ObservationIgnored var onRecordingUnavailable: ((UUID) -> Void)?
 
     private init(recordings: [Recording], paths: LibraryPaths, maintenanceError: String? = nil) {
         self.recordings = recordings
+        self.folderStore = RecordingFolderStore(paths: paths)
         self.paths = paths
         self.maintenanceError = maintenanceError
     }
@@ -89,6 +92,15 @@ final class LibraryStore {
     func setFavorite(id: UUID, isFavorite: Bool) throws {
         try mutateActiveRecording(id: id) { recording in
             recording.isFavorite = isFavorite
+        }
+    }
+
+    func moveRecording(id: UUID, toFolder folderID: UUID?) throws {
+        if let folderID, !folderStore.isActive(id: folderID) {
+            throw LibraryStoreError.folderNotFound(folderID)
+        }
+        try mutateActiveRecording(id: id) { recording in
+            recording.folderID = folderID
         }
     }
 

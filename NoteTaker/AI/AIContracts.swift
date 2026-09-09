@@ -83,7 +83,13 @@ nonisolated enum MeetingNotesProgress: Equatable, Sendable {
     }
 }
 
+nonisolated enum AIErrorReason: Equatable, Sendable {
+    case httpStatus(Int)
+    case timestampsUnavailable
+}
+
 nonisolated struct AIError: LocalizedError, Sendable, Equatable {
     let message: String
+    var reason: AIErrorReason? = nil
     var errorDescription: String? { message }
 }

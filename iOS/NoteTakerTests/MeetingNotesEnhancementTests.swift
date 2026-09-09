@@ -104,6 +104,48 @@ struct MeetingNotesEnhancementTests {
         #expect(h.service.enhancementPreview(for: h.recording.id) == nil)
     }
 
+    @Test("adding Whisper participants preserves the original GPT transcript and records both sources")
+    func participantFallbackPreservesOriginalGPT() async throws {
+        let h = try await EnhancementHarness.make()
+        let original = try #require(h.service.document(for: h.recording.id))
+        let gpt = MeetingNotesDocument(recordingID: original.recordingID, audioVersion: original.audioVersion,
+            generatedAt: original.generatedAt.addingTimeInterval(2), modelID: original.modelID,
+            transcriptionModelID: "openai/gpt-transcribe", markdown: original.markdown, transcript: original.transcript)
+        try JSONFile.save(gpt, to: h.notesURL)
+        await h.service.reload(h.recording)
+        var requestedModel: String?
+        h.service.speakerTranscriptProvider = { recording, model in
+            requestedModel = model
+            return MeetingTranscript(recordingID: recording.id, audioVersion: recording.audioVersion,
+                transcriptionModelID: model, speakers: [MeetingSpeaker(id: "p1", name: "Participant", isOwner: false)],
+                turns: [TranscriptTurn(id: "t1", start: 0, end: 1, speakerID: "p1", text: "참여자 발화")])
+        }
+        h.service.identifyParticipants(h.recording)
+        try await h.wait()
+        let updated = try #require(h.service.document(for: h.recording.id))
+        #expect(requestedModel == "openai/whisper-large-v3")
+        #expect(updated.transcript == gpt.transcript)
+        #expect(updated.markdown == gpt.markdown)
+        #expect(updated.transcriptionModelID == "openai/gpt-transcribe")
+        #expect(updated.speakerTranscript?.transcriptionModelID == "openai/whisper-large-v3")
+        let loaded = await AIArtifactStore(paths: h.library.paths).loadDocument(h.recording)
+        #expect(loaded?.speakerTranscript == updated.speakerTranscript)
+        #expect(h.service.progress(for: h.recording.id) == .completed)
+    }
+
+    @Test("participant failures never turn completed minutes into a generation failure")
+    func participantFailureKeepsMinutesCompleted() async throws {
+        let h = try await EnhancementHarness.make()
+        let original = try #require(h.service.document(for: h.recording.id))
+        h.service.speakerTranscriptProvider = { _, _ in throw AIError(message: "OpenRouter 400") }
+        h.service.identifyParticipants(h.recording)
+        try await h.wait()
+        #expect(h.service.document(for: h.recording.id) == original)
+        #expect(h.service.progress(for: h.recording.id) == .completed)
+        #expect(h.service.transcriptNotice(for: h.recording.id)?.contains("400") == true)
+        #expect(await h.client.modelsUsed.count == 1)
+    }
+
     @Test("numbered transcript preparation uses the provider once and survives notes persistence")
     func speakerTranscriptPersistence() async throws {
         let h = try await EnhancementHarness.make()

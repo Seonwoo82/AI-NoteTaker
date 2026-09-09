@@ -6,6 +6,7 @@ import Observation
 final class AppModel {
     var selectedRecordingID: UUID?
     var selectedFolder: RecordingFolder = .all
+    var selectedCustomFolderID: UUID?
     var searchText = ""
     var searchFocusRequestID = 0
     var searchBlurRequestID = 0

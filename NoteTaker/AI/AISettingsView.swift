@@ -155,6 +155,13 @@ struct AISettingsView: View {
                 fallbackID: configuration.transcriptionModelID
             )
 
+            if ParticipantTranscriptionPolicy.modelID(for: configuration.transcriptionModelID) != configuration.transcriptionModelID {
+                Text(String(localized: "Participant identification uses Whisper for timestamps. Your selected model remains in use for the original transcript."))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("participant-transcription-model-help")
+            }
+
             if configuration.isLoadingModels {
                 ProgressView(String(localized: "Refreshing models..."))
                     .controlSize(.small)

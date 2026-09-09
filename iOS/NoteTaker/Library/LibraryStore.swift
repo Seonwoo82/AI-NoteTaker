@@ -3,17 +3,20 @@ import Observation
 
 nonisolated enum LibraryStoreError: Error, Equatable, Sendable {
     case recordingNotFound(UUID)
+    case folderNotFound(UUID)
 }
 
 @MainActor
 @Observable
 final class LibraryStore {
     private(set) var recordings: [Recording]
+    let folderStore: RecordingFolderStore
     let paths: LibraryPaths
     @ObservationIgnored var onRecordingUnavailable: ((UUID) -> Void)?
 
     private init(recordings: [Recording], paths: LibraryPaths) {
         self.recordings = recordings
+        self.folderStore = RecordingFolderStore(paths: paths)
         self.paths = paths
     }
 
@@ -46,6 +49,21 @@ final class LibraryStore {
         if stamped.deletedAt != nil || stamped.audioVersion != previous.audioVersion {
             onRecordingUnavailable?(stamped.id)
         }
+    }
+
+    func moveRecording(id: UUID, toFolder folderID: UUID?) throws {
+        if let folderID, !folderStore.isActive(id: folderID) {
+            throw LibraryStoreError.folderNotFound(folderID)
+        }
+        guard let index = recordings.firstIndex(where: { $0.id == id }) else {
+            throw LibraryStoreError.recordingNotFound(id)
+        }
+        var updated = recordings[index]
+        updated.folderID = folderID
+        let stamped = updated.locallyStamped(after: recordings[index])
+        try JSONFile.save(stamped, to: paths.metadataURL(for: stamped.id))
+        recordings[index] = stamped
+        sortRecordings()
     }
 
     func applyRemote(_ recording: Recording) throws {

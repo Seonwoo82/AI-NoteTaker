@@ -10,6 +10,7 @@ const TOKEN = "test-sync-token";
 const BASE = "https://sync.example.com";
 const VALID_ID = "11111111-2222-3333-8444-555555555555";
 const OTHER_ID = "AAAAAAAA-BBBB-CCCC-8DDD-EEEEEEEEEEEE";
+const FOLDER_ID = "22222222-3333-4444-8555-666666666666";
 const NOTE_TIME = "2026-09-08T03:04:05.000Z";
 
 function recording(overrides = {}) {
@@ -31,6 +32,19 @@ function recording(overrides = {}) {
     warnings: [],
     modifiedAt: 1_788_310_923_000,
     mutationID: "99999999-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    ...overrides,
+  };
+}
+
+function folder(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    id: FOLDER_ID,
+    name: "Clients",
+    createdAt: "2026-09-08T01:02:03.000Z",
+    modifiedAt: 1_788_310_923_000,
+    mutationID: "88888888-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    deletedAt: null,
     ...overrides,
   };
 }
@@ -108,6 +122,7 @@ function makeEnv() {
 class MemoryD1 {
   constructor() {
     this.rows = new Map();
+    this.folderRows = new Map();
     this.noteRows = new Map();
     this.hasSchema = true;
     this.statements = [];
@@ -143,6 +158,12 @@ class MemoryStatement {
       }
       return { ok: 1 };
     }
+    if (this.sql.includes("FROM recording_folders") && this.sql.includes("LIMIT 1")) {
+      if (!this.db.hasSchema) {
+        throw new Error("no such table: recording_folders");
+      }
+      return { ok: 1 };
+    }
     if (
       this.sql.includes("FROM recordings") &&
       this.sql.includes("audio_version") &&
@@ -153,6 +174,9 @@ class MemoryStatement {
       return row ? { id: row.id, audio_version: row.audio_version } : null;
     }
     if (this.sql.includes("WHERE id = ?")) {
+      if (this.sql.includes("FROM recording_folders")) {
+        return this.db.folderRows.get(this.values[0]) ?? null;
+      }
       return this.db.rows.get(this.values[0]) ?? null;
     }
     if (this.sql.includes("FROM meeting_notes") && this.sql.includes("object_key")) {
@@ -177,6 +201,15 @@ class MemoryStatement {
       return { results: rows };
     }
     if (!this.sql.includes("FROM recordings")) {
+      if (this.sql.includes("FROM recording_folders")) {
+        const cursor = this.values[0];
+        const limit = this.values[2];
+        const rows = [...this.db.folderRows.values()]
+          .filter((row) => !cursor || row.id > cursor)
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .slice(0, limit);
+        return { results: rows };
+      }
       throw new Error(`unexpected all SQL: ${this.sql}`);
     }
     const cursor = this.values[0];
@@ -207,6 +240,25 @@ class MemoryStatement {
           byte_count,
           object_key,
           sync_key,
+        });
+      }
+      return { success: true };
+    }
+    if (this.sql.includes("INSERT INTO recording_folders")) {
+      this.db.statements.push({ sql: this.sql, values: this.values });
+      const [id, metadata_json, modified_at, mutation_id, deleted_at] = this.values;
+      const existing = this.db.folderRows.get(id);
+      const incomingWins =
+        !existing ||
+        modified_at > existing.modified_at ||
+        (modified_at === existing.modified_at && mutation_id > existing.mutation_id);
+      if (incomingWins) {
+        this.db.folderRows.set(id, {
+          id,
+          metadata_json,
+          modified_at,
+          mutation_id,
+          deleted_at,
         });
       }
       return { success: true };
@@ -345,6 +397,180 @@ describe("Cloudflare sync worker", () => {
     const body = await readJson(response);
     assert.equal(body.recording.deletedAt, null);
     assert.equal(body.recording.transcriptionError, null);
+  });
+
+  test("preserves existing folder assignment when older clients omit the field", async () => {
+    const env = makeEnv();
+    await uploadAudio(env);
+    const assigned = recording({ folderAssignment: { id: FOLDER_ID } });
+    const legacy = recording({
+      title: "Legacy rename",
+      modifiedAt: assigned.modifiedAt + 1,
+      mutationID: "AAAAAAAA-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    });
+
+    await request(env, `/v1/recordings/${VALID_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(assigned),
+    });
+    const response = await request(env, `/v1/recordings/${VALID_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(legacy),
+    });
+
+    assert.equal(response.status, 200);
+    const body = await readJson(response);
+    assert.equal(body.recording.title, "Legacy rename");
+    assert.deepEqual(body.recording.folderAssignment, { id: FOLDER_ID });
+  });
+
+  test("explicit empty folder assignment clears recording membership", async () => {
+    const env = makeEnv();
+    await uploadAudio(env);
+    const assigned = recording({ folderAssignment: { id: FOLDER_ID } });
+    const cleared = recording({
+      folderAssignment: { id: null },
+      modifiedAt: assigned.modifiedAt + 1,
+      mutationID: "AAAAAAAA-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    });
+
+    await request(env, `/v1/recordings/${VALID_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(assigned),
+    });
+    const response = await request(env, `/v1/recordings/${VALID_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(cleared),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual((await readJson(response)).recording.folderAssignment, { id: null });
+  });
+
+  test("folders round trip with tombstones and LWW ordering", async () => {
+    const env = makeEnv();
+    const first = folder({ name: "Clients" });
+    const deleted = folder({
+      name: "Archived",
+      modifiedAt: first.modifiedAt + 1,
+      mutationID: "AAAAAAAA-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+      deletedAt: "2026-09-08T02:03:04.000Z",
+    });
+    const stale = folder({
+      name: "Stale",
+      modifiedAt: first.modifiedAt - 1,
+      mutationID: "FFFFFFFF-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    });
+
+    for (const payload of [first, deleted, stale]) {
+      const put = await request(env, `/v1/folders/${FOLDER_ID}`, {
+        method: "PUT",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      });
+      assert.equal(put.status, 200);
+    }
+    const listed = await request(env, "/v1/folders", { headers: authHeaders() });
+
+    assert.equal(listed.status, 200);
+    assert.deepEqual(await readJson(listed), { folders: [deleted], nextCursor: null });
+  });
+
+  test("folder names use user-visible characters consistently with Apple clients", async () => {
+    const env = makeEnv();
+    const response = await request(env, `/v1/folders/${FOLDER_ID}`, {
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(folder({ name: "😀".repeat(120) })),
+    });
+    assert.equal(response.status, 200);
+  });
+
+  test("rejects malformed folder metadata before changing stored state", async () => {
+    const env = makeEnv();
+    const invalid = await request(env, `/v1/folders/${FOLDER_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(folder({ name: "   " })),
+    });
+    const extraField = await request(env, `/v1/folders/${FOLDER_ID}`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(folder({ secret: "nope" })),
+    });
+
+    assert.equal(invalid.status, 400);
+    assert.equal(extraField.status, 400);
+    assert.equal(env.__db.folderRows.size, 0);
+  });
+
+  test("generated recording_folders upsert SQL atomically applies tuple ordering in SQLite", async () => {
+    const env = makeEnv();
+    const first = folder({
+      name: "First",
+      modifiedAt: 1_788_310_930_000,
+      mutationID: "BBBBBBBB-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    });
+    const stale = folder({
+      name: "Stale",
+      modifiedAt: 1_788_310_920_000,
+      mutationID: "FFFFFFFF-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    });
+    const tieWinner = folder({
+      name: "Tie Winner",
+      modifiedAt: 1_788_310_930_000,
+      mutationID: "CCCCCCCC-AAAA-BBBB-8CCC-DDDDDDDDDDDD",
+    });
+
+    for (const payload of [first, stale, tieWinner]) {
+      const response = await request(env, `/v1/folders/${FOLDER_ID}`, {
+        method: "PUT",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      });
+      assert.equal(response.status, 200);
+    }
+
+    const upserts = env.__db.statements.filter(({ sql }) => sql.includes("ON CONFLICT(id) DO UPDATE") && sql.includes("recording_folders"));
+    assert.equal(upserts.length, 3);
+    const child = spawnSync(
+      "python3",
+      [
+        "-c",
+        `
+import json
+import sqlite3
+import sys
+
+payload = json.load(sys.stdin)
+conn = sqlite3.connect(':memory:')
+conn.executescript(payload['migration'])
+for statement in payload['statements']:
+    conn.execute(statement['sql'], statement['values'])
+row = conn.execute('SELECT metadata_json, modified_at, mutation_id FROM recording_folders WHERE id = ?', (payload['id'],)).fetchone()
+assert row is not None
+folder = json.loads(row[0])
+assert folder['name'] == 'Tie Winner', row
+assert row[1] == 1788310930000, row
+assert row[2] == 'CCCCCCCC-AAAA-BBBB-8CCC-DDDDDDDDDDDD', row
+print('recording_folders upsert sql ok')
+`,
+      ],
+      {
+        encoding: "utf8",
+        input: JSON.stringify({
+          migration: readFileSync(new URL("../migrations/0005_recording_folders.sql", import.meta.url), "utf8"),
+          statements: upserts,
+          id: FOLDER_ID,
+        }),
+      },
+    );
+
+    assert.equal(child.status, 0, child.stderr || child.stdout);
+    assert.match(child.stdout, /recording_folders upsert sql ok/);
   });
 
   test("rejects present optional fields with non-null invalid types", async () => {

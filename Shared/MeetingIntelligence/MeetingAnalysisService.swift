@@ -54,7 +54,7 @@ final class MeetingAnalysisService {
         let recording: Recording
         let key: String
         let analysisModelID: String
-        let transcriptionModelID: String
+        var transcriptionModelID: String
         let language: String
         let inputBudget: Int
         let outputBudget: Int
@@ -118,7 +118,7 @@ final class MeetingAnalysisService {
             let budget = MeetingCompletionBudget(model: model, modelID: configuration.modelID, fallbackContext: 32_000)
             let job = Job(token: UUID(), recording: current, key: key,
                 analysisModelID: configuration.modelID,
-                transcriptionModelID: configuration.transcriptionModelID,
+                transcriptionModelID: ParticipantTranscriptionPolicy.modelID(for: configuration.transcriptionModelID),
                 language: configuration.outputLanguage,
                 inputBudget: budget.inputBytes,
                 outputBudget: budget.outputTokens,
@@ -169,7 +169,7 @@ final class MeetingAnalysisService {
 
     func prepareNumberedTranscript(_ recording: Recording, transcriptionModelID: String? = nil) async throws -> MeetingTranscript {
         try Task.checkCancellation()
-        let requestedModelID = transcriptionModelID ?? configuration.transcriptionModelID
+        let requestedModelID = ParticipantTranscriptionPolicy.modelID(for: transcriptionModelID ?? configuration.transcriptionModelID)
         guard let current = library.recording(id: recording.id),
               current.deletedAt == nil,
               current.audioVersion == recording.audioVersion else {
@@ -340,9 +340,22 @@ final class MeetingAnalysisService {
                 try check(job)
                 states[job.recording.id] = .transcribing(completed: index, total: chunkCount)
                 let audioChunk = try await chunker.chunk(for: audioURL, index: index)
-                let result = try await detailedClient.transcribeDetailed(audio: audioChunk.data,
-                    format: audioChunk.format, model: job.transcriptionModelID, apiKey: job.key,
-                    language: nil, prompt: profile.profile.promptContext)
+                let result: DetailedTranscriptionResult
+                do {
+                    result = try await detailedClient.transcribeDetailed(audio: audioChunk.data,
+                        format: audioChunk.format, model: job.transcriptionModelID, apiKey: job.key,
+                        language: nil, prompt: profile.profile.promptContext)
+                } catch {
+                    try check(job)
+                    guard index == 0, ParticipantTranscriptionPolicy.canRetryWithTimestamps(error, currentModel: job.transcriptionModelID) else {
+                        throw error
+                    }
+                    // One explicit timing-compatible fallback. Its real model ID
+                    // is used for caches and the returned transcript.
+                    var fallback = job
+                    fallback.transcriptionModelID = ParticipantTranscriptionPolicy.fallbackModelID
+                    return try await transcript(for: fallback)
+                }
                 totalTranscriptBytes += result.text.utf8.count
                 guard totalTranscriptBytes <= 1_000_000 else {
                     throw AIError(message: "전사문이 처리 한도를 초과했습니다. 녹음을 나누어 처리해 주세요.")

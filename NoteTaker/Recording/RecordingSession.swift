@@ -31,6 +31,7 @@ final class RecordingSession {
         let id: UUID
         let title: String
         let directoryURL: URL
+        let folderID: UUID?
         var accumulatedElapsed: TimeInterval
         var resumedAt: Date
         var warnings: [String]
@@ -84,6 +85,7 @@ final class RecordingSession {
         guard acceptsNewStarts, phase == .idle else { return }
 
         let generation = nextTransitionGeneration()
+        let selectedFolderID = appModel.selectedCustomFolderID
         phase = .preparing
         alert = nil
         resetLevels()
@@ -109,6 +111,7 @@ final class RecordingSession {
                 id: id,
                 title: title,
                 directoryURL: directoryURL,
+                folderID: selectedFolderID,
                 accumulatedElapsed: 0,
                 resumedAt: now(),
                 warnings: start.warnings
@@ -200,7 +203,7 @@ final class RecordingSession {
                     keepsPartialFile: false
                 )
             }
-            let recording = Recording(
+            var recording = Recording(
                 id: activeRecording.id,
                 title: activeRecording.title,
                 createdAt: Date(),
@@ -208,6 +211,13 @@ final class RecordingSession {
                 mode: settings.captureMode,
                 warnings: activeRecording.warnings + result.warnings
             )
+            if let folderID = activeRecording.folderID, library.folderStore.isActive(id: folderID) {
+                recording.folderID = folderID
+                appModel.selectedCustomFolderID = folderID
+            } else {
+                appModel.selectedCustomFolderID = nil
+                appModel.selectedFolder = .all
+            }
             try library.add(recording)
             appModel.selectedRecordingID = recording.id
             await recorder.confirmPublished()

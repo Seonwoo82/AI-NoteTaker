@@ -29,6 +29,24 @@ struct LibraryControllerTests {
         #expect(harness.model.selectedRecordingID == deleted.id)
     }
 
+    @Test("custom folders filter moved recordings and deletion preserves their audio")
+    func customFolderMoveAndDeletePreserveAudio() async throws {
+        let h = await LibraryControllerHarness.make()
+        let recording = try await h.addRecording(title: "Budget")
+        let folder = try h.controller.createFolder(named: "Project A")
+        try await h.controller.moveRecording(recording.id, toFolder: folder.id)
+        await h.controller.selectCustomFolder(folder.id)
+        #expect(h.controller.visibleRecordings.map(\.id) == [recording.id])
+        #expect(h.controller.count(for: .all) == 1)
+        try h.controller.renameFolder(id: folder.id, to: "Project Renamed")
+        #expect(h.controller.selectedFolderTitle == "Project Renamed")
+        try await h.controller.deleteFolder(id: folder.id)
+        #expect(h.model.selectedCustomFolderID == nil)
+        #expect(h.controller.visibleRecordings.map(\.id) == [recording.id])
+        #expect(h.store.recording(id: recording.id)?.deletedAt == nil)
+        #expect(FileManager.default.fileExists(atPath: h.store.audioURL(for: recording).path))
+    }
+
     @Test("empty folder clears stale selection and stops playback")
     func emptyFolderClearsStaleSelectionAndStopsPlayback() async throws {
         let harness = await LibraryControllerHarness.make()

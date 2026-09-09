@@ -17,7 +17,7 @@ nonisolated struct MeetingNotesEnhancementPreview: Identifiable, Equatable, Send
 nonisolated extension MeetingNotesDocument {
     func participantTranscript(resolvingWith resolved: MeetingTranscript?) -> MeetingTranscript? {
         if let resolved, resolved.recordingID == recordingID, resolved.audioVersion == audioVersion,
-           resolved.transcriptionModelID == transcriptionModelID {
+           resolved.transcriptionModelID == (speakerTranscript?.transcriptionModelID ?? ParticipantTranscriptionPolicy.modelID(for: transcriptionModelID)) {
             return resolved
         }
         return speakerTranscript

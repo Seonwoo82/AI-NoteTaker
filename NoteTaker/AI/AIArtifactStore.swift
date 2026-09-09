@@ -25,7 +25,7 @@ actor AIArtifactStore {
               doc.audioVersion == recording.audioVersion else { return nil }
         if let transcript = doc.speakerTranscript {
             guard transcript.recordingID == doc.recordingID, transcript.audioVersion == doc.audioVersion,
-                  transcript.transcriptionModelID == doc.transcriptionModelID,
+                  ParticipantTranscriptionPolicy.accepts(actual: transcript.transcriptionModelID, requested: doc.transcriptionModelID),
                   (try? transcript.validate(duration: recording.duration)) != nil else { return nil }
         }
         if let enhancement = doc.enhancement {

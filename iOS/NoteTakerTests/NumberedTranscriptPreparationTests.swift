@@ -29,6 +29,35 @@ struct NumberedTranscriptPreparationTests {
         #expect(h.speakerBackend.diarizeCallCount == 0)
     }
 
+    @Test("GPT participant transcription requests timing-compatible Whisper directly")
+    func gptTimingUsesCompatibleModel() async throws {
+        let h = try await NumberedPreparationHarness.make()
+        h.configuration.transcriptionModelID = "openai/gpt-transcribe"
+        let transcript = try await h.service.prepareNumberedTranscript(h.recording)
+        #expect(await h.detailedClient.modelsUsed == ["openai/whisper-large-v3"])
+        #expect(transcript.transcriptionModelID == "openai/whisper-large-v3")
+        #expect(h.configuration.transcriptionModelID == "openai/gpt-transcribe")
+        #expect(h.store.document(for: h.recording.id)?.transcript.transcriptionModelID == "openai/whisper-large-v3")
+    }
+
+    @Test("a first-request 400 retries timing once and records the actual fallback model")
+    func timingFormatFallbackIsBounded() async throws {
+        let h = try await NumberedPreparationHarness.make()
+        await h.detailedClient.setFailureModel("fixture/stt")
+        let transcript = try await h.service.prepareNumberedTranscript(h.recording)
+        #expect(await h.detailedClient.modelsUsed == ["fixture/stt", "openai/whisper-large-v3"])
+        #expect(transcript.transcriptionModelID == "openai/whisper-large-v3")
+        #expect(await h.client.completionCalls == 0)
+    }
+
+    @Test("authentication failures never trigger a different paid transcription model")
+    func authenticationFailureDoesNotRetry() async throws {
+        let h = try await NumberedPreparationHarness.make()
+        await h.detailedClient.setFailureModel("fixture/stt", status: 401)
+        await #expect(throws: AIError.self) { _ = try await h.service.prepareNumberedTranscript(h.recording) }
+        #expect(await h.detailedClient.modelsUsed == ["fixture/stt"])
+    }
+
     @Test("preparation persists transcript only when no complete artifact exists")
     func persistsTranscriptOnlyWithoutCompletion() async throws {
         let h = try await NumberedPreparationHarness.make()
@@ -181,10 +210,16 @@ private final class NumberedPreparationSpeakerBackend: SpeakerAnalysisServing, @
 
 private actor NumberedPreparationDetailedClient: DetailedTranscriptionServing {
     private(set) var calls = 0
+    private(set) var modelsUsed: [String] = []
+    private var failureModel: String?
+    private var failureStatus = 400
+    func setFailureModel(_ model: String, status: Int = 400) { failureModel = model; failureStatus = status }
 
     func transcribeDetailed(audio: Data, format: String, model: String, apiKey: String,
                             language: String?, prompt: String?) async throws -> DetailedTranscriptionResult {
         calls += 1
+        modelsUsed.append(model)
+        if model == failureModel { throw AIError(message: "HTTP failure", reason: .httpStatus(failureStatus)) }
         return DetailedTranscriptionResult(text: "Host opens. Guest replies.",
             words: [],
             segments: [
