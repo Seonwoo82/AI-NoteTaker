@@ -55,7 +55,7 @@ struct NoteTakerApp: App {
                         recordingIsBusy: container.session.phase != .idle,
                         prepareVoiceModels: { Task { await container.meeting.prepareVoiceModels() } },
                         beginEnrollment: { await container.meeting.beginEnrollment() },
-                        finishEnrollment: { Task { await container.meeting.finishEnrollment() } },
+                        finishEnrollment: { await container.meeting.finishEnrollment() },
                         cancelEnrollment: { container.meeting.cancelEnrollment() },
                         deleteEnrollment: { container.meeting.deleteEnrollment() }
                     )

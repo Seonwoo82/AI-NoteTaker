@@ -29,7 +29,7 @@ struct AppSettingsView: View {
                             recordingIsBusy: model.recorder.isRecording || model.recorder.isBusy,
                             prepareVoiceModels: { Task { await meeting.prepareVoiceModels() } },
                             beginEnrollment: { await meeting.beginEnrollment() },
-                            finishEnrollment: { Task { await meeting.finishEnrollment() } },
+                            finishEnrollment: { await meeting.finishEnrollment() },
                             cancelEnrollment: { meeting.cancelEnrollment() },
                             deleteEnrollment: { meeting.deleteEnrollment() }
                         )

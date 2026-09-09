@@ -140,3 +140,15 @@
 - [x] README와 라이선스 고지 갱신.
 
 설계와 구현 기록: [설계](design/MEETING-INTELLIGENCE.md), [구현 계획](implementation/MEETING-INTELLIGENCE.md), [검증 기록](implementation/MEETING-INTELLIGENCE-VERIFICATION.md)
+
+## 목소리 등록 후속 보완 — 1.3.2 (빌드 10)
+
+- [x] 녹음 전 예문과 녹음 요령을 보여주는 모달, 명시적인 녹음 시작.
+- [x] 10초 이후 저장, 30초 자동 종료, 오류 후 재시도, 완료 표시.
+- [x] 연속 오디오의 반올림 오차로 등록이 중단되는 문제와 취소·재등록 경합 수정.
+- [x] 이전 목소리를 유지하면서 재등록 실패 메시지를 정확히 표시.
+- [x] Mac 368개 / iOS 시뮬레이터 244개 테스트, 양쪽 Release 빌드 및 한국어 화면 검증.
+- [x] Mac 및 iPhone 최신 앱 설치·실행 확인.
+- [ ] 실제 iPhone에서 사용자 목소리 녹음·저장 재확인.
+
+[상세 검증 기록](implementation/VOICE-ENROLLMENT-GUIDE.md)

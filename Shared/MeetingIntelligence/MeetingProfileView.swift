@@ -95,7 +95,7 @@ struct MeetingProfileView: View {
     let recordingIsBusy: Bool
     let prepareVoiceModels: () -> Void
     let beginEnrollment: () async -> Void
-    let finishEnrollment: () -> Void
+    let finishEnrollment: () async -> Void
     let cancelEnrollment: () -> Void
     let deleteEnrollment: () -> Void
 
@@ -117,6 +117,7 @@ struct MeetingProfileView: View {
     @State private var hasStartedVoiceEnrollment = false
     @State private var isStartingVoiceEnrollment = false
     @State private var startVoiceEnrollmentTask: Task<Void, Never>?
+    @State private var finishVoiceEnrollmentTask: Task<Void, Never>?
     @State private var startVoiceEnrollmentID = UUID()
     @FocusState private var focusedInput: MeetingProfileInput?
 
@@ -585,6 +586,8 @@ struct MeetingProfileView: View {
     }
 
     private func cancelVoiceEnrollmentFlow() {
+        finishVoiceEnrollmentTask?.cancel()
+        finishVoiceEnrollmentTask = nil
         startVoiceEnrollmentTask?.cancel()
         startVoiceEnrollmentTask = nil
         startVoiceEnrollmentID = UUID()
@@ -601,7 +604,13 @@ struct MeetingProfileView: View {
               voice.isEnrolling, !voice.isProcessing,
               VoiceEnrollmentGuidePolicy().canFinish(elapsed: voice.elapsed) else { return }
         didRequestVoiceEnrollmentFinish = true
-        finishEnrollment()
+        let attemptID = startVoiceEnrollmentID
+        finishVoiceEnrollmentTask = Task { @MainActor in
+            guard !Task.isCancelled else { return }
+            await finishEnrollment()
+            guard startVoiceEnrollmentID == attemptID else { return }
+            finishVoiceEnrollmentTask = nil
+        }
     }
 
     private func saveGlossaryTerm() {

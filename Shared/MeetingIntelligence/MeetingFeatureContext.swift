@@ -202,7 +202,7 @@ final class MeetingFeatureContext {
     }
 
     func finishEnrollment() async {
-        guard enrollmentIsBusy else { return }
+        guard !Task.isCancelled, enrollmentIsBusy, voice.presentation.isEnrolling else { return }
         let generation = enrollmentGeneration
         enrollmentCapture.stop()
         await voice.finishEnrollment()

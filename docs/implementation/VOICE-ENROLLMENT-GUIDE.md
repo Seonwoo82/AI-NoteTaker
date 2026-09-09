@@ -9,6 +9,7 @@
 ## 원인과 수정
 
 - 실제 tap이 만드는 누적 프레임 타임스탬프와 `이전 시작 시간 + 버퍼 길이`에는 부동소수점 반올림 차이가 생긴다. 4,096프레임 / 48kHz 버퍼는 약 0.68초 뒤 정상 입력을 역순 입력으로 잘못 판정했다. 16kHz와 44.1kHz에서도 재현됐다. 한 샘플 길이 이내의 오차를 허용하고 실제 겹침·입력 경로 변경·긴 공백 검사는 유지한다.
+- 기존 프로필로 화자 감지를 다시 시작하더라도 새 등록의 실패 메시지는 유지한다. 완료 표시는 이번 시도에서 실제로 저장된 새 프로필이 있어야만 표시한다.
 - 취소한 이전 등록 작업이 뒤늦게 끝나거나 실패해도 새 등록의 처리 상태, 오류, 오디오 버퍼를 변경하지 못하도록 등록 세대를 확인한다.
 - 재생 중지 또는 마이크 권한 응답을 기다리는 동안 취소된 시작 작업은 마이크를 열지 않는다. 이전 시작 작업이 늦게 돌아와도 새 등록을 취소하지 않는다.
 
@@ -18,12 +19,17 @@
 
 - `enrollment-continuity-red.log`: 합성 PCM을 실제 tap 콜백 → OwnerVoiceManager로 전달했을 때 세 샘플레이트에서 잘못된 중단을 재현했다.
 - `enrollment-continuity-green.log`: 시간 오차 수정 후 같은 경로가 통과했다.
-- 등록 취소·재시도·늦은 저장 결과와 권한 응답은 실제 마이크를 열지 않는 제어된 테스트로 검증한다.
+- `enrollment-lifecycle-red.log`, `enrollment-save-red.log`, `enrollment-feedback-red.log`: 권한 대기 취소, 오래된 시작·저장 작업, 실패한 재등록의 잘못된 성공 표시를 각각 재현했다. 실제 마이크를 열지 않는 제어된 테스트를 사용한다.
 - 안내 모달의 대기·녹음·오류·완료 화면은 한국어 정적 화면 렌더로 확인한다.
 
-- macOS 전체 `NoteTakerTests`: 367개 테스트 통과.
-- iOS 전체 `NoteTakerIOSTests`: 243개 테스트 통과.
-- macOS Release 빌드: 1.3.2(9) arm64 성공, `/Applications/AI-NoteTaker.app` 설치 및 코드서명 검증 통과.
-- iOS Release 빌드: 1.3.2(9) arm64 성공, 코드서명 검증 통과. 연결된 iPhone은 Xcode/CoreDevice에서 `available: false`라 설치 명령을 받을 수 없었다.
+## 최종 결과 — 1.3.2 (빌드 10)
 
-개인 목소리의 실기기 인식 정확도는 합성 오디오 테스트 범위에 포함되지 않는다.
+- Mac: 368개 테스트 통과 (`enrollment-mac-final-tests.log`).
+- iOS 시뮬레이터: 244개 테스트 통과 (`enrollment-ios-final-tests.log`).
+- 양쪽 arm64 Release 빌드와 코드서명 검증 통과 (`enrollment-*-final-release.log`).
+- 한국어 모달의 대기·녹음·오류·완료 화면 검증 통과. iOS 정적 렌더 호스트의 어두운 테마를 실제 UIKit trait에도 적용했다.
+- Mac `/Applications/AI-NoteTaker.app` 1.3.2 (10) 설치·실행 확인. 이전 앱과 라이브러리는 `~/Library/Application Support/NoteTaker Backups/`에 보관했다.
+- iPhone 1.3.2 (10) 설치 성공, 기기 앱 목록에서 버전 재확인, 공개 모델 파일 13개 보존 확인 (`ios-install-132.json`, `ios-installed-132.json`, `ios-model-verification-132.json`). 잠금 해제 후 앱 실행과 동일 PID의 프로세스 유지를 확인했다 (`ios-launch-132.json`, `ios-process-verification-132.json`). 실제 목소리 등록은 사용자 확인을 기다린다.
+- 개인 설치용 IPA: `build/releases/AI-NoteTaker-iOS-1.3.2-build10.ipa`. 서명 프로필이 들어 있으므로 공개 저장소에 올리지 않는다.
+
+로그는 `build/meeting-intelligence/`, 화면은 `build/visual-qa/`에 있다. 합성 오디오 테스트에서 마이크는 열지 않았다. 이번 조사에서는 새로운 프로세스 종료 로그가 확보되지 않았으며, 시간 오차에 의한 등록 중단과 취소·재등록 오류를 재현해 수정했다. 실제 사용자 목소리로 등록·인식하는 실기기 검증은 아직 수행하지 않았다.
