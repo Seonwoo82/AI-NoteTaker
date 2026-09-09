@@ -22,12 +22,14 @@ final class VoiceEnrollmentCapture {
     var isRunning: Bool { engine?.isRunning == true }
 
     func start(handler: @escaping LiveAudioSampleHandler) async throws {
+        try Task.checkCancellation()
         guard engine == nil, !isStarting else { return }
         isStarting = true
         let current = generation
         defer { if current == generation { isStarting = false } }
         let permitted = await requestPermission()
         guard current == generation else { throw CancellationError() }
+        guard !Task.isCancelled else { throw CancellationError() }
         guard permitted else { throw AIError(message: "목소리를 등록하려면 마이크 접근을 허용해 주세요.") }
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()

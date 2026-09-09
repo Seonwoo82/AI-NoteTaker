@@ -3499,6 +3499,66 @@
         }
       }
     },
+    "Read the guide below in your normal meeting voice. Keep the device about 20 to 30 cm from your mouth and choose a quiet room.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아래 문장을 평소 회의 때 말하는 목소리로 읽어주세요. 조용한 공간에서 기기를 입에서 20~30cm 정도 떨어뜨리면 더 잘 인식됩니다."
+          }
+        }
+      }
+    },
+    "Please read aloud": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "따라 읽을 문장"
+          }
+        }
+      }
+    },
+    "Hello, this is my voice for AI-NoteTaker. I usually speak in meetings about project goals, next steps, decisions, questions, and follow-up work. Please use this short sample to recognize when I am speaking.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "안녕하세요. AI-NoteTaker에 등록할 제 목소리입니다. 저는 회의에서 프로젝트 목표, 다음 할 일, 결정 사항, 질문, 후속 작업에 대해 이야기합니다. 이 짧은 샘플을 사용해 제가 말하는 순간을 인식해 주세요."
+          }
+        }
+      }
+    },
+    "Save Voice": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리 저장"
+          }
+        }
+      }
+    },
+    "Starting voice recording...": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리 녹음을 시작하고 있습니다..."
+          }
+        }
+      }
+    },
+    "Update Voice": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "목소리 다시 저장"
+          }
+        }
+      }
+    },
     "Record a little more clear speech before saving your voice profile.": {
       "localizations": {
         "ko": {
@@ -4105,6 +4165,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "미답변 질문"
+          }
+        }
+      }
+    },
+    "Save after %llds · stops at %llds": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld초 후 저장 가능 · %2$lld초에 자동 종료"
+          }
+        }
+      }
+    },
+    "%lld more seconds of clear speech before saving.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld초 더 또렷하게 말하면 저장할 수 있어요."
+          }
+        }
+      }
+    },
+    "Voice profile saved on this device.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에 내 목소리를 등록했어요."
           }
         }
       }

@@ -26,9 +26,9 @@ struct AppSettingsView: View {
                         MeetingProfileView(
                             store: meeting.profile,
                             voice: meeting.voice.presentation,
-                            recordingIsBusy: meeting.enrollmentIsBusy || model.recorder.isRecording || model.recorder.isBusy,
+                            recordingIsBusy: model.recorder.isRecording || model.recorder.isBusy,
                             prepareVoiceModels: { Task { await meeting.prepareVoiceModels() } },
-                            beginEnrollment: { Task { await meeting.beginEnrollment() } },
+                            beginEnrollment: { await meeting.beginEnrollment() },
                             finishEnrollment: { Task { await meeting.finishEnrollment() } },
                             cancelEnrollment: { meeting.cancelEnrollment() },
                             deleteEnrollment: { meeting.deleteEnrollment() }

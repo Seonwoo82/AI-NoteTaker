@@ -267,37 +267,43 @@ final class OwnerVoiceManager {
         presentation.isEnrolling = false
         presentation.isProcessing = true
         presentation.status = String(localized: "Creating local voice profile...")
-        defer { presentation.isProcessing = false }
+        let samples = enrollment.samples
+        let sampleRate = enrollment.sampleRate
+        let duration = enrollment.duration
 
-        guard let sampleRate = enrollment.sampleRate,
-              enrollment.duration >= policy.minimumEnrollmentDuration,
-              rms(enrollment.samples) >= policy.minimumSpeechRMS else {
+        guard let sampleRate,
+              duration >= policy.minimumEnrollmentDuration,
+              rms(samples) >= policy.minimumSpeechRMS else {
             presentation.error = String(localized: "Record a little more clear speech before saving your voice profile.")
             presentation.status = String(localized: "Voice profile was not saved.")
+            presentation.isProcessing = false
             state = .unavailable
             enrollment.removeAll()
             return
         }
 
         do {
-            let embedding = try await backend.embedding(samples: enrollment.samples, sampleRate: sampleRate)
+            let embedding = try await backend.embedding(samples: samples, sampleRate: sampleRate)
             guard lifecycleID == finishedEnrollmentLifecycleID else { return }
             try validateEmbedding(embedding)
             let voice = LocalVoiceProfile(
                 modelID: backend.embeddingModelID,
                 embedding: embedding,
                 enrolledAt: Date(),
-                sampleDuration: enrollment.duration
+                sampleDuration: duration
             )
             try profile.saveVoiceProfile(voice, allowedDimensions: embedding.count...embedding.count)
             presentation.modelsReady = true
             presentation.status = String(localized: "Local voice profile is ready.")
             presentation.error = nil
+            presentation.isProcessing = false
             state = .silence
             onAvailabilityChanged?(true)
         } catch {
+            guard lifecycleID == finishedEnrollmentLifecycleID else { return }
             presentation.error = Self.message(for: error)
             presentation.status = String(localized: "Voice profile was not saved.")
+            presentation.isProcessing = false
             state = .unavailable
         }
         enrollment.removeAll()
@@ -350,6 +356,16 @@ final class OwnerVoiceManager {
         state = .unavailable
         if hadVoice {
             onAvailabilityChanged?(false)
+        }
+    }
+
+    func resumeListeningAfterEnrollment() {
+        let enrollmentError = presentation.error
+        let enrollmentStatus = presentation.status
+        startListening()
+        if let enrollmentError {
+            presentation.error = enrollmentError
+            presentation.status = enrollmentStatus
         }
     }
 
@@ -417,8 +433,10 @@ final class OwnerVoiceManager {
 
     private func ingestEnrollment(_ chunk: LiveAudioSamples) {
         guard mode == .enrolling else { return }
+        // Cumulative frame timestamps can differ from start + duration by a few
+        // floating-point bits. A one-frame tolerance still rejects real overlaps.
         let shouldReject = enrollment.sampleRate.map { $0 != chunk.sampleRate } ?? false
-            || enrollmentAudioEnd.map { chunk.startTime < $0 || chunk.startTime - $0 > policy.maxContinuousAudioGap } ?? false
+            || enrollmentAudioEnd.map { chunk.startTime < $0 - 1 / chunk.sampleRate || chunk.startTime - $0 > policy.maxContinuousAudioGap } ?? false
         guard !shouldReject else {
             reportCaptureError(AIError(message: String(localized: "목소리 등록 오디오가 중간에 끊겼어요. 다시 녹음해 주세요.")))
             return
@@ -437,7 +455,7 @@ final class OwnerVoiceManager {
 
         for chunk in chunks {
             let shouldReset = listeningWindow.sampleRate.map { $0 != chunk.sampleRate } ?? false
-                || lastAudioEnd.map { chunk.startTime < $0 || chunk.startTime - $0 > policy.maxContinuousAudioGap } ?? false
+                || lastAudioEnd.map { chunk.startTime < $0 - 1 / chunk.sampleRate || chunk.startTime - $0 > policy.maxContinuousAudioGap } ?? false
             if shouldReset {
                 listeningWindow.removeAll()
                 state = .silence

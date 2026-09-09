@@ -94,11 +94,12 @@ struct MeetingProfileView: View {
     let voice: VoiceProfilePresentation
     let recordingIsBusy: Bool
     let prepareVoiceModels: () -> Void
-    let beginEnrollment: () -> Void
+    let beginEnrollment: () async -> Void
     let finishEnrollment: () -> Void
     let cancelEnrollment: () -> Void
     let deleteEnrollment: () -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var draftDisplayName = ""
     @State private var draftAliases = ""
     @State private var draftRole = ""
@@ -108,6 +109,15 @@ struct MeetingProfileView: View {
     @State private var draftCategory: GlossaryCategory = .general
     @State private var editingTermID: UUID?
     @State private var localMessage: String?
+    @State private var showingVoiceEnrollmentGuide = false
+    @State private var didAutoFinishVoiceEnrollment = false
+    @State private var didRequestVoiceEnrollmentFinish = false
+    @State private var voiceEnrollmentCompleted = false
+    @State private var previousVoiceProfile: LocalVoiceProfile?
+    @State private var hasStartedVoiceEnrollment = false
+    @State private var isStartingVoiceEnrollment = false
+    @State private var startVoiceEnrollmentTask: Task<Void, Never>?
+    @State private var startVoiceEnrollmentID = UUID()
     @FocusState private var focusedInput: MeetingProfileInput?
 
     var body: some View {
@@ -125,7 +135,48 @@ struct MeetingProfileView: View {
         }
         .background(Color.profileWindowBackground)
         .onAppear(perform: refreshDraftsFromStore)
+        .onDisappear(perform: cancelActiveEnrollmentFromDismiss)
         .onChange(of: store.profile) { _, _ in refreshDraftsFromStore() }
+        .sheet(isPresented: $showingVoiceEnrollmentGuide, onDismiss: cancelActiveEnrollmentFromDismiss) {
+            VoiceEnrollmentGuideView(
+                voice: hasStartedVoiceEnrollment ? voice : VoiceProfilePresentation(
+                    modelsReady: voice.modelsReady, isPreparing: voice.isPreparing),
+                hasExistingProfile: store.localVoice != nil,
+                recordingIsBusy: recordingIsBusy,
+                isStarting: isStartingVoiceEnrollment,
+                isCompleted: voiceEnrollmentCompleted,
+                onStart: startVoiceEnrollment,
+                onFinish: finishVoiceEnrollment,
+                onCancel: {
+                    cancelVoiceEnrollmentFlow()
+                    showingVoiceEnrollmentGuide = false
+                },
+                onClose: { showingVoiceEnrollmentGuide = false }
+            )
+            .presentationDetentsForVoiceEnrollment()
+        }
+        .onChange(of: voice) { _, newValue in
+            if showingVoiceEnrollmentGuide,
+               newValue.isEnrolling,
+               newValue.elapsed >= VoiceEnrollmentGuidePolicy().maximumDuration,
+               !didAutoFinishVoiceEnrollment {
+                didAutoFinishVoiceEnrollment = true
+                finishVoiceEnrollment()
+            }
+            guard showingVoiceEnrollmentGuide,
+                  didRequestVoiceEnrollmentFinish,
+                  !newValue.isEnrolling,
+                  !newValue.isProcessing,
+                  newValue.error == nil,
+                  store.localVoice != nil,
+                  store.localVoice != previousVoiceProfile else { return }
+            voiceEnrollmentCompleted = true
+        }
+        .onChange(of: scenePhase) { _, newValue in
+            guard newValue == .background else { return }
+            cancelVoiceEnrollmentFlow()
+            showingVoiceEnrollmentGuide = false
+        }
 #if os(iOS)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -381,7 +432,7 @@ struct MeetingProfileView: View {
                 voiceButtons
                 VStack(alignment: .leading, spacing: 8) {
                     prepareButton
-                    HStack { beginButton; finishButton; cancelButton }
+                    beginButton
                     deleteVoiceButton
                 }
             }
@@ -405,8 +456,6 @@ struct MeetingProfileView: View {
         HStack {
             prepareButton
             beginButton
-            finishButton
-            cancelButton
             deleteVoiceButton
         }
     }
@@ -423,32 +472,17 @@ struct MeetingProfileView: View {
 
     private var beginButton: some View {
         Button {
-            beginEnrollment()
+            focusedInput = nil
+            didAutoFinishVoiceEnrollment = false
+            didRequestVoiceEnrollmentFinish = false
+            voiceEnrollmentCompleted = false
+            hasStartedVoiceEnrollment = false
+            showingVoiceEnrollmentGuide = true
         } label: {
             Label(store.localVoice == nil ? String(localized: "Record My Voice") : String(localized: "Re-record"), systemImage: "record.circle")
         }
         .disabled(recordingIsBusy || !voice.modelsReady || voice.isPreparing || voice.isEnrolling || voice.isProcessing)
         .accessibilityIdentifier("profile-voice-begin")
-    }
-
-    private var finishButton: some View {
-        Button {
-            finishEnrollment()
-        } label: {
-            Label(String(localized: "Finish"), systemImage: "stop.circle")
-        }
-        .disabled(!voice.isEnrolling || voice.isProcessing)
-        .accessibilityIdentifier("profile-voice-finish")
-    }
-
-    private var cancelButton: some View {
-        Button {
-            cancelEnrollment()
-        } label: {
-            Label(String(localized: "Cancel"), systemImage: "xmark.circle")
-        }
-        .disabled(!voice.isEnrolling || voice.isProcessing)
-        .accessibilityIdentifier("profile-voice-cancel")
     }
 
     private var deleteVoiceButton: some View {
@@ -526,6 +560,48 @@ struct MeetingProfileView: View {
         } catch {
             localMessage = error.localizedDescription
         }
+    }
+
+    private func cancelActiveEnrollmentFromDismiss() {
+        cancelVoiceEnrollmentFlow()
+    }
+
+    private func startVoiceEnrollment() {
+        guard startVoiceEnrollmentTask == nil, !isStartingVoiceEnrollment else { return }
+        didAutoFinishVoiceEnrollment = false
+        didRequestVoiceEnrollmentFinish = false
+        voiceEnrollmentCompleted = false
+        previousVoiceProfile = store.localVoice
+        let taskID = UUID()
+        startVoiceEnrollmentID = taskID
+        hasStartedVoiceEnrollment = true
+        isStartingVoiceEnrollment = true
+        startVoiceEnrollmentTask = Task { @MainActor in
+            await beginEnrollment()
+            guard startVoiceEnrollmentID == taskID else { return }
+            isStartingVoiceEnrollment = false
+            startVoiceEnrollmentTask = nil
+        }
+    }
+
+    private func cancelVoiceEnrollmentFlow() {
+        startVoiceEnrollmentTask?.cancel()
+        startVoiceEnrollmentTask = nil
+        startVoiceEnrollmentID = UUID()
+        isStartingVoiceEnrollment = false
+        didAutoFinishVoiceEnrollment = false
+        didRequestVoiceEnrollmentFinish = false
+        voiceEnrollmentCompleted = false
+        hasStartedVoiceEnrollment = false
+        cancelEnrollment()
+    }
+
+    private func finishVoiceEnrollment() {
+        guard !didRequestVoiceEnrollmentFinish, !isStartingVoiceEnrollment,
+              voice.isEnrolling, !voice.isProcessing,
+              VoiceEnrollmentGuidePolicy().canFinish(elapsed: voice.elapsed) else { return }
+        didRequestVoiceEnrollmentFinish = true
+        finishEnrollment()
     }
 
     private func saveGlossaryTerm() {
@@ -664,7 +740,7 @@ private struct ProfileSettingsCard<Content: View>: View {
     }
 }
 
-private enum ProfileDurationFormat {
+enum ProfileDurationFormat {
     static func short(_ seconds: Double) -> String {
         let wholeSeconds = max(0, Int(seconds.rounded(.down)))
         return String(format: "%02d:%02d", wholeSeconds / 60, wholeSeconds % 60)

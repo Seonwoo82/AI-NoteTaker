@@ -161,17 +161,18 @@ final class MeetingFeatureContext {
         refreshVoiceObservation()
     }
 
-    func refreshVoiceObservation() {
+    func refreshVoiceObservation(preserveEnrollmentFeedback: Bool = false) {
         guard !isTerminating, !enrollmentIsBusy else { return }
         voice.stopListening()
         if profile.localVoice != nil {
             attachLiveAudio(voice.audioHandler)
-            voice.startListening()
+            if preserveEnrollmentFeedback { voice.resumeListeningAfterEnrollment() }
+            else { voice.startListening() }
         } else { attachLiveAudio(nil) }
     }
 
     func beginEnrollment() async {
-        guard !isTerminating, !recordingIsBusy(), !enrollmentIsBusy else { return }
+        guard !Task.isCancelled, !isTerminating, !recordingIsBusy(), !enrollmentIsBusy else { return }
         enrollmentIsBusy = true
         errorMessage = nil
         let generation = UUID()
@@ -179,7 +180,8 @@ final class MeetingFeatureContext {
         voice.stopListening()
         attachLiveAudio(nil)
         await stopPlayback()
-        guard enrollmentGeneration == generation, !recordingIsBusy() else { cancelEnrollment(); return }
+        guard enrollmentGeneration == generation else { return }
+        guard !Task.isCancelled, !recordingIsBusy() else { cancelEnrollment(); return }
         await voice.beginEnrollment()
         guard voice.presentation.isEnrolling else {
             enrollmentIsBusy = false
@@ -206,7 +208,7 @@ final class MeetingFeatureContext {
         await voice.finishEnrollment()
         guard generation == enrollmentGeneration else { return }
         enrollmentIsBusy = false
-        refreshVoiceObservation()
+        refreshVoiceObservation(preserveEnrollmentFeedback: true)
     }
 
     func cancelEnrollment() {

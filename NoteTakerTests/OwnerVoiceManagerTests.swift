@@ -327,6 +327,62 @@ struct OwnerVoiceManagerTests {
         #expect(manager.state == .unavailable)
     }
 
+    @Test("an older cancelled save cannot overwrite a newer voice registration", arguments: [false, true])
+    func cancelledSavePreservesNewRegistration(oldSaveFails: Bool) async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MeetingProfileStore(root: root)
+        let backend = DeferredEnrollmentBackend()
+        let manager = OwnerVoiceManager(profile: store, backend: backend,
+            policy: OwnerVoicePolicy(minimumEnrollmentDuration: 0.5))
+        await manager.prepareModels()
+        await manager.beginEnrollment()
+        manager.audioHandler(LiveAudioSamples(samples: speechSamples(count: 8_000, amplitude: 0.2),
+            sampleRate: 16_000, startTime: 0))
+        let oldSave = Task { await manager.finishEnrollment() }
+        await backend.waitForPendingCount(1)
+        manager.cancelEnrollment()
+
+        await manager.beginEnrollment()
+        manager.audioHandler(LiveAudioSamples(samples: speechSamples(count: 8_000, amplitude: 0.3),
+            sampleRate: 16_000, startTime: 0))
+        let newSave = Task { await manager.finishEnrollment() }
+        await backend.waitForPendingCount(2)
+        await backend.resolveNext(fails: oldSaveFails)
+        await oldSave.value
+        #expect(manager.presentation.isProcessing)
+        #expect(manager.presentation.error == nil)
+        #expect(store.localVoice == nil)
+
+        await backend.resolveNext(fails: false)
+        await newSave.value
+        #expect(manager.presentation.error == nil)
+        #expect(store.localVoice?.sampleDuration == 0.5)
+        #expect(!manager.presentation.isProcessing)
+    }
+
+    @Test("resuming an old profile after a failed replacement keeps the failure visible")
+    func failedReplacementKeepsFeedbackWhenDetectionResumes() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MeetingProfileStore(root: root)
+        let original = LocalVoiceProfile(modelID: "fake-speaker-v1", embedding: [1, 0, 0],
+            enrolledAt: Date(timeIntervalSince1970: 1), sampleDuration: 12)
+        try store.saveVoiceProfile(original, allowedDimensions: 3...3)
+        let manager = OwnerVoiceManager(profile: store, backend: FakeSpeakerAnalysisService(),
+            policy: OwnerVoicePolicy(minimumEnrollmentDuration: 0.5))
+        await manager.prepareModels()
+        await manager.beginEnrollment()
+        manager.audioHandler(LiveAudioSamples(samples: Array(repeating: 0, count: 8_000),
+            sampleRate: 16_000, startTime: 0))
+        await manager.finishEnrollment()
+        let failure = try #require(manager.presentation.error)
+        manager.resumeListeningAfterEnrollment()
+        #expect(manager.presentation.error == failure)
+        #expect(store.localVoice == original)
+        #expect(manager.state == .silence)
+    }
+
     @Test("capture errors clear enrollment state and surface the message")
     func captureErrorsClearEnrollmentState() async throws {
         let store = MeetingProfileStore(root: temporaryDirectory())
@@ -538,4 +594,29 @@ private func speechSamples(count: Int, amplitude: Float) -> [Float] {
 private func temporaryDirectory() -> URL {
     FileManager.default.temporaryDirectory
         .appending(path: "OwnerVoiceManagerTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+}
+
+private actor DeferredEnrollmentBackend: SpeakerAnalysisServing {
+    nonisolated let embeddingModelID = "deferred-enrollment"
+    private var pending: [CheckedContinuation<[Float], any Error>] = []
+    func prepare() async throws {}
+    func diarize(audioURL: URL) async throws -> AcousticDiarization {
+        AcousticDiarization(speakers: [], spans: [])
+    }
+    func embedding(samples: [Float], sampleRate: Double) async throws -> [Float] {
+        try await withCheckedThrowingContinuation { pending.append($0) }
+    }
+    func waitForPendingCount(_ count: Int) async {
+        for _ in 0..<1_000 {
+            if pending.count >= count { return }
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        Issue.record("Timed out waiting for controlled enrollment save")
+    }
+    func resolveNext(fails: Bool) {
+        guard !pending.isEmpty else { Issue.record("No enrollment save to resolve"); return }
+        let continuation = pending.removeFirst()
+        if fails { continuation.resume(throwing: AIError(message: "Old registration failed")) }
+        else { continuation.resume(returning: [1, 0, 0]) }
+    }
 }

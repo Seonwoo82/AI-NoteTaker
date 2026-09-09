@@ -72,6 +72,26 @@ final class MeetingStaticRenderIOSTests: XCTestCase {
             width: 390,
             height: 820
         )
+        let guideImages = try voiceEnrollmentGuideCases().map { item in
+            let image = try renderImage(
+                VoiceEnrollmentGuideView(
+                    voice: item.voice,
+                    hasExistingProfile: item.hasExistingProfile,
+                    recordingIsBusy: false,
+                    isStarting: false,
+                    isCompleted: item.isCompleted,
+                    onStart: {},
+                    onFinish: {},
+                    onCancel: {},
+                    onClose: {}
+                ),
+                name: item.name,
+                width: 390,
+                height: 620
+            )
+            attach(image, name: item.attachment)
+            return image
+        }
 
         attach(profileImage, name: "Meeting Profile iPhone dark 390pt")
         attach(briefingImage, name: "Meeting Briefing iPhone dark 390pt")
@@ -79,6 +99,7 @@ final class MeetingStaticRenderIOSTests: XCTestCase {
         guard (profileImage.pngData()?.count ?? 0) > 10_000 else { throw RenderError.blankProfileRender }
         guard conversationImages.allSatisfy({ ($0.pngData()?.count ?? 0) > 10_000 }) else { throw RenderError.blankConversationRender }
         guard (briefingImage.pngData()?.count ?? 0) > 10_000 else { throw RenderError.blankBriefingRender }
+        guard guideImages.allSatisfy({ ($0.pngData()?.count ?? 0) > 10_000 }) else { throw RenderError.blankVoiceEnrollmentGuideRender }
         guard fixture.resolvedDocument.myCommitments.count == 1 else { throw RenderError.missingOwnerCommitment }
         guard fixture.resolvedDocument.receivedRequests.count == 1 else { throw RenderError.missingOwnerRequest }
         guard fixture.briefing.decisions.count == 1 else { throw RenderError.missingBriefingDecision }
@@ -105,6 +126,39 @@ final class MeetingStaticRenderIOSTests: XCTestCase {
         )
     }
 
+    private func voiceEnrollmentGuideCases() -> [(name: String, attachment: String, voice: VoiceProfilePresentation, hasExistingProfile: Bool, isCompleted: Bool)] {
+        [
+            (
+                "voice-enrollment-guide-ready-ios-dark",
+                "Voice Enrollment Guide Ready iPhone dark 390pt",
+                VoiceProfilePresentation(modelsReady: true, status: "음성 모델이 준비되었습니다."),
+                false,
+                false
+            ),
+            (
+                "voice-enrollment-guide-recording-ios-dark",
+                "Voice Enrollment Guide Recording iPhone dark 390pt",
+                VoiceProfilePresentation(modelsReady: true, isEnrolling: true, elapsed: 8.4, status: "내 목소리를 녹음하고 있습니다..."),
+                false,
+                false
+            ),
+            (
+                "voice-enrollment-guide-error-ios-dark",
+                "Voice Enrollment Guide Error iPhone dark 390pt",
+                VoiceProfilePresentation(modelsReady: true, elapsed: 4, status: "목소리 프로필을 저장하지 않았습니다.", error: "또렷한 음성을 조금 더 녹음하세요."),
+                true,
+                false
+            ),
+            (
+                "voice-enrollment-guide-completed-ios-dark",
+                "Voice Enrollment Guide Completed iPhone dark 390pt",
+                VoiceProfilePresentation(modelsReady: true, elapsed: 18, status: "내 목소리 프로필이 준비되었습니다."),
+                true,
+                true
+            )
+        ]
+    }
+
     private func renderImage<Content: View>(_ content: Content, name: String, width: CGFloat, height: CGFloat) throws -> UIImage {
         let framed = content
             .environment(\.colorScheme, .dark)
@@ -112,6 +166,7 @@ final class MeetingStaticRenderIOSTests: XCTestCase {
             .background(Color(uiColor: .systemBackground))
             .frame(width: width, height: height)
         let controller = UIHostingController(rootView: framed)
+        controller.overrideUserInterfaceStyle = .dark
         controller.loadViewIfNeeded()
         controller.view.frame = CGRect(x: 0, y: 0, width: width, height: height)
         controller.view.backgroundColor = .systemBackground
@@ -183,6 +238,7 @@ final class MeetingStaticRenderIOSTests: XCTestCase {
         case blankProfileRender
         case blankConversationRender
         case blankBriefingRender
+        case blankVoiceEnrollmentGuideRender
         case missingOwnerCommitment
         case missingOwnerRequest
         case missingBriefingDecision

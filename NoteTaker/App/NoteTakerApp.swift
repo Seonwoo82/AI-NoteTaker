@@ -52,9 +52,9 @@ struct NoteTakerApp: App {
                     MeetingProfileView(
                         store: container.meeting.profile,
                         voice: container.meeting.voice.presentation,
-                        recordingIsBusy: container.meeting.enrollmentIsBusy || container.session.phase != .idle,
+                        recordingIsBusy: container.session.phase != .idle,
                         prepareVoiceModels: { Task { await container.meeting.prepareVoiceModels() } },
-                        beginEnrollment: { Task { await container.meeting.beginEnrollment() } },
+                        beginEnrollment: { await container.meeting.beginEnrollment() },
                         finishEnrollment: { Task { await container.meeting.finishEnrollment() } },
                         cancelEnrollment: { container.meeting.cancelEnrollment() },
                         deleteEnrollment: { container.meeting.deleteEnrollment() }

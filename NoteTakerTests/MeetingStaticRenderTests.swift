@@ -73,6 +73,26 @@ final class MeetingStaticRenderMacTests: XCTestCase {
             width: 680,
             height: 760
         )
+        let guideImages = try voiceEnrollmentGuideCases().map { item in
+            let image = try renderPNG(
+                VoiceEnrollmentGuideView(
+                    voice: item.voice,
+                    hasExistingProfile: item.hasExistingProfile,
+                    recordingIsBusy: false,
+                    isStarting: false,
+                    isCompleted: item.isCompleted,
+                    onStart: {},
+                    onFinish: {},
+                    onCancel: {},
+                    onClose: {}
+                ),
+                name: item.name,
+                width: 460,
+                height: 520
+            )
+            attach(image, name: item.attachment)
+            return image
+        }
 
         attach(profileImage, name: "Meeting Profile macOS dark 560pt")
         attach(briefingImage, name: "Meeting Briefing macOS dark 680pt")
@@ -80,6 +100,7 @@ final class MeetingStaticRenderMacTests: XCTestCase {
         guard profileImage.count > 20_000 else { throw RenderError.blankProfileRender }
         guard conversationImages.allSatisfy({ $0.count > 20_000 }) else { throw RenderError.blankConversationRender }
         guard briefingImage.count > 20_000 else { throw RenderError.blankBriefingRender }
+        guard guideImages.allSatisfy({ $0.count > 12_000 }) else { throw RenderError.blankVoiceEnrollmentGuideRender }
         guard fixture.resolvedDocument.myCommitments.count == 1 else { throw RenderError.missingOwnerCommitment }
         guard fixture.resolvedDocument.receivedRequests.count == 1 else { throw RenderError.missingOwnerRequest }
         guard fixture.briefing.decisions.count == 1 else { throw RenderError.missingBriefingDecision }
@@ -104,6 +125,39 @@ final class MeetingStaticRenderMacTests: XCTestCase {
             onPlayTurns: { _ in },
             onEdit: { _, _, _ in }
         )
+    }
+
+    private func voiceEnrollmentGuideCases() -> [(name: String, attachment: String, voice: VoiceProfilePresentation, hasExistingProfile: Bool, isCompleted: Bool)] {
+        [
+            (
+                "voice-enrollment-guide-ready-mac-dark",
+                "Voice Enrollment Guide Ready macOS dark 460pt",
+                VoiceProfilePresentation(modelsReady: true, status: "음성 모델이 준비되었습니다."),
+                false,
+                false
+            ),
+            (
+                "voice-enrollment-guide-recording-mac-dark",
+                "Voice Enrollment Guide Recording macOS dark 460pt",
+                VoiceProfilePresentation(modelsReady: true, isEnrolling: true, elapsed: 8.4, status: "내 목소리를 녹음하고 있습니다..."),
+                false,
+                false
+            ),
+            (
+                "voice-enrollment-guide-error-mac-dark",
+                "Voice Enrollment Guide Error macOS dark 460pt",
+                VoiceProfilePresentation(modelsReady: true, elapsed: 4, status: "목소리 프로필을 저장하지 않았습니다.", error: "또렷한 음성을 조금 더 녹음하세요."),
+                true,
+                false
+            ),
+            (
+                "voice-enrollment-guide-completed-mac-dark",
+                "Voice Enrollment Guide Completed macOS dark 460pt",
+                VoiceProfilePresentation(modelsReady: true, elapsed: 18, status: "내 목소리 프로필이 준비되었습니다."),
+                true,
+                true
+            )
+        ]
     }
 
     private func renderPNG<Content: View>(_ content: Content, name: String, width: CGFloat, height: CGFloat) throws -> Data {
@@ -168,6 +222,7 @@ final class MeetingStaticRenderMacTests: XCTestCase {
         case blankProfileRender
         case blankConversationRender
         case blankBriefingRender
+        case blankVoiceEnrollmentGuideRender
         case missingOwnerCommitment
         case missingOwnerRequest
         case missingBriefingDecision

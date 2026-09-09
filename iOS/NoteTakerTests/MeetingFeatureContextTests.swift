@@ -116,6 +116,60 @@ struct MeetingFeatureContextTests {
         #expect(resolved.transcript.speakers.first(where: { $0.id == "speaker-a" })?.isOwner == true)
         #expect(resolved.ownerTurns.map(\.id) == ["turn-1"])
     }
+
+    @Test("stale enrollment start does not cancel a replacement session")
+    func staleEnrollmentStartDoesNotCancelReplacementSession() async throws {
+        var permission: CheckedContinuation<Bool, Never>?
+        let capture = VoiceEnrollmentCapture(requestPermission: { await withCheckedContinuation { permission = $0 } })
+        let h = try await FeatureHarness.make(configured: true, autoGenerate: false,
+            automaticallyAnalyze: false, enrollmentCapture: capture)
+        await h.context.prepareVoiceModels()
+        var firstStopPlayback: CheckedContinuation<Void, Never>?
+        var stopCalls = 0
+        h.context.stopPlayback = {
+            stopCalls += 1
+            if stopCalls == 1 {
+                await withCheckedContinuation { firstStopPlayback = $0 }
+            }
+        }
+
+        let staleStart = Task { await h.context.beginEnrollment() }
+        try await spinUntil { firstStopPlayback != nil }
+        h.context.cancelEnrollment()
+
+        let replacementStart = Task { await h.context.beginEnrollment() }
+        try await spinUntil { permission != nil }
+        firstStopPlayback?.resume()
+        await staleStart.value
+
+        #expect(h.context.enrollmentIsBusy)
+
+        h.context.cancelEnrollment()
+        permission?.resume(returning: false)
+        await replacementStart.value
+    }
+
+    @Test("cancelled enrollment task does not request microphone access")
+    func cancelledEnrollmentTaskDoesNotRequestMicrophoneAccess() async throws {
+        var permissionRequests = 0
+        let capture = VoiceEnrollmentCapture(requestPermission: {
+            permissionRequests += 1
+            return false
+        })
+        let h = try await FeatureHarness.make(configured: true, autoGenerate: false,
+            automaticallyAnalyze: false, enrollmentCapture: capture)
+        await h.context.prepareVoiceModels()
+
+        let task = Task { @MainActor in
+            while !Task.isCancelled { await Task.yield() }
+            await h.context.beginEnrollment()
+        }
+        task.cancel()
+        await task.value
+
+        #expect(!h.context.enrollmentIsBusy)
+        #expect(permissionRequests == 0)
+    }
 }
 
 @MainActor
@@ -133,7 +187,8 @@ private struct FeatureHarness {
         autoGenerate: Bool,
         automaticallyAnalyze: Bool,
         blocksDetailedTranscription: Bool = false,
-        failsAnalysisCompletion: Bool = false
+        failsAnalysisCompletion: Bool = false,
+        enrollmentCapture: VoiceEnrollmentCapture? = nil
     ) async throws -> FeatureHarness {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "MeetingFeatureContextTests-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -162,7 +217,8 @@ private struct FeatureHarness {
         let environment = AIEnvironment(client: client, keyStore: keyStore, chunker: chunker, defaults: defaults)
         let notes = MeetingNotesService(configuration: config, client: client, chunker: chunker, library: library)
         let context = MeetingFeatureContext(library: library, configuration: config,
-            environment: environment, notes: notes, backend: FeatureSpeakerBackend())
+            environment: environment, notes: notes, backend: FeatureSpeakerBackend(),
+            enrollmentCapture: enrollmentCapture)
         if automaticallyAnalyze {
             try context.profile.updateProfile { profile in
                 profile.automaticallyAnalyze = true
