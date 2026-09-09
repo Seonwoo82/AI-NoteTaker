@@ -40,7 +40,7 @@ function environment(t) {
   return { DB: database(join(folder, 'test.sqlite')), AUDIO: { async head() { return null; }, async get() { throw new Error('Settings must not read audio'); }, async put() { throw new Error('Settings must not write audio'); } }, SYNC_TOKEN: TOKEN };
 }
 function preferences(overrides = {}) {
-  return { schemaVersion: 1, modelID: 'test/summary', transcriptionModelID: 'test/stt', outputLanguage: 'ko', autoGenerate: true,
+  return { schemaVersion: 1, modelID: 'test/summary', enhancementModelID: 'test/enhancement', transcriptionModelID: 'test/stt', outputLanguage: 'ko', autoGenerate: true,
     modifiedAt: 1000, mutationID: MAC, ...overrides };
 }
 async function request(env, { method = 'GET', id = PHONE, payload, auth = true } = {}) {
@@ -89,6 +89,39 @@ test('key-only and unknown-presence updates preserve preferences and the last kn
   await request(env, { method: 'PUT', payload: upload(null, { id: MAC, platform: 'macOS', hasAPIKey: false }) });
   assert.deepEqual(await (await request(env)).json(), { preferences: preferences(), otherDevicesHaveAPIKey: false });
 });
+test('old clients that omit enhancementModelID do not erase a newer enhancement choice', async t => {
+  const env = environment(t);
+  await request(env, { method: 'PUT', payload: upload() });
+  const oldClient = upload({
+    schemaVersion: 1,
+    modelID: 'test/summary',
+    transcriptionModelID: 'test/stt',
+    outputLanguage: 'en',
+    autoGenerate: false,
+    modifiedAt: 1001,
+    mutationID: PHONE,
+  }, { id: PHONE, platform: 'iOS', hasAPIKey: true });
+
+  const response = await request(env, { method: 'PUT', payload: oldClient });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).preferences, {
+    ...oldClient.preferences,
+    enhancementModelID: 'test/enhancement',
+  });
+});
+test('explicit empty enhancementModelID clears a previous custom enhancement choice', async t => {
+  const env = environment(t);
+  await request(env, { method: 'PUT', payload: upload() });
+  const response = await request(env, { method: 'PUT', payload: upload(preferences({
+    enhancementModelID: '',
+    modifiedAt: 1001,
+    mutationID: PHONE,
+  }), { id: PHONE, platform: 'iOS', hasAPIKey: true }) });
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).preferences.enhancementModelID, '');
+});
 test('an unconfigured new phone cannot erase shared settings', async t => {
   const env = environment(t);
   await request(env, { method: 'PUT', payload: upload() });
@@ -106,6 +139,7 @@ test('secret fields and malformed settings are rejected before changing stored s
     upload(preferences({ outputLanguage: 'unsupported' })),
     upload(preferences({ autoGenerate: 'yes' })),
     upload(preferences({ modelID: 'bad model with spaces' })),
+    upload(preferences({ enhancementModelID: 'bad model with spaces' })),
     upload(preferences({ modifiedAt: Number.MAX_SAFE_INTEGER + 1 })),
     upload(preferences({ schemaVersion: 2 })),
     upload(preferences(), { id: MAC, platform: 'unknown', hasAPIKey: true }),

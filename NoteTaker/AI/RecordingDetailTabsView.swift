@@ -32,7 +32,8 @@ struct RecordingDetailTabsView: View {
             case .audio:
                 audioDetail
             case .notes:
-                MeetingNotesView(recording: recording, service: meetingNotes, configuration: aiConfiguration)
+                MeetingNotesView(recording: recording, service: meetingNotes, configuration: aiConfiguration,
+                    resolvedTranscript: meeting.resolved(recording)?.transcript)
             case .meeting:
                 meetingDetail
             }

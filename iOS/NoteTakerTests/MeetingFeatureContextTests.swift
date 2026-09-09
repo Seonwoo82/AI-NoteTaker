@@ -17,8 +17,9 @@ struct MeetingFeatureContextTests {
         try await h.waitForNotes()
 
         #expect(h.notes.document(for: h.recording.id)?.markdown.contains("Original AI notes") == true)
-        #expect(h.context.store.document(for: h.recording.id) == nil)
-        #expect(await h.client.detailedCallCount == 0)
+        #expect(h.context.store.document(for: h.recording.id)?.insights == nil)
+        #expect(await h.client.detailedCallCount == 1)
+        #expect(h.notes.document(for: h.recording.id)?.speakerTranscript != nil)
     }
 
     @Test("non-cancelled meeting analysis failure falls back to original AI notes")
@@ -30,7 +31,7 @@ struct MeetingFeatureContextTests {
         try await h.waitForNotes()
 
         #expect(h.notes.document(for: h.recording.id)?.markdown.contains("Original AI notes") == true)
-        #expect(h.context.store.document(for: h.recording.id) == nil)
+        #expect(h.context.store.document(for: h.recording.id)?.insights == nil)
         #expect(await h.client.completionCallCount >= 2)
     }
 
@@ -57,7 +58,7 @@ struct MeetingFeatureContextTests {
         try await h.waitUntilAnalysisStops()
 
         #expect(h.notes.document(for: h.recording.id) == nil)
-        #expect(h.context.store.document(for: h.recording.id) == nil)
+        #expect(h.context.store.document(for: h.recording.id)?.insights == nil)
         #expect(!h.context.analysis.isRunning(for: h.recording.id))
     }
 

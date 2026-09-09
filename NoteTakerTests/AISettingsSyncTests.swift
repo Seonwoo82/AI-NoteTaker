@@ -18,12 +18,15 @@ struct AISettingsSyncTests {
         let server = SettingsServer()
         let first = fixture(key: "sk-or-private-fixture", configured: true)
         first.config.autoGenerate = true
+        first.config.enhancementModelID = "fixture/enhancement"
         let firstSync = AISettingsSynchronizer(configuration: first.config, deviceID: mac)
         try await firstSync.synchronize(transport: server, workspace: workspace)
         let second = fixture()
         let secondSync = AISettingsSynchronizer(configuration: second.config, deviceID: phone)
         try await secondSync.synchronize(transport: server, workspace: workspace)
         #expect(second.config.modelID == "fixture/summary")
+        #expect(second.config.enhancementModelID == "fixture/enhancement")
+        #expect(second.config.effectiveEnhancementModelID == "fixture/enhancement")
         #expect(second.config.transcriptionModelID == "fixture/transcription")
         #expect(second.config.outputLanguage == "en")
         #expect(second.config.autoGenerate)
@@ -36,6 +39,51 @@ struct AISettingsSyncTests {
             #expect(!json.contains("sk-or-private-fixture"))
         }
         #expect(first.config.needsKeyForSyncedSettings == false)
+    }
+
+    @Test("old synced preferences without an enhancement model keep following the minutes model")
+    func oldPreferencesFollowMinutesModel() throws {
+        let json = """
+        {"schemaVersion":1,"modelID":"fixture/summary","transcriptionModelID":"fixture/transcription","outputLanguage":"en","autoGenerate":true,"modifiedAt":1,"mutationID":"\(mac.uuidString)"}
+        """
+        let data = Data(json.utf8)
+        let decoded = try JSONDecoder().decode(AISharedPreferences.self, from: data)
+        let second = fixture()
+
+        second.config.acceptSharedPreferences(decoded)
+
+        #expect(second.config.enhancementModelID == "")
+        #expect(second.config.effectiveEnhancementModelID == "fixture/summary")
+    }
+
+    @Test("new clients upload an explicit empty enhancement model when following minutes again")
+    func uploadsExplicitEmptyEnhancementModelWhenResetToFollow() async throws {
+        let server = SettingsServer()
+        let first = fixture(configured: true)
+        first.config.enhancementModelID = "fixture/enhancement"
+        try await AISettingsSynchronizer(configuration: first.config, deviceID: mac).synchronize(transport: server, workspace: workspace)
+
+        first.config.enhancementModelID = ""
+        try await AISettingsSynchronizer(configuration: first.config, deviceID: mac).synchronize(transport: server, workspace: workspace)
+
+        #expect(server.preferences?.enhancementModelID == "")
+        #expect(first.config.enhancementModelID == "")
+        #expect(first.config.effectiveEnhancementModelID == "fixture/summary")
+    }
+
+    @Test("legacy synced preferences without enhancement model preserve an existing local enhancement choice")
+    func legacyPreferencesPreserveExistingEnhancementModel() throws {
+        let first = fixture(configured: true)
+        first.config.enhancementModelID = "fixture/enhancement"
+        let json = """
+        {"schemaVersion":1,"modelID":"fixture/summary","transcriptionModelID":"fixture/transcription","outputLanguage":"source","autoGenerate":true,"modifiedAt":9007199254740991,"mutationID":"\(phone.uuidString)"}
+        """
+        let decoded = try JSONDecoder().decode(AISharedPreferences.self, from: Data(json.utf8))
+
+        first.config.acceptSharedPreferences(decoded)
+
+        #expect(first.config.enhancementModelID == "fixture/enhancement")
+        #expect(first.config.outputLanguage == "source")
     }
 
     @Test("entering a local key preserves a synced disabled automatic-generation preference")
@@ -72,12 +120,14 @@ struct AISettingsSyncTests {
         let server = SettingsServer()
         let first = fixture()
         first.config.outputLanguage = "source"
+        first.config.enhancementModelID = "fixture/enhancement"
         server.fails = true
         await #expect(throws: SyncError.self) {
             try await AISettingsSynchronizer(configuration: first.config, deviceID: mac).synchronize(transport: server, workspace: workspace)
         }
         let restarted = AIConfiguration(client: FakeOpenRouterClient(), keyStore: first.keyStore, defaults: first.defaults)
         #expect(restarted.pendingPreferencesUpload?.outputLanguage == "source")
+        #expect(restarted.pendingPreferencesUpload?.enhancementModelID == "fixture/enhancement")
         server.fails = false
         try await AISettingsSynchronizer(configuration: restarted, deviceID: mac).synchronize(transport: server, workspace: workspace)
         #expect(server.preferences?.outputLanguage == "source")

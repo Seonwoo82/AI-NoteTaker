@@ -40,6 +40,8 @@ const NOTE_FIELDS = new Set([
   "markdown",
   "transcript",
   "costUSD",
+  "speakerTranscript",
+  "enhancement",
 ]);
 const PROFILE_LIMIT_BYTES = 64 * 1024;
 const PROFILE_BODY_FIELDS = new Set(["profile"]);
@@ -161,7 +163,7 @@ async function handleRequest(request, env) {
 
 const AI_SETTINGS_LIMIT_BYTES = 16 * 1024;
 const AI_PREFERENCE_FIELDS = new Set([
-  "schemaVersion", "modelID", "transcriptionModelID", "outputLanguage",
+  "schemaVersion", "modelID", "enhancementModelID", "transcriptionModelID", "outputLanguage",
   "autoGenerate", "modifiedAt", "mutationID",
 ]);
 
@@ -201,17 +203,22 @@ function normalizeNullableFields(value, nullableFields) {
   return normalized;
 }
 
-function validateAIPreferences(value) {
+function validateAIPreferences(value, previousPreferences = null) {
   exactObject(value, AI_PREFERENCE_FIELDS, "AI preferences");
+  const normalized = { ...value };
+  if (!Object.hasOwn(normalized, "enhancementModelID")) {
+    normalized.enhancementModelID = previousPreferences?.enhancementModelID ?? "";
+  }
   const validModelID = (id) => typeof id === "string" && id.length <= 256 &&
     (id === "" || /^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$/.test(id));
-  if (value.schemaVersion !== 1 || !validModelID(value.modelID) ||
-      !validModelID(value.transcriptionModelID) || !["ko", "en", "source"].includes(value.outputLanguage) ||
-      typeof value.autoGenerate !== "boolean" || !Number.isSafeInteger(value.modifiedAt) || value.modifiedAt < 0) {
+  if (normalized.schemaVersion !== 1 || !validModelID(normalized.modelID) ||
+      !validModelID(normalized.enhancementModelID) || !validModelID(normalized.transcriptionModelID) ||
+      !["ko", "en", "source"].includes(normalized.outputLanguage) ||
+      typeof normalized.autoGenerate !== "boolean" || !Number.isSafeInteger(normalized.modifiedAt) || normalized.modifiedAt < 0) {
     throw new HttpError(400, "invalid_ai_settings", "AI preference values are invalid.");
   }
-  validateUUID(value.mutationID, "settings mutation ID");
-  return value;
+  validateUUID(normalized.mutationID, "settings mutation ID");
+  return normalized;
 }
 
 async function getAISettings(env, deviceID) {
@@ -238,7 +245,9 @@ async function putAISettings(request, env) {
       (device.hasAPIKey != null && typeof device.hasAPIKey !== "boolean")) {
     throw new HttpError(400, "invalid_ai_settings", "Device information is invalid.");
   }
-  const preferences = candidate.preferences == null ? null : validateAIPreferences(candidate.preferences);
+  const existingSettings = await env.DB.prepare("SELECT preferences_json FROM ai_settings WHERE id = 1").first();
+  const existingPreferences = existingSettings ? JSON.parse(existingSettings.preferences_json) : null;
+  const preferences = candidate.preferences == null ? null : validateAIPreferences(candidate.preferences, existingPreferences);
   if (preferences) {
     await env.DB.prepare(
       `INSERT INTO ai_settings (id, preferences_json, modified_at, mutation_id) VALUES (1, ?, ?, ?)
@@ -868,7 +877,7 @@ function validateMeetingNotesDocument(value, pathID, audioVersion) {
   }
   for (const field of NOTE_FIELDS) {
     if (!Object.hasOwn(value, field)) {
-      if (field === "costUSD") {
+      if (["costUSD", "speakerTranscript", "enhancement"].includes(field)) {
         continue;
       }
       throw new HttpError(400, "invalid_notes", `Meeting notes document is missing ${field}.`);
@@ -896,6 +905,19 @@ function validateMeetingNotesDocument(value, pathID, audioVersion) {
   validateString(value.transcript, "transcript", 0, NOTES_LIMIT_BYTES, "invalid_notes");
   if (Object.hasOwn(value, "costUSD") && value.costUSD !== null) {
     validateFiniteNumber(value.costUSD, "costUSD", 0, "invalid_notes");
+  }
+  if (value.speakerTranscript != null) {
+    validateTranscript(value.speakerTranscript, pathID, audioVersion);
+  }
+  if (value.enhancement != null) {
+    const fields = new Set(["modelID", "instructions"]);
+    exactPlainObject(value.enhancement, fields, "Enhancement", "invalid_notes");
+    requireFields(value.enhancement, fields, "Enhancement", "invalid_notes");
+    validateString(value.enhancement.modelID, "enhancement modelID", 1, 512, "invalid_notes");
+    validateString(value.enhancement.instructions, "enhancement instructions", 1, 8000, "invalid_notes");
+    if (new TextEncoder().encode(value.enhancement.instructions).byteLength > 8000) {
+      throw new HttpError(400, "invalid_notes", "Enhancement instructions exceed 8000 UTF-8 bytes.");
+    }
   }
   return value;
 }

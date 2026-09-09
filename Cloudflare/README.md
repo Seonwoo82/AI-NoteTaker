@@ -94,3 +94,9 @@ Apply `0003_ai_settings.sql` for the singleton preference document and per-devic
 - Requests and responses are bounded to 16 KiB. Only explicitly supported fields are accepted; API keys, key fragments, catalogs, and device names are never part of the payload.
 
 A new client reads existing preferences before publishing. Explicit offline edits are preserved for retry. Generation is still gated by a local API key even when shared automatic generation is enabled.
+
+### Notes enhancement and participant transcript fields
+
+Notes documents may include `speakerTranscript` (the existing validated timed transcript schema) and `enhancement` (`modelID`, `instructions`). Both are optional so older notes remain valid; credentials and voice embeddings remain prohibited. Enhancement instructions are limited to 8,000 UTF-8 bytes and the total notes envelope remains 2 MiB.
+
+AI shared preferences may include `enhancementModelID`. Omission from an older client preserves the current server choice; an explicit empty string resets it to follow the meeting-notes model. No database migration is required for these optional JSON fields.

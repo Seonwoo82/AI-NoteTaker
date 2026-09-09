@@ -680,6 +680,42 @@ print('worker-generated upsert sql ok')
     assert.equal(await fetched.text(), body);
   });
 
+  test("numbered transcript and enhancement metadata round trip with notes", async () => {
+    const env = makeEnv();
+    await publishRecording(env);
+    const body = JSON.stringify(meetingNotes({
+      speakerTranscript: {
+        schemaVersion: 1, recordingID: VALID_ID, audioVersion: 1, transcriptionModelID: "fixture/stt",
+        speakers: [{ id: "p1", name: "Participant", isOwner: false, manuallyAssigned: false }],
+        turns: [{ id: "t1", start: 0, end: 1, speakerID: "p1", text: "승원입니다." }],
+      },
+      enhancement: { modelID: "fixture/enhance", instructions: "승현은 승원입니다." },
+    }));
+    const put = await request(env, `/v1/recordings/${VALID_ID}/notes/1`, {
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body,
+    });
+    assert.equal(put.status, 200);
+    const fetched = await request(env, `/v1/recordings/${VALID_ID}/notes/1/${noteRevision(body)}`, { headers: authHeaders() });
+    assert.equal(await fetched.text(), body);
+  });
+
+  test("enhanced notes reject credential fields and mismatched transcript identity", async () => {
+    const env = makeEnv();
+    await publishRecording(env);
+    for (const extra of [
+      { enhancement: { modelID: "fixture/enhance", instructions: "fix", apiKey: "secret" } },
+      { speakerTranscript: { schemaVersion: 1, recordingID: OTHER_ID, audioVersion: 1,
+        transcriptionModelID: "fixture/stt", speakers: [], turns: [] } },
+      { enhancement: { modelID: "fixture/enhance", instructions: "한".repeat(3000) } },
+    ]) {
+      const response = await request(env, `/v1/recordings/${VALID_ID}/notes/1`, {
+        method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(meetingNotes(extra)),
+      });
+      assert.equal(response.status, 400);
+    }
+  });
+
   test("lists meeting notes with canonical UUID audio-version cursors", async () => {
     const env = makeEnv();
     const firstRecording = recording({ id: VALID_ID, audioVersion: 1 });

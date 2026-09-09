@@ -32,7 +32,8 @@ struct RecordingDetailTabsView: View {
                 if let notes = model.meetingNotes {
                     MeetingNotesView(recording: recording, service: notes,
                                      configuration: model.aiConfiguration,
-                                     openAISettings: openAISettings)
+                                     openAISettings: openAISettings,
+                                     resolvedTranscript: model.meeting?.resolved(recording)?.transcript)
                 } else {
                     RecordingDetailView(model: model, recording: recording)
                 }

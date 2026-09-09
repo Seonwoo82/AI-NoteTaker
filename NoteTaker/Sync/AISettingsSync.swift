@@ -3,6 +3,7 @@ import Foundation
 nonisolated struct AISharedPreferences: Codable, Equatable, Sendable {
     var schemaVersion = 1
     let modelID: String
+    var enhancementModelID: String? = nil
     let transcriptionModelID: String
     let outputLanguage: String
     let autoGenerate: Bool
@@ -13,7 +14,7 @@ nonisolated struct AISharedPreferences: Codable, Equatable, Sendable {
         func validModel(_ value: String) -> Bool {
             value.utf8.count <= 256 && (value.isEmpty || value.range(of: "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$", options: .regularExpression) != nil)
         }
-        guard schemaVersion == 1, validModel(modelID), validModel(transcriptionModelID),
+        guard schemaVersion == 1, validModel(modelID), validModel(enhancementModelID ?? ""), validModel(transcriptionModelID),
               ["ko", "en", "source"].contains(outputLanguage), modifiedAt >= 0,
               modifiedAt <= 9_007_199_254_740_991 else { throw SyncError.invalidResponse }
     }
@@ -65,7 +66,7 @@ final class AISettingsSynchronizer {
 
     func synchronize(transport: any AISettingsSyncTransport, workspace: String) async throws {
         configuration.setSyncContext(endpoint: workspace, enabled: true)
-        let previousModels = (configuration.modelID, configuration.transcriptionModelID)
+        let previousModels = (configuration.modelID, configuration.enhancementModelID, configuration.transcriptionModelID)
         let remote = try await transport.getAISettings(deviceID: deviceID)
         try Task.checkCancellation()
         try remote.preferences?.validate()
@@ -80,7 +81,7 @@ final class AISettingsSynchronizer {
         try response.preferences?.validate()
         if let preferences = response.preferences { configuration.acceptSharedPreferences(preferences) }
         configuration.setOtherDeviceKeyPresence(response.otherDevicesHaveAPIKey)
-        if previousModels.0 != configuration.modelID || previousModels.1 != configuration.transcriptionModelID {
+        if previousModels.0 != configuration.modelID || previousModels.1 != configuration.enhancementModelID || previousModels.2 != configuration.transcriptionModelID {
             // Catalog availability must not block note/audio synchronization.
             Task { [weak configuration] in await configuration?.refreshModels() }
         }

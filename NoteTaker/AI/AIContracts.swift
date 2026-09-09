@@ -64,6 +64,8 @@ nonisolated struct MeetingNotesDocument: Codable, Equatable, Sendable {
     let markdown: String
     let transcript: String
     var costUSD: Double? = nil
+    var speakerTranscript: MeetingTranscript? = nil
+    var enhancement: MeetingNotesEnhancement? = nil
 }
 
 nonisolated enum MeetingNotesProgress: Equatable, Sendable {

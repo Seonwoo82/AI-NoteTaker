@@ -5,6 +5,7 @@ struct AISettingsView: View {
     var profile: MeetingProfileStore?
     @State private var apiKey = ""
     @State private var modelSearch = ""
+    @State private var enhancementSearch = ""
     @State private var transcriptionSearch = ""
     @State private var isSaving = false
     @State private var localMessage: String?
@@ -138,6 +139,15 @@ struct AISettingsView: View {
             )
 
             ModelChooser(
+                title: String(localized: "Enhancement Model"),
+                searchText: $enhancementSearch,
+                selection: $configuration.enhancementModelID,
+                models: enhancementModels,
+                fallbackID: configuration.enhancementModelID,
+                defaultSelectionTitle: String(localized: "Follow Meeting Notes Model")
+            )
+
+            ModelChooser(
                 title: String(localized: "Speech-to-Text Model"),
                 searchText: $transcriptionSearch,
                 selection: $configuration.transcriptionModelID,
@@ -207,6 +217,10 @@ struct AISettingsView: View {
         filteredModels(configuration.models.filter(\.supportsSummary), query: modelSearch)
     }
 
+    private var enhancementModels: [OpenRouterModel] {
+        filteredModels(configuration.models.filter(\.supportsSummary), query: enhancementSearch)
+    }
+
     private var transcriptionModels: [OpenRouterModel] {
         filteredModels(configuration.models.filter(\.supportsTranscription), query: transcriptionSearch)
     }
@@ -263,6 +277,7 @@ private struct ModelChooser: View {
     @Binding var selection: String
     let models: [OpenRouterModel]
     let fallbackID: String
+    var defaultSelectionTitle: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -271,7 +286,11 @@ private struct ModelChooser: View {
             TextField(String(localized: "Search models"), text: $searchText)
                 .textFieldStyle(.roundedBorder)
             Picker(title, selection: $selection) {
-                if fallbackID.isEmpty { Text(String(localized: "Select a model")).tag("") }
+                if let defaultSelectionTitle {
+                    Text(defaultSelectionTitle).tag("")
+                } else if fallbackID.isEmpty {
+                    Text(String(localized: "Select a model")).tag("")
+                }
                 if !fallbackID.isEmpty && !models.contains(where: { $0.id == fallbackID }) {
                     Text(fallbackID).tag(fallbackID)
                 }

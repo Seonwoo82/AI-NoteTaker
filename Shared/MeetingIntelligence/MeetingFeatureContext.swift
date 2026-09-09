@@ -55,6 +55,12 @@ final class MeetingFeatureContext {
                   current.deletedAt == nil, current.audioVersion == recording.audioVersion else { return }
             self.notes.recordingDidFinish(current)
         }
+        if environment.client is any DetailedTranscriptionServing {
+            notes.speakerTranscriptProvider = { [weak self] recording, modelID in
+                guard let self else { throw CancellationError() }
+                return try await self.analysis.prepareNumberedTranscript(recording, transcriptionModelID: modelID)
+            }
+        }
         voice.onCaptureFailure = { [weak self] error in
             guard let self, self.enrollmentIsBusy else { return }
             self.enrollmentGeneration = UUID()

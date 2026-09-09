@@ -10,6 +10,9 @@ struct MeetingNotesView: View {
 #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    var resolvedTranscript: MeetingTranscript? = nil
+    @State private var showingEnhancement = false
+    @State private var showEnhancementSettingsAfterDismiss = false
     @State private var selectedTab = NotesTab.minutes
     @State private var showingRegenerateConfirmation = false
     @State private var copied = false
@@ -19,12 +22,14 @@ struct MeetingNotesView: View {
         recording: Recording,
         service: MeetingNotesService,
         configuration: AIConfiguration,
-        openAISettings: (() -> Void)? = nil
+        openAISettings: (() -> Void)? = nil,
+        resolvedTranscript: MeetingTranscript? = nil
     ) {
         self.recording = recording
         self.service = service
         self.configuration = configuration
         self.openAISettings = openAISettings
+        self.resolvedTranscript = resolvedTranscript
     }
 
     private var document: MeetingNotesDocument? {
@@ -67,13 +72,28 @@ struct MeetingNotesView: View {
         .task(id: recording.id) {
             await service.load(recording)
         }
-        .onChange(of: recording.id) {
+        .onChange(of: recording.id) { oldID, _ in
+            if showingEnhancement { service.cancel(oldID) }
+            showingEnhancement = false
             copied = false
             selectedTab = .minutes
         }
         .onChange(of: document?.markdown) {
             copied = false
             selectedOutlineBlock = nil
+        }
+        .sheet(isPresented: $showingEnhancement, onDismiss: {
+            if showEnhancementSettingsAfterDismiss {
+                showEnhancementSettingsAfterDismiss = false
+                openAISettings?()
+            }
+        }) {
+            MeetingEnhancementView(recording: recording, service: service, configuration: configuration,
+                onOpenSettings: {
+                    showEnhancementSettingsAfterDismiss = true
+                    showingEnhancement = false
+                },
+                onClose: { showingEnhancement = false })
         }
         .confirmationDialog(
             String(localized: "Regenerate Minutes?"),
@@ -169,6 +189,13 @@ struct MeetingNotesView: View {
                 }
             } else if document != nil {
                 Button {
+                    service.discardEnhancement(recording.id)
+                    showingEnhancement = true
+                } label: {
+                    Label(String(localized: "Enhance Minutes"), systemImage: "wand.and.stars")
+                }
+                .accessibilityIdentifier("ai-enhance-minutes")
+                Button {
                     showingRegenerateConfirmation = true
                 } label: {
                     Label(String(localized: "Regenerate"), systemImage: "arrow.clockwise")
@@ -199,6 +226,10 @@ struct MeetingNotesView: View {
                 switch selectedTab {
                 case .minutes:
                     ReportOverview(document: document, recording: recording)
+                    if let enhancement = document.enhancement {
+                        Text("\(String(localized: "Last enhanced with")): \(enhancement.modelID)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if !markdown.outlineHeadings.isEmpty {
                         MeetingNotesOutline(headings: markdown.outlineHeadings,
                                             selectedBlockIndex: selectedOutlineBlock,
@@ -207,11 +238,30 @@ struct MeetingNotesView: View {
                     }
                     MarkdownDocumentView(document: markdown)
                 case .transcript:
-                    Text(document.transcript.isEmpty ? String(localized: "No transcript was stored.") : document.transcript)
-                        .font(.body)
-                        .lineSpacing(4)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let transcript = document.participantTranscript(resolvingWith: resolvedTranscript) {
+                        Text(String(localized: "Participant labels are estimates. Overlapping or unclear speech may remain unidentified."))
+                            .font(.caption).foregroundStyle(.secondary)
+                        NumberedTranscriptView(transcript: transcript)
+                    } else {
+                        Text(String(localized: "Participant labels are not available yet. Identify participants to add speaker numbers to this transcript."))
+                            .font(.callout).foregroundStyle(.secondary)
+                        if recording.deletedAt == nil {
+                            Button {
+                                service.identifyParticipants(recording)
+                            } label: {
+                                Label(String(localized: "Identify Participants"), systemImage: "person.2.wave.2")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(progress.isRunning || !configuration.isConfigured)
+                            .accessibilityIdentifier("ai-identify-participants")
+                        }
+                        Text(document.transcript.isEmpty ? String(localized: "No transcript was stored.") : document.transcript)
+                            .font(.body).lineSpacing(4).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let notice = service.transcriptNotice(for: recording.id) {
+                        Text(notice).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
         }

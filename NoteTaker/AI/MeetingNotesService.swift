@@ -19,6 +19,9 @@ final class MeetingNotesService {
         let inputBudget: Int
         let outputBudget: Int
         let partialOutputBudget: Int
+        var enhancementBase: MeetingNotesDocument? = nil
+        var instructions: String? = nil
+        var participantsBase: MeetingNotesDocument? = nil
     }
 
     private let configuration: AIConfiguration
@@ -34,6 +37,9 @@ final class MeetingNotesService {
     private var documents: [UUID: MeetingNotesDocument] = [:]
     private var states: [UUID: MeetingNotesProgress] = [:]
     @ObservationIgnored var onDocumentSaved: ((UUID) -> Void)?
+    @ObservationIgnored var speakerTranscriptProvider: (@MainActor (Recording, String) async throws -> MeetingTranscript)?
+    private var enhancementPreviews: [UUID: MeetingNotesEnhancementPreview] = [:]
+    private var transcriptNotices: [UUID: String] = [:]
 
     init(configuration: AIConfiguration, client: any OpenRouterServing,
          chunker: any MeetingAudioChunking, library: LibraryStore) {
@@ -135,6 +141,7 @@ final class MeetingNotesService {
                           inputBudget: budget.inputBytes,
                           outputBudget: budget.outputTokens,
                           partialOutputBudget: budget.partialOutputTokens)
+            enhancementPreviews[recording.id] = nil
             tokens[recording.id] = job.token
             states[recording.id] = .queued
             queue.append(job)
@@ -144,7 +151,110 @@ final class MeetingNotesService {
         }
     }
 
+    func enhancementPreview(for id: UUID) -> MeetingNotesEnhancementPreview? { enhancementPreviews[id] }
+    func transcriptNotice(for id: UUID) -> String? { transcriptNotices[id] }
+
+    func enhance(_ recording: Recording, instructions: String) {
+        let feedback = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isShuttingDown, !progress(for: recording.id).isRunning else { return }
+        guard !feedback.isEmpty, feedback.utf8.count <= 8_000 else {
+            states[recording.id] = .failed("수정할 이름이나 보완할 맥락을 8,000바이트 이내로 입력해 주세요.")
+            return
+        }
+        guard configuration.isEnhancementConfigured, let base = document(for: recording.id) else {
+            states[recording.id] = .failed("기존 회의록과 AI 보완 모델 설정을 확인해 주세요.")
+            return
+        }
+        enqueueRevision(recording, base: base, instructions: feedback)
+    }
+
+    func identifyParticipants(_ recording: Recording) {
+        guard !isShuttingDown, !progress(for: recording.id).isRunning,
+              let base = document(for: recording.id), speakerTranscriptProvider != nil else { return }
+        guard configuration.isConfigured else {
+            states[recording.id] = .failed("참여자를 구분하려면 AI 설정에서 전사 모델과 API 키를 확인해 주세요.")
+            return
+        }
+        enqueueRevision(recording, base: base, instructions: nil)
+    }
+
+    private func enqueueRevision(_ recording: Recording, base: MeetingNotesDocument, instructions: String?) {
+        guard let current = library.recording(id: recording.id), current.deletedAt == nil,
+              current.audioVersion == recording.audioVersion else { return }
+        do {
+            let modelID = instructions == nil ? configuration.modelID : configuration.effectiveEnhancementModelID
+            let model = configuration.models.first { $0.id == modelID }
+            let budget = MeetingCompletionBudget(model: model, modelID: modelID)
+            let job = Job(token: UUID(), recording: current, key: try configuration.apiKey(), modelID: modelID,
+                transcriptionModelID: base.transcriptionModelID, language: configuration.outputLanguage,
+                inputBudget: budget.inputBytes, outputBudget: budget.outputTokens,
+                partialOutputBudget: budget.partialOutputTokens,
+                enhancementBase: instructions == nil ? nil : base, instructions: instructions,
+                participantsBase: instructions == nil ? base : nil)
+            try requireCurrentBase(base, recording: current)
+            enhancementPreviews[recording.id] = nil
+            tokens[recording.id] = job.token
+            states[recording.id] = .queued
+            queue.append(job)
+            startNext()
+        } catch {
+            states[recording.id] = .failed((error as? AIError)?.message ?? "회의록 보완을 시작하지 못했습니다. 설정과 저장 공간을 확인해 주세요.")
+        }
+    }
+
+    func discardEnhancement(_ id: UUID) {
+        enhancementPreviews[id] = nil
+    }
+
+    func applyEnhancement(_ recording: Recording) throws {
+        guard !isShuttingDown, !progress(for: recording.id).isRunning,
+              let preview = enhancementPreviews[recording.id] else {
+            throw AIError(message: "적용할 AI 보완안이 없습니다. 다시 보완해 주세요.")
+        }
+        try requireCurrentBase(preview.original, recording: recording)
+        let original = preview.original
+        let updated = MeetingNotesDocument(recordingID: original.recordingID, audioVersion: original.audioVersion,
+            generatedAt: nextRevisionDate(after: original.generatedAt), modelID: original.modelID,
+            transcriptionModelID: original.transcriptionModelID, markdown: preview.markdown,
+            transcript: original.transcript, costUSD: combinedCost(original.costUSD, preview.costUSD),
+            speakerTranscript: original.speakerTranscript,
+            enhancement: MeetingNotesEnhancement(modelID: preview.modelID, instructions: preview.instructions))
+        try artifacts.saveDocument(updated, recording: recording)
+        documents[recording.id] = updated
+        enhancementPreviews[recording.id] = nil
+        states[recording.id] = .completed
+        onDocumentSaved?(recording.id)
+    }
+
+    private func requireCurrentBase(_ base: MeetingNotesDocument, recording: Recording) throws {
+        guard let current = library.recording(id: recording.id), current.deletedAt == nil,
+              current.audioVersion == base.audioVersion, recording.audioVersion == base.audioVersion,
+              let visible = document(for: recording.id) else { throw staleRevisionError() }
+        let disk = try? JSONFile.load(MeetingNotesDocument.self,
+            from: library.paths.directory(for: recording.id).appending(path: "meeting-notes.json"))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        guard let disk,
+              try encoder.encode(base) == encoder.encode(visible),
+              try encoder.encode(base) == encoder.encode(disk) else { throw staleRevisionError() }
+    }
+
+    private func staleRevisionError() -> AIError {
+        AIError(message: "회의록이 다른 작업이나 기기에서 변경되었습니다. 최신 회의록을 다시 열고 보완해 주세요.")
+    }
+
+    private func nextRevisionDate(after date: Date) -> Date {
+        Date(timeIntervalSince1970: max(floor(Date().timeIntervalSince1970), floor(date.timeIntervalSince1970) + 1))
+    }
+
+    private func combinedCost(_ original: Double?, _ additional: Double?) -> Double? {
+        let values = [original, additional].compactMap { $0 }.filter { $0.isFinite && $0 >= 0 }
+        return values.isEmpty ? nil : values.reduce(0, +)
+    }
+
     func cancel(_ id: UUID) {
+        enhancementPreviews[id] = nil
         tokens[id] = UUID()
         queue.removeAll { $0.recording.id == id }
         if activeID == id { activeTask?.cancel() }
@@ -157,6 +267,7 @@ final class MeetingNotesService {
     }
 
     func credentialsDidChange() {
+        enhancementPreviews.removeAll()
         for id in Array(states.keys) where progress(for: id).isRunning { cancel(id) }
     }
 
@@ -217,8 +328,37 @@ final class MeetingNotesService {
             try check(job)
             await load(job.recording)
             try check(job)
+            if let base = job.enhancementBase, let instructions = job.instructions {
+                try await runEnhancement(job, base: base, instructions: instructions)
+                return
+            }
+            if let base = job.participantsBase {
+                try await runParticipantIdentification(job, base: base)
+                return
+            }
+            var speakerTranscript = document(for: job.recording.id)?.speakerTranscript
+            if speakerTranscript?.transcriptionModelID != job.transcriptionModelID { speakerTranscript = nil }
+            if let speakerTranscriptProvider {
+                do {
+                    let prepared = try await speakerTranscriptProvider(job.recording, job.transcriptionModelID)
+                    try check(job)
+                    try prepared.validate(duration: job.recording.duration)
+                    guard prepared.recordingID == job.recording.id, prepared.audioVersion == job.recording.audioVersion,
+                          prepared.transcriptionModelID == job.transcriptionModelID else {
+                        throw AIError(message: "참여자 전사문이 현재 녹음과 일치하지 않습니다.")
+                    }
+                    speakerTranscript = prepared
+                    transcriptNotices[job.recording.id] = nil
+                } catch {
+                    try check(job)
+                    if error is CancellationError { throw error }
+                    transcriptNotices[job.recording.id] = "참여자 구분을 완료하지 못해 기본 전사문을 표시합니다. 참여자 구분 버튼으로 다시 시도할 수 있어요."
+                }
+            }
             let transcript: String
-            if let existingTranscript = reusableCompletedTranscript(for: job) {
+            if let speakerTranscript {
+                transcript = NumberedTranscript.text(speakerTranscript)
+            } else if let existingTranscript = reusableCompletedTranscript(for: job) {
                 transcript = existingTranscript
             } else {
                 let audioURL = library.audioURL(for: job.recording)
@@ -292,7 +432,8 @@ final class MeetingNotesService {
             guard !markdown.isEmpty else { throw AIError(message: "모델이 빈 회의록을 반환했습니다. 다시 시도해 주세요.") }
             let doc = MeetingNotesDocument(recordingID: job.recording.id, audioVersion: job.recording.audioVersion,
                 generatedAt: .now, modelID: job.modelID, transcriptionModelID: job.transcriptionModelID,
-                markdown: markdown, transcript: transcript, costUSD: hasReportedCost ? cost : nil)
+                markdown: markdown, transcript: transcript, costUSD: hasReportedCost ? cost : nil,
+                speakerTranscript: speakerTranscript)
             // No await here: job validity, atomic publication, and observable
             // completion form one MainActor transaction.
             try artifacts.saveDocument(doc, recording: job.recording)
@@ -308,6 +449,55 @@ final class MeetingNotesService {
                 states[job.recording.id] = .failed(message.replacingOccurrences(of: job.key, with: "[redacted]"))
             }
         }
+    }
+
+    private func runEnhancement(_ job: Job, base: MeetingNotesDocument, instructions: String) async throws {
+        try requireCurrentBase(base, recording: job.recording)
+        let parts = try MeetingEnhancementPrompts.parts(markdown: base.markdown, transcript: base.transcript,
+            instructions: instructions, maximumBytes: job.inputBudget)
+        var revised: [String] = []
+        var cost: Double?
+        for (index, part) in parts.enumerated() {
+            try check(job)
+            states[job.recording.id] = .summarizing(completed: index, total: parts.count)
+            let response = try await client.complete(
+                system: MeetingEnhancementPrompts.system(language: job.language, partial: parts.count > 1),
+                user: part, model: job.modelID, apiKey: job.key, maxTokens: job.outputBudget)
+            try check(job)
+            let markdown = MeetingNotesPrompts.normalize(response.text)
+            guard !markdown.isEmpty else { throw AIError(message: "모델이 빈 보완안을 반환했습니다. 기존 회의록은 유지됩니다.") }
+            revised.append(markdown)
+            cost = combinedCost(cost, response.costUSD)
+        }
+        try requireCurrentBase(base, recording: job.recording)
+        let markdown = revised.joined(separator: "\n\n")
+        guard markdown.utf8.count <= 1_000_000 else { throw AIError(message: "보완안이 너무 큽니다. 수정 지시를 나누어 다시 시도해 주세요.") }
+        enhancementPreviews[job.recording.id] = MeetingNotesEnhancementPreview(id: UUID(), original: base,
+            markdown: markdown, modelID: job.modelID, instructions: instructions, costUSD: cost)
+        states[job.recording.id] = .completed
+    }
+
+    private func runParticipantIdentification(_ job: Job, base: MeetingNotesDocument) async throws {
+        guard let speakerTranscriptProvider else { throw AIError(message: "참여자 구분을 사용할 수 없습니다.") }
+        try requireCurrentBase(base, recording: job.recording)
+        states[job.recording.id] = .transcribing(completed: 0, total: 1)
+        let transcript = try await speakerTranscriptProvider(job.recording, job.transcriptionModelID)
+        try check(job)
+        try transcript.validate(duration: job.recording.duration)
+        guard transcript.recordingID == job.recording.id, transcript.audioVersion == job.recording.audioVersion,
+              transcript.transcriptionModelID == job.transcriptionModelID else {
+            throw AIError(message: "참여자 전사문이 현재 녹음과 일치하지 않습니다.")
+        }
+        try requireCurrentBase(base, recording: job.recording)
+        let updated = MeetingNotesDocument(recordingID: base.recordingID, audioVersion: base.audioVersion,
+            generatedAt: nextRevisionDate(after: base.generatedAt), modelID: base.modelID,
+            transcriptionModelID: base.transcriptionModelID, markdown: base.markdown, transcript: base.transcript,
+            costUSD: base.costUSD, speakerTranscript: transcript, enhancement: base.enhancement)
+        try artifacts.saveDocument(updated, recording: job.recording)
+        documents[job.recording.id] = updated
+        transcriptNotices[job.recording.id] = nil
+        states[job.recording.id] = .completed
+        onDocumentSaved?(job.recording.id)
     }
 
     private func reusableCompletedTranscript(for job: Job) -> String? {

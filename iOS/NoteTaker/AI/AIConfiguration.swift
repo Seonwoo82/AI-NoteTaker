@@ -7,6 +7,7 @@ final class AIConfiguration {
     var settingsTab = "recording"
     private enum Keys {
         static let modelID = "ai.modelID"
+        static let enhancementModelID = "ai.enhancementModelID"
         static let transcriptionModelID = "ai.transcriptionModelID"
         static let autoGenerate = "ai.autoGenerate"
         static let outputLanguage = "ai.outputLanguage"
@@ -36,6 +37,10 @@ final class AIConfiguration {
 
     var modelID: String {
         didSet { defaults.set(modelID, forKey: Keys.modelID); if modelID != oldValue { preferencesChanged() } }
+    }
+
+    var enhancementModelID: String {
+        didSet { defaults.set(enhancementModelID, forKey: Keys.enhancementModelID); if enhancementModelID != oldValue { preferencesChanged() } }
     }
 
     var transcriptionModelID: String {
@@ -74,6 +79,16 @@ final class AIConfiguration {
         )
     }
 
+    var effectiveEnhancementModelID: String {
+        enhancementModelID.isEmpty ? modelID : enhancementModelID
+    }
+
+    var isEnhancementConfigured: Bool {
+        let modelID = effectiveEnhancementModelID
+        guard hasAPIKey && !modelID.isEmpty else { return false }
+        return models.isEmpty || models.contains { $0.id == modelID && $0.supportsSummary }
+    }
+
     init(
         client: any OpenRouterServing,
         keyStore: any APIKeyStoring,
@@ -90,6 +105,7 @@ final class AIConfiguration {
         hasSyncedPreferences = syncState.hasSynced
         otherDeviceHasAPIKey = syncState.otherDeviceHasAPIKey
         modelID = defaults.string(forKey: Keys.modelID) ?? ""
+        enhancementModelID = defaults.string(forKey: Keys.enhancementModelID) ?? ""
         transcriptionModelID = defaults.string(forKey: Keys.transcriptionModelID) ?? ""
         let savedLanguage = defaults.string(forKey: Keys.outputLanguage) ?? "ko"
         outputLanguage = Self.allowedLanguages.contains(savedLanguage) ? savedLanguage : "ko"
@@ -199,6 +215,15 @@ final class AIConfiguration {
                 outputModalities: []
             ))
         }
+        if !enhancementModelID.isEmpty, !fetchedIDs.contains(enhancementModelID) {
+            merged.append(OpenRouterModel(
+                id: enhancementModelID,
+                name: "\(enhancementModelID) (사용할 수 없음)",
+                contextLength: 0,
+                inputModalities: [],
+                outputModalities: []
+            ))
+        }
         if !transcriptionModelID.isEmpty, !fetchedIDs.contains(transcriptionModelID) {
             merged.append(OpenRouterModel(
                 id: transcriptionModelID,
@@ -254,7 +279,7 @@ final class AIConfiguration {
         } else if syncState.preferences != nil {
             syncState.pending = true
             persistSyncState()
-        } else if !modelID.isEmpty || !transcriptionModelID.isEmpty || autoGenerate || outputLanguage != "ko" {
+        } else if !modelID.isEmpty || !enhancementModelID.isEmpty || !transcriptionModelID.isEmpty || autoGenerate || outputLanguage != "ko" {
             preferencesChanged(notify: false)
         }
     }
@@ -267,11 +292,15 @@ final class AIConfiguration {
         }
         applyingSharedPreferences = true
         modelID = preferences.modelID
+        let acceptedEnhancementModelID = preferences.enhancementModelID ?? enhancementModelID
+        enhancementModelID = acceptedEnhancementModelID
         transcriptionModelID = preferences.transcriptionModelID
         outputLanguage = preferences.outputLanguage
         autoGenerate = preferences.autoGenerate
         applyingSharedPreferences = false
-        syncState.preferences = preferences
+        syncState.preferences = AISharedPreferences(modelID: preferences.modelID, enhancementModelID: preferences.enhancementModelID ?? acceptedEnhancementModelID,
+            transcriptionModelID: preferences.transcriptionModelID, outputLanguage: preferences.outputLanguage, autoGenerate: preferences.autoGenerate,
+            modifiedAt: preferences.modifiedAt, mutationID: preferences.mutationID)
         syncState.pending = false
         syncState.hasSynced = true
         hasSyncedPreferences = true
@@ -302,8 +331,8 @@ final class AIConfiguration {
         guard !applyingSharedPreferences else { return }
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let modified = max(now, min((syncState.preferences?.modifiedAt ?? 0) + 1, 9_007_199_254_740_991))
-        syncState.preferences = AISharedPreferences(modelID: modelID, transcriptionModelID: transcriptionModelID,
-            outputLanguage: outputLanguage, autoGenerate: autoGenerate, modifiedAt: modified, mutationID: UUID())
+        syncState.preferences = AISharedPreferences(modelID: modelID, enhancementModelID: enhancementModelID,
+            transcriptionModelID: transcriptionModelID, outputLanguage: outputLanguage, autoGenerate: autoGenerate, modifiedAt: modified, mutationID: UUID())
         syncState.pending = true
         persistSyncState()
         if notify { onSyncStateChanged?() }

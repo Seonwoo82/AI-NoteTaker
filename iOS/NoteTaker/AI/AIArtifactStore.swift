@@ -23,6 +23,15 @@ actor AIArtifactStore {
         guard let doc = try? JSONFile.load(MeetingNotesDocument.self, from: documentURL(recording.id)),
               doc.schemaVersion == 1, doc.recordingID == recording.id,
               doc.audioVersion == recording.audioVersion else { return nil }
+        if let transcript = doc.speakerTranscript {
+            guard transcript.recordingID == doc.recordingID, transcript.audioVersion == doc.audioVersion,
+                  transcript.transcriptionModelID == doc.transcriptionModelID,
+                  (try? transcript.validate(duration: recording.duration)) != nil else { return nil }
+        }
+        if let enhancement = doc.enhancement {
+            guard !enhancement.modelID.isEmpty, enhancement.modelID.utf8.count <= 512,
+                  !enhancement.instructions.isEmpty, enhancement.instructions.utf8.count <= 8_000 else { return nil }
+        }
         return doc
     }
 
@@ -53,6 +62,9 @@ actor AIArtifactStore {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(value)
+        guard data.count <= 2 * 1_024 * 1_024 else {
+            throw AIError(message: "회의 문서가 동기화 가능한 크기를 초과했습니다. 내용을 나누어 처리해 주세요.")
+        }
         try Task.checkCancellation()
         // Commit on the service's MainActor with no suspension between job
         // validation, file publication and visible state updates. Cancellation

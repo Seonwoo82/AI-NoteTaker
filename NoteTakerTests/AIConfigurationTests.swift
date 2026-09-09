@@ -80,10 +80,39 @@ struct AIConfigurationTests {
         }
     }
 
+    @Test("enhancement model can follow the minutes model or use its own text model")
+    func enhancementModelCanFollowOrOverrideMinutesModel() async throws {
+        let defaults = try isolatedDefaults()
+        defaults.set("fixture/summary", forKey: "ai.modelID")
+        let models = [
+            OpenRouterModel(id: "fixture/summary", name: "Summary", contextLength: 9000, inputModalities: ["text"], outputModalities: ["text"]),
+            OpenRouterModel(id: "fixture/enhancement", name: "Enhancement", contextLength: 9000, inputModalities: ["text"], outputModalities: ["text"]),
+            OpenRouterModel(id: "fixture/transcription", name: "Transcription", contextLength: 0, inputModalities: ["audio"], outputModalities: ["transcription"])
+        ]
+        let configuration = AIConfiguration(client: StubOpenRouterClient(models: models), keyStore: InMemoryAPIKeyStore(), defaults: defaults)
+
+        #expect(configuration.enhancementModelID == "")
+        #expect(configuration.effectiveEnhancementModelID == "fixture/summary")
+        #expect(!configuration.isEnhancementConfigured)
+
+        try configuration.saveKey("fixture-key")
+        await configuration.refreshModels()
+        #expect(configuration.isEnhancementConfigured)
+
+        configuration.enhancementModelID = "fixture/enhancement"
+        #expect(configuration.effectiveEnhancementModelID == "fixture/enhancement")
+        #expect(configuration.isEnhancementConfigured)
+
+        let reloaded = AIConfiguration(client: StubOpenRouterClient(models: models), keyStore: InMemoryAPIKeyStore("fixture-key"), defaults: defaults)
+        #expect(reloaded.enhancementModelID == "fixture/enhancement")
+        #expect(reloaded.effectiveEnhancementModelID == "fixture/enhancement")
+    }
+
     @Test("refreshModels chooses preferred valid defaults while preserving unavailable saved IDs")
     func refreshModelsChoosesPreferredDefaults() async throws {
         let defaults = try isolatedDefaults()
         defaults.set("previous-summary", forKey: "ai.modelID")
+        defaults.set("previous-enhancement", forKey: "ai.enhancementModelID")
         defaults.set("previous-stt", forKey: "ai.transcriptionModelID")
         let models = [
             OpenRouterModel(id: "other/text", name: "Other", contextLength: 9000, inputModalities: ["text"], outputModalities: ["text"]),
@@ -95,8 +124,10 @@ struct AIConfigurationTests {
         await configuration.refreshModels()
 
         #expect(configuration.modelID == "previous-summary")
+        #expect(configuration.enhancementModelID == "previous-enhancement")
         #expect(configuration.transcriptionModelID == "previous-stt")
         #expect(configuration.models.map(\.id).contains("previous-summary"))
+        #expect(configuration.models.map(\.id).contains("previous-enhancement"))
         #expect(configuration.models.map(\.id).contains("previous-stt"))
         try configuration.saveKey("fixture-key")
         #expect(!configuration.isConfigured)

@@ -4198,6 +4198,206 @@
           }
         }
       }
+    },
+    "Enhancement Model": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의록 보완 모델"
+          }
+        }
+      }
+    },
+    "Follow Meeting Notes Model": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의록 모델과 동일"
+          }
+        }
+      }
+    },
+    "Enhance Minutes": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 보완"
+          }
+        }
+      }
+    },
+    "Describe incorrect names or missing context. Review the revised minutes before replacing the current report.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "잘못 적힌 이름이나 빠진 맥락을 알려주세요. 보완안을 확인하고 적용하면 기존 회의록이 업데이트됩니다."
+          }
+        }
+      }
+    },
+    "Corrections and missing context": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수정할 내용과 빠진 맥락"
+          }
+        }
+      }
+    },
+    "Example: The names Seungwon and Seunghyeon refer to Seungwon. We agreed to send the proposal next week, not tomorrow.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "예: 승원과 승현은 같은 사람이며, 정확한 이름은 승원입니다. 제안서는 내일이 아니라 다음 주에 전달하기로 했습니다."
+          }
+        }
+      }
+    },
+    "Your correction is too long. Split it into smaller requests.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수정 요청이 너무 깁니다. 내용을 나누어 입력해 주세요."
+          }
+        }
+      }
+    },
+    "Preparing a revised report…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의록 보완안을 만들고 있어요…"
+          }
+        }
+      }
+    },
+    "Generate Enhancement": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보완안 생성"
+          }
+        }
+      }
+    },
+    "Enhancement Preview": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보완안 미리보기"
+          }
+        }
+      }
+    },
+    "The current report is unchanged until you apply this preview.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "적용하기 전까지 기존 회의록은 그대로 유지됩니다."
+          }
+        }
+      }
+    },
+    "Apply Enhancement": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보완안 적용"
+          }
+        }
+      }
+    },
+    "Discard Preview": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보완안 버리기"
+          }
+        }
+      }
+    },
+    "Participant labels are not available yet. Identify participants to add speaker numbers to this transcript.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 참여자 정보가 없습니다. 참여자 구분을 실행하면 누가 말했는지 번호로 표시합니다."
+          }
+        }
+      }
+    },
+    "Identify Participants": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여자 구분"
+          }
+        }
+      }
+    },
+    "Participant %lld": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여자 %lld"
+          }
+        }
+      }
+    },
+    "Unidentified participant": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여자 미확인"
+          }
+        }
+      }
+    },
+    "Meeting analysis is already running.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 회의 분석이 진행 중입니다. 완료 후 다시 시도해 주세요."
+          }
+        }
+      }
+    },
+    "Participant labels are estimates. Overlapping or unclear speech may remain unidentified.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "참여자 구분은 추정 결과입니다. 겹치거나 불분명한 목소리는 미확인으로 표시될 수 있어요."
+          }
+        }
+      }
+    },
+    "Last enhanced with": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "최근 보완 모델"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

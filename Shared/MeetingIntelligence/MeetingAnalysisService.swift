@@ -75,6 +75,7 @@ final class MeetingAnalysisService {
     @ObservationIgnored private var queue: [Job] = []
     @ObservationIgnored private var activeTask: Task<Void, Never>?
     @ObservationIgnored private var activeID: UUID?
+    @ObservationIgnored private var transcriptPreparationID: UUID?
     @ObservationIgnored private var tokens: [UUID: UUID] = [:]
     @ObservationIgnored var onTranscriptReady: ((Recording) -> Void)?
     @ObservationIgnored var onFinished: ((Recording, Bool) -> Void)?
@@ -166,8 +167,70 @@ final class MeetingAnalysisService {
         states[id] == .cancelled
     }
 
+    func prepareNumberedTranscript(_ recording: Recording, transcriptionModelID: String? = nil) async throws -> MeetingTranscript {
+        try Task.checkCancellation()
+        let requestedModelID = transcriptionModelID ?? configuration.transcriptionModelID
+        guard let current = library.recording(id: recording.id),
+              current.deletedAt == nil,
+              current.audioVersion == recording.audioVersion else {
+            throw CancellationError()
+        }
+        if let transcript = try await reusableResolvedTranscript(for: current, modelID: requestedModelID) {
+            return transcript
+        }
+        guard activeTask == nil, transcriptPreparationID == nil, queue.isEmpty else {
+            throw AIError(message: String(localized: "Meeting analysis is already running."))
+        }
+        guard configuration.isConfigured else {
+            throw AIError(message: String(localized: "설정에서 OpenRouter API 키와 AI 모델을 선택해 주세요."))
+        }
+
+        let key: String
+        do {
+            key = try configuration.apiKey()
+        } catch {
+            throw AIError(message: String(localized: "저장된 API 키를 읽지 못했습니다. 설정에서 키를 다시 저장해 주세요."))
+        }
+
+        let token = UUID()
+        let model = configuration.models.first { $0.id == configuration.modelID }
+        let budget = MeetingCompletionBudget(model: model, modelID: configuration.modelID, fallbackContext: 32_000)
+        let job = Job(token: token, recording: current, key: key,
+            analysisModelID: configuration.modelID,
+            transcriptionModelID: requestedModelID,
+            language: configuration.outputLanguage,
+            inputBudget: budget.inputBytes,
+            outputBudget: budget.outputTokens,
+            forceTranscription: false)
+        tokens[current.id] = token
+        transcriptPreparationID = current.id
+        states[current.id] = .preparing
+        defer {
+            if tokens[current.id] == token { tokens[current.id] = nil }
+            if transcriptPreparationID == current.id { transcriptPreparationID = nil }
+            startNext()
+        }
+
+        do {
+            try check(job)
+            let transcript = try await transcript(for: job)
+            try check(job)
+            try await saveTranscriptOnlyDocumentIfNeeded(transcript, job: job)
+            try check(job)
+            states[current.id] = .completed
+            return try correctedTranscriptForAnalysis(base: transcript, job: job)
+        } catch {
+            if error is CancellationError || Task.isCancelled {
+                states[current.id] = .cancelled
+            } else {
+                states[current.id] = .failed(sanitizedMessage(error, redacting: key))
+            }
+            throw error
+        }
+    }
+
     private func startNext() {
-        guard activeTask == nil, !queue.isEmpty else { return }
+        guard activeTask == nil, transcriptPreparationID == nil, !queue.isEmpty else { return }
         let job = queue.removeFirst()
         activeID = job.recording.id
         activeTask = Task { [weak self] in
@@ -221,6 +284,36 @@ final class MeetingAnalysisService {
                 states[job.recording.id] = .failed(sanitizedMessage(error, redacting: job.key))
             }
         }
+    }
+
+    private func reusableResolvedTranscript(for recording: Recording, modelID: String) async throws -> MeetingTranscript? {
+        let loaded = await store.load(recording)
+        try Task.checkCancellation()
+        guard let current = library.recording(id: recording.id), current.deletedAt == nil,
+              current.audioVersion == recording.audioVersion else { throw CancellationError() }
+        guard let document = loaded ?? store.document(for: recording.id),
+              document.transcript.transcriptionModelID == modelID else {
+            return nil
+        }
+        return try document.resolved(edits: edits.edits(for: recording.id,
+            audioVersion: recording.audioVersion)).transcript
+    }
+
+    private func saveTranscriptOnlyDocumentIfNeeded(_ transcript: MeetingTranscript, job: Job) async throws {
+        let loaded = await store.load(job.recording)
+        let previousDocument = loaded ?? store.document(for: job.recording.id)
+        guard previousDocument?.insights == nil else { return }
+        let mutationID = UUID()
+        let document = MeetingIntelligenceDocument(recordingID: job.recording.id,
+            audioVersion: job.recording.audioVersion,
+            modifiedAt: publishTimestamp(after: previousDocument?.modifiedAt),
+            mutationID: mutationID,
+            projectName: previousDocument?.projectName ?? "",
+            transcript: transcript,
+            insights: nil,
+            analysisModelID: job.analysisModelID)
+        try check(job)
+        try await store.save(document)
     }
 
     private func transcript(for job: Job) async throws -> MeetingTranscript {
