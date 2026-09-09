@@ -4,8 +4,8 @@ nonisolated struct VoiceEnrollmentGuidePolicy: Equatable {
     var minimumDuration: Double = OwnerVoicePolicy().minimumEnrollmentDuration
     var maximumDuration: Double = OwnerVoicePolicy().maximumEnrollmentDuration
 
-    func canFinish(elapsed: Double) -> Bool {
-        elapsed >= minimumDuration
+    func canFinish(elapsed: Double, detectedAudioDuration: Double? = nil) -> Bool {
+        elapsed >= minimumDuration && (detectedAudioDuration.map { $0 >= min(3, minimumDuration) } ?? true)
     }
 
     func progress(elapsed: Double) -> Double {
@@ -96,6 +96,24 @@ struct VoiceEnrollmentGuideView: View {
                     }
                 }
 
+                if voice.isEnrolling, let inputLevel = voice.inputLevel {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(String(localized: "Microphone input"), systemImage: "mic.fill")
+                            .font(.subheadline.weight(.semibold))
+                        ProgressView(value: inputLevel)
+                            .tint(inputLevel > 0.15 ? .green : .orange)
+                            .accessibilityLabel(String(localized: "Microphone input level"))
+                            .accessibilityIdentifier("voice-enrollment-input-meter")
+                        Text(String(localized: "Audio detected: \(Int(voice.detectedAudioDuration)) seconds"))
+                            .font(.caption).foregroundStyle(.secondary)
+                        if voice.elapsed >= 3, voice.detectedAudioDuration < 1 {
+                            Text(String(localized: "The microphone input is very low. Move closer and check that the microphone is not covered."))
+                                .font(.caption).foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
                 if isCompleted {
                     Label(String(localized: "Voice profile saved on this device."), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -146,7 +164,8 @@ struct VoiceEnrollmentGuideView: View {
                 Label(hasExistingProfile ? String(localized: "Update Voice") : String(localized: "Save Voice"),
                       systemImage: "checkmark.circle")
             }
-            .disabled(!policy.canFinish(elapsed: voice.elapsed) || voice.isProcessing || isStarting)
+            .disabled(!policy.canFinish(elapsed: voice.elapsed,
+                detectedAudioDuration: voice.inputLevel == nil ? nil : voice.detectedAudioDuration) || voice.isProcessing || isStarting)
             .accessibilityIdentifier("voice-enrollment-finish")
 
             Button(role: .cancel) {

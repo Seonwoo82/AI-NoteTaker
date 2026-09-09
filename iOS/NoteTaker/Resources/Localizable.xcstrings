@@ -4398,6 +4398,106 @@
           }
         }
       }
+    },
+    "The recording is too short. Read the guide for at least 10 seconds.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "녹음 시간이 짧습니다. 안내 문장을 최소 10초 동안 읽어주세요."
+          }
+        }
+      }
+    },
+    "Not enough microphone input was recorded. Check the input meter and read closer to the microphone.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "마이크 입력이 충분히 녹음되지 않았습니다. 입력 막대를 확인하고 마이크에 조금 더 가까이에서 읽어주세요."
+          }
+        }
+      }
+    },
+    "Voice recording data is invalid. Please record again.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "녹음 데이터를 읽을 수 없습니다. 다시 녹음해 주세요."
+          }
+        }
+      }
+    },
+    "No usable microphone signal was recorded. Check the microphone and try again.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사용할 수 있는 마이크 입력이 없습니다. 마이크 연결을 확인하고 다시 녹음해 주세요."
+          }
+        }
+      }
+    },
+    "Speech could not be identified clearly. Read the guide in a quiet place without other voices.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "말소리를 충분히 확인하지 못했습니다. 다른 사람의 목소리가 없는 조용한 곳에서 안내 문장을 읽어주세요."
+          }
+        }
+      }
+    },
+    "A voice profile could not be created from this recording. Please record again.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 녹음에서 목소리 프로필을 만들지 못했습니다. 다시 녹음해 주세요."
+          }
+        }
+      }
+    },
+    "Microphone input": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "마이크 입력"
+          }
+        }
+      }
+    },
+    "Microphone input level": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "마이크 입력 음량"
+          }
+        }
+      }
+    },
+    "Audio detected: %lld seconds": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "입력 감지: %lld초"
+          }
+        }
+      }
+    },
+    "The microphone input is very low. Move closer and check that the microphone is not covered.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "마이크 입력이 매우 작아요. 조금 더 가까이 말하고 마이크가 가려져 있지 않은지 확인해 주세요."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -13,6 +13,8 @@ struct VoiceEnrollmentGuideTests {
 
         #expect(!policy.canFinish(elapsed: 9.99))
         #expect(policy.canFinish(elapsed: 10))
+        #expect(!policy.canFinish(elapsed: 14, detectedAudioDuration: 0))
+        #expect(policy.canFinish(elapsed: 14, detectedAudioDuration: 10))
         #expect(policy.remainingMinimumSeconds(elapsed: 8.2) == 2)
     }
 

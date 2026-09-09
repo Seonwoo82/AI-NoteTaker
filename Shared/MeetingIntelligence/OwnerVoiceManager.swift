@@ -36,10 +36,14 @@ protocol SpeakerAnalysisServing: Sendable {
     func prepareCachedIfAvailable() async throws -> Bool
     func diarize(audioURL: URL) async throws -> AcousticDiarization
     func embedding(samples: [Float], sampleRate: Double) async throws -> [Float]
+    func enrollmentEmbedding(samples: [Float], sampleRate: Double) async throws -> [Float]
 }
 
 extension SpeakerAnalysisServing {
     func prepareCachedIfAvailable() async throws -> Bool { false }
+    func enrollmentEmbedding(samples: [Float], sampleRate: Double) async throws -> [Float] {
+        try await embedding(samples: samples, sampleRate: sampleRate)
+    }
 }
 
 nonisolated enum OwnerSpeechState: Equatable, Sendable {
@@ -253,6 +257,8 @@ final class OwnerVoiceManager {
         presentation.isEnrolling = true
         presentation.isProcessing = false
         presentation.elapsed = 0
+        presentation.inputLevel = 0
+        presentation.detectedAudioDuration = 0
         presentation.error = nil
         presentation.status = String(localized: "Recording your voice...")
     }
@@ -271,10 +277,17 @@ final class OwnerVoiceManager {
         let sampleRate = enrollment.sampleRate
         let duration = enrollment.duration
 
-        guard let sampleRate,
-              duration >= policy.minimumEnrollmentDuration,
-              rms(samples) >= policy.minimumSpeechRMS else {
-            presentation.error = String(localized: "Record a little more clear speech before saving your voice profile.")
+        guard let sampleRate, duration >= policy.minimumEnrollmentDuration else {
+            presentation.error = String(localized: "The recording is too short. Read the guide for at least 10 seconds.")
+            presentation.status = String(localized: "Voice profile was not saved.")
+            presentation.isProcessing = false
+            state = .unavailable
+            enrollment.removeAll()
+            return
+        }
+        let signal = VoiceEnrollmentSignal.measure(samples, sampleRate: sampleRate)
+        guard signal.activeDuration >= min(3, policy.minimumEnrollmentDuration) else {
+            presentation.error = String(localized: "Not enough microphone input was recorded. Check the input meter and read closer to the microphone.")
             presentation.status = String(localized: "Voice profile was not saved.")
             presentation.isProcessing = false
             state = .unavailable
@@ -283,7 +296,7 @@ final class OwnerVoiceManager {
         }
 
         do {
-            let embedding = try await backend.embedding(samples: samples, sampleRate: sampleRate)
+            let embedding = try await backend.enrollmentEmbedding(samples: samples, sampleRate: sampleRate)
             guard lifecycleID == finishedEnrollmentLifecycleID else { return }
             try validateEmbedding(embedding)
             let voice = LocalVoiceProfile(
@@ -319,6 +332,8 @@ final class OwnerVoiceManager {
         presentation.isEnrolling = false
         presentation.isProcessing = false
         presentation.elapsed = 0
+        presentation.inputLevel = nil
+        presentation.detectedAudioDuration = 0
         presentation.status = profile.localVoice == nil
             ? String(localized: "No local voice profile is registered.")
             : String(localized: "Local voice profile is ready.")
@@ -338,6 +353,8 @@ final class OwnerVoiceManager {
         presentation.isEnrolling = false
         presentation.isProcessing = false
         presentation.elapsed = 0
+        presentation.inputLevel = nil
+        presentation.detectedAudioDuration = 0
         presentation.error = Self.message(for: error)
         presentation.status = String(localized: "Voice capture failed.")
         state = profile.localVoice == nil ? .unavailable : .silence
@@ -444,6 +461,10 @@ final class OwnerVoiceManager {
         enrollmentAudioEnd = chunk.endTime
         enrollment.append(chunk, maximumDuration: policy.maximumEnrollmentDuration)
         presentation.elapsed = enrollment.duration
+        let signal = VoiceEnrollmentSignal.measure(chunk.samples, sampleRate: chunk.sampleRate)
+        presentation.inputLevel = signal.meterLevel
+        presentation.detectedAudioDuration = min(policy.maximumEnrollmentDuration,
+            presentation.detectedAudioDuration + signal.activeDuration)
     }
 
     private func ingestLatestListeningWindow(from chunks: [LiveAudioSamples]) async {

@@ -70,6 +70,54 @@ actor LocalSpeakerBackend: SpeakerAnalysisServing {
         return embedding
     }
 
+    func enrollmentEmbedding(samples: [Float], sampleRate: Double) async throws -> [Float] {
+        guard let models = cachedModels else { throw notPreparedError() }
+        let converted = try LocalSpeakerAudioConverter.convertMonoSamplesTo16k(samples, sampleRate: sampleRate)
+        let prepared = try VoiceEnrollmentSignal.prepared16kSamples(converted)
+        let manager = makeManager(models: models)
+        guard let segmentation = manager.segmentationModel, let extractor = manager.embeddingExtractor else {
+            throw notPreparedError()
+        }
+        // WeSpeaker uses a ten-second waveform. Score overlapping windows so
+        // leading silence or speech near the end cannot be discarded by slot zero.
+        var bestAudio: ArraySlice<Float> = []
+        var bestMask: [Float] = []
+        var bestSpeechDuration: Double = 0
+        for start in stride(from: 0, to: prepared.count, by: 80_000) {
+            try Task.checkCancellation()
+            let window = prepared[start..<min(prepared.count, start + 160_000)]
+            let (batches, _) = try manager.segmentationProcessor.getSegments(
+                audioChunk: window, segmentationModel: segmentation)
+            guard let frames = batches.first, !frames.isEmpty else { continue }
+            // Pinned pyannote model: 270-sample hop at 16 kHz (FluidAudio 0.15.6).
+            let frameDuration = 270.0 / 16_000
+            let validDuration = Double(window.count) / 16_000
+            for speaker in 0..<3 {
+                let mask = frames.enumerated().map { index, frame -> Float in
+                    guard Double(index) * frameDuration < validDuration,
+                          frame.indices.contains(speaker), frame.reduce(0, +) < 2 else { return 0 }
+                    return frame[speaker]
+                }
+                let speechDuration = Double(mask.reduce(0, +)) * frameDuration
+                if speechDuration > bestSpeechDuration {
+                    bestSpeechDuration = speechDuration
+                    bestAudio = window
+                    bestMask = mask
+                }
+            }
+        }
+        guard bestSpeechDuration >= 3 else {
+            throw AIError(message: String(localized: "Speech could not be identified clearly. Read the guide in a quiet place without other voices."))
+        }
+        try Task.checkCancellation()
+        let embeddings = try extractor.getEmbeddings(audio: bestAudio, masks: [bestMask])
+        guard let embedding = embeddings.first, embedding.count == SpeakerManager.embeddingSize,
+              OwnerVoicePolicy().isValidEmbedding(embedding) else {
+            throw AIError(message: String(localized: "A voice profile could not be created from this recording. Please record again."))
+        }
+        return embedding
+    }
+
     func diarize(audioURL: URL) async throws -> AcousticDiarization {
         guard let models = cachedModels else { throw notPreparedError() }
         let manager = makeManager(models: models)

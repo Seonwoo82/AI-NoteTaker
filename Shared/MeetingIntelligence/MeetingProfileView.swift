@@ -8,6 +8,8 @@ struct VoiceProfilePresentation: Equatable {
     var elapsed: Double
     var status: String
     var error: String?
+    var inputLevel: Double?
+    var detectedAudioDuration: Double
 
     init(
         modelsReady: Bool = false,
@@ -16,7 +18,9 @@ struct VoiceProfilePresentation: Equatable {
         isProcessing: Bool = false,
         elapsed: Double = 0,
         status: String = "",
-        error: String? = nil
+        error: String? = nil,
+        inputLevel: Double? = nil,
+        detectedAudioDuration: Double = 0
     ) {
         self.modelsReady = modelsReady
         self.isPreparing = isPreparing
@@ -25,6 +29,8 @@ struct VoiceProfilePresentation: Equatable {
         self.elapsed = elapsed
         self.status = status
         self.error = error
+        self.inputLevel = inputLevel
+        self.detectedAudioDuration = detectedAudioDuration
     }
 }
 

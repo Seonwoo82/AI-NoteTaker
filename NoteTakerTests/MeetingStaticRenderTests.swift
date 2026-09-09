@@ -139,7 +139,15 @@ final class MeetingStaticRenderMacTests: XCTestCase {
             (
                 "voice-enrollment-guide-recording-mac-dark",
                 "Voice Enrollment Guide Recording macOS dark 460pt",
-                VoiceProfilePresentation(modelsReady: true, isEnrolling: true, elapsed: 8.4, status: "내 목소리를 녹음하고 있습니다..."),
+                VoiceProfilePresentation(modelsReady: true, isEnrolling: true, elapsed: 8.4, status: "내 목소리를 녹음하고 있습니다...", inputLevel: 0.52, detectedAudioDuration: 7.2),
+                false,
+                false
+            ),
+            (
+                "voice-enrollment-guide-quiet-mac-dark",
+                "Quiet voice enrollment input ready",
+                VoiceProfilePresentation(modelsReady: true, isEnrolling: true, elapsed: 14,
+                    status: "내 목소리를 녹음하고 있습니다...", inputLevel: 0.50, detectedAudioDuration: 10),
                 false,
                 false
             ),

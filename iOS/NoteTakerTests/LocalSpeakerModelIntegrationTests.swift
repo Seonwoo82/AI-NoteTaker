@@ -95,6 +95,65 @@ final class LocalSpeakerModelIntegrationTests: XCTestCase {
         XCTAssertGreaterThan(second.duration, 5)
     }
 
+    func testQuietPublicSpeechEnrollmentRejectsNoiseAndPreservesIdentity() async throws {
+        let root = repositoryRoot.appending(path: "build/fluidaudio-validation")
+        guard FileManager.default.fileExists(atPath: root.appending(path: "enable-model-validation").path) else {
+            throw XCTSkip("Public model validation is opt-in.")
+        }
+        #if os(iOS)
+        let cache = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: root.appending(path: "mac-model-cache.json")))
+        let modelDirectory = URL(filePath: try XCTUnwrap(cache["path"]))
+        let platform = "ios"
+        #else
+        let modelDirectory = LocalSpeakerBackend.defaultModelDirectory
+        let platform = "mac"
+        #endif
+        let backend = LocalSpeakerBackend(modelDirectory: modelDirectory)
+        let restored = try await backend.prepareCachedIfAvailable()
+        XCTAssertTrue(restored)
+        let spoken = try samples(root.appending(path: "decoded/6930-75918-0001.wav"))
+        let quiet = Array(repeating: Float(0), count: 64_000) + spoken.map { $0 * 0.1 } + Array(repeating: Float(0), count: 16_000)
+        XCTAssertLessThan(VoiceEnrollmentSignal.measure(quiet, sampleRate: 16_000).rms, 0.01)
+        let profileRoot = root.appending(path: "quiet-enrollment-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: profileRoot) }
+        let store = MeetingProfileStore(root: profileRoot)
+        let manager = OwnerVoiceManager(profile: store, backend: backend)
+        await manager.prepareModels()
+        await manager.beginEnrollment()
+        for start in stride(from: 0, to: quiet.count, by: 8_000) {
+            let end = min(start + 8_000, quiet.count)
+            manager.audioHandler(LiveAudioSamples(samples: Array(quiet[start..<end]), sampleRate: 16_000,
+                startTime: Double(start) / 16_000))
+            for _ in 0..<200 {
+                if manager.presentation.elapsed >= Double(end) / 16_000 - 1e-6 { break }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+        }
+        await manager.finishEnrollment()
+        XCTAssertNil(manager.presentation.error)
+        let voice = try XCTUnwrap(store.localVoice)
+        let positive = try await backend.embedding(samples: samples(root.appending(path: "decoded/6930-75918-0000.wav")), sampleRate: 16_000)
+        let negative = try await backend.embedding(samples: samples(root.appending(path: "decoded/1320-122617-0022.wav")), sampleRate: 16_000)
+        let same = cosine(voice.embedding, positive)
+        let other = cosine(voice.embedding, negative)
+        XCTAssertEqual(OwnerVoicePolicy().classify(embedding: positive, profile: voice, modelID: backend.embeddingModelID), .owner)
+        XCTAssertGreaterThan(same, other + 0.2)
+        var seed: UInt64 = 13
+        let noise: [Float] = (0..<224_000).map { _ in
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1
+            return (Float((seed >> 32) & 65_535) / 65_535 - 0.5) * 0.006
+        }
+        do {
+            _ = try await backend.enrollmentEmbedding(samples: noise, sampleRate: 16_000)
+            XCTFail("Noise must not be enrolled as a voice")
+        } catch is AIError { }
+        let report: [String: Any] = ["platform": platform, "quietSpeechRMS": VoiceEnrollmentSignal.measure(quiet, sampleRate: 16_000).rms,
+            "recordingSeconds": Double(quiet.count) / 16_000, "positiveCosine": same, "negativeCosine": other,
+            "profileSaved": true, "noiseRejected": true]
+        try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+            .write(to: root.appending(path: "quiet-enrollment-\(platform).json"), options: .atomic)
+    }
+
     #if os(macOS)
     func testExplicitPreparationRepairsAnIncompleteModelCache() async throws {
         let root = repositoryRoot.appending(path: "build/fluidaudio-validation")

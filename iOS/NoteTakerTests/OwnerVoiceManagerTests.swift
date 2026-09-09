@@ -12,6 +12,31 @@ import Testing
 @MainActor
 @Suite("Owner voice manager")
 struct OwnerVoiceManagerTests {
+    @Test("fourteen seconds of quiet speech remains enrollable with pauses")
+    func quietSpeechWithPausesIsNotRejectedByWholeClipAverage() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MeetingProfileStore(root: root)
+        let backend = FakeSpeakerAnalysisService()
+        let manager = OwnerVoiceManager(profile: store, backend: backend)
+        await manager.prepareModels()
+        await manager.beginEnrollment()
+        for index in 0..<28 {
+            let amplitude: Float = (index < 3 || index >= 23) ? 0 : 0.004
+            let samples = (0..<8_000).map { Float(sin(Double($0) * 2 * .pi * 180 / 16_000)) * amplitude }
+            manager.audioHandler(LiveAudioSamples(samples: samples, sampleRate: 16_000, startTime: Double(index) * 0.5))
+            for _ in 0..<100 {
+                if manager.presentation.elapsed >= Double(index + 1) * 0.5 { break }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+        }
+        #expect(manager.presentation.elapsed == 14)
+        await manager.finishEnrollment()
+        #expect(manager.presentation.error == nil)
+        #expect(store.localVoice != nil)
+        #expect(backend.embeddingCallCount == 1)
+    }
+
     @Test("production policy defaults use conservative enrollment and listening windows")
     func productionPolicyDefaultsAreConservative() {
         let policy = OwnerVoicePolicy()

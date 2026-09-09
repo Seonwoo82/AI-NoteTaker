@@ -175,3 +175,15 @@
 [상세 기록](implementation/TRANSCRIPT-ENHANCEMENT.md)
 
 - [x] Mac·iPhone 1.4.0 (12) Release 설치·실행 확인.
+
+## 작은 음량의 목소리 등록 — 1.4.1 (빌드 13)
+
+- [x] 14초를 녹음해도 평균 음량 때문에 등록이 거절되는 경로 재현·수정.
+- [x] 입력 감지, 제한된 음량 보정, 기존 pyannote 모델의 실제 말소리 검사.
+- [x] 가장 충분한 말소리 구간 선택, 무음·DC·잡음 거부, 기존 프로필 보존.
+- [x] 마이크 입력 막대·입력 감지 시간·실패 원인별 안내.
+- [x] Mac 400개 / iOS 276개 테스트와 실제 공개 음성 모델 검증 통과.
+
+[상세 기록](implementation/VOICE-ENROLLMENT-QUALITY.md)
+
+- [x] Mac·iPhone 1.4.1 (13) Release 설치, Mac 실행 확인.
