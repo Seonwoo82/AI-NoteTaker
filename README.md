@@ -7,7 +7,7 @@ AI-NoteTaker는 SwiftUI로 만든 macOS·iOS 개인용 음성 노트 앱입니�
 > **macOS 26+ · iOS 17+ · Apple Silicon Mac · Swift 6**
 > App Store 배포 없이 Xcode로 개인 Mac과 iPhone/iPad에 설치하는 구성을 기준으로 합니다.
 
-현재 버전은 **1.3 (빌드 7)**입니다. Mac과 iOS 시뮬레이터에서 전체 테스트와 실제 음성 모델 검증을 완료했습니다. 개인 기기 설치 방법은 아래에서 확인할 수 있으며, 상세한 검증 범위는 [검증 기록](docs/implementation/MEETING-INTELLIGENCE-VERIFICATION.md)에 정리했습니다.
+현재 버전은 **1.3.1 (빌드 8)**이며 Mac과 iPhone 설치·실행, 1분 이상 프로세스 유지 확인을 완료했습니다. 상세한 검증 범위는 [검증 기록](docs/implementation/MEETING-INTELLIGENCE-VERIFICATION.md)에 정리했습니다.
 
 - [작업 예정 기능 목록](docs/FEATURE-BACKLOG.md)
 - [Cloudflare 배포 및 API 가이드](Cloudflare/README.md)
@@ -202,27 +202,29 @@ Mac의 기존 저장 위치는 이름 변경 후에도 유지합니다.
 - 화자 구분과 내 목소리 표시는 녹음 품질, 겹침 발화, 배경 소음, 모델 준비 상태에 따라 틀릴 수 있습니다. 중요한 결론은 원본 발화와 사용자 수정으로 확인하세요.
 - 온디바이스 AI 전사, 전사문 검색, 트리밍, 재생 속도 조절, 무음 건너뛰기, 음성 향상은 현재 제공하지 않습니다.
 - 개발용 설치의 서명 만료, iOS 잠금·백그라운드 제약, 마이크·시스템 오디오 권한 및 오디오 장치 변경은 실제 기기 환경의 영향을 받습니다.
-- Mac/iOS 1.3 빌드 7 기준으로 Mac 설치와 Cloudflare 배포는 완료했습니다. iOS 기기용 Release 빌드와 IPA는 준비되었지만, 물리 iPhone 설치 확인은 CoreDevice 연결 타임아웃 때문에 하드웨어 연결 확인 후 다시 진행해야 합니다. GitHub 게시 상태는 push 완료 후 갱신합니다.
+- Mac/iOS 1.3.1 빌드 8 기준으로 Mac 설치, Mac 코드서명 검증, Mac 실행 확인, iPhone 설치·실행·1분 이상 프로세스 유지, Cloudflare 배포, GitHub 게시를 완료했습니다. 공개 화자 모델은 1.3에서 복사한 뒤 1.3.1 업데이트 후 보존을 확인했습니다. 개인 목소리 등록 데이터는 전송하거나 녹음하지 않았고, 실제 사용자 마이크 테스트도 수행하지 않았습니다.
 
 ## 검증 및 배포 현황
 
-현재 문서가 반영하는 릴리스 기준은 **Mac/iOS 1.3, 빌드 7**입니다.
+현재 문서가 반영하는 버전은 **Mac/iOS 1.3.1, 빌드 8**입니다.
 
 | 항목 | 상태 | 결과 |
 | --- | --- | --- |
-| Mac 전체 테스트 | 통과 | 359개 통과 |
-| iOS 시뮬레이터 전체 테스트 | 통과 | 234개 통과 |
+| Mac 전체 테스트 | 통과 | 360개 통과 |
+| iOS 시뮬레이터 전체 테스트 | 통과 | 236개 통과 |
 | FluidAudio `0.15.6` 링크 빌드 | 통과 | Mac과 iOS 시뮬레이터에서 실제 의존성 경로 확인 |
 | 공개 30.9초 2화자 fixture | 통과 | 2개 화자 ID 검출 |
 | held-out voice 비교 | 통과 | owner cosine 약 0.843, other 약 0.211 |
 | 라이브 owner/other 표시 | 통과 | Mac과 iOS 양쪽 확인 |
 | 손상된 모델 캐시 복구와 cached-only restore | 통과 | Mac 검증 통과 |
-| Mac Release 설치 | 완료 | 서명된 `/Applications/AI-NoteTaker.app` 설치 및 실행 확인 |
+| 1.3.1 빌드 8 Mac Release | 완료 | Release 빌드 통과, 코드서명 검증, `/Applications/AI-NoteTaker.app` 설치 및 실행 확인 |
+| 1.3.1 빌드 8 iOS Release | 완료 | Release 빌드 통과, IPA `build/releases/AI-NoteTaker-iOS-1.3.1-build8.ipa` 생성과 버전 검증, 실제 iPhone 설치 완료 |
 | Cloudflare Worker 배포 | 완료 | Worker `05739fdc-f5e9-4403-b0c5-7d4ecd87e962`, 신규 인증 endpoint 200, 기존 녹음 2개 보존 |
-| iOS Release/IPA | 준비 완료 | 서명·프로파일 검증 및 IPA 준비 완료 |
-| 물리 iPhone 설치 | 확인 필요 | CoreDevice 연결 타임아웃으로 하드웨어 연결 확인 후 재시도 필요 |
+| iPhone 모델 파일 | 완료 | 1.3에서 복사한 공개 모델 파일이 1.3.1 업데이트 후 보존됨을 확인 |
+| 1.3.1 빌드 8 SIGTRAP 수정 | 통과 | VoiceEnrollmentCapture tap 콜백의 MainActor 상속 제거와 회귀 테스트 통과 |
+| iPhone 실행 확인 | 완료 | 설치 후 launch, PID 13689 실행, launch 약 66초 후 동일 PID 유지 확인 |
 
-화자 분석 수치는 공개 fixture와 제한된 검증 샘플의 동작 확인 결과입니다. 실제 회의에서는 발화 겹침, 소음, 마이크 위치, 언어와 회의 환경에 따라 달라질 수 있습니다.
+화자 분석 수치는 공개 fixture와 제한된 검증 샘플의 동작 확인 결과입니다. 물리 iPhone에서는 설치, 기본 실행, 1분 이상 프로세스 유지를 확인했으며, 개인 목소리 등록, 실제 사용자 목소리 인식, 실제 마이크 녹음 검증은 수행하지 않았습니다. 실제 회의에서는 발화 겹침, 소음, 마이크 위치, 언어와 회의 환경에 따라 달라질 수 있습니다.
 
 ## 개발과 검증
 

@@ -137,10 +137,9 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
         inputNode.installTap(
             onBus: 0,
             bufferSize: 4_096,
-            format: inputFormat
-        ) { buffer, _ in
-            worker.consume(buffer)
-        }
+            format: inputFormat,
+            block: Self.makeTapHandler(worker: worker)
+        )
 
         do {
             engine.prepare()
@@ -152,6 +151,12 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
         }
         shouldDeactivateSession = false
         return session
+    }
+
+    // The worker is thread-safe; the callback itself must also be created
+    // outside MainActor because AVFAudio invokes it on its audio queue.
+    nonisolated static func makeTapHandler(worker: ObservedVoiceAudioWorker) -> AVAudioNodeTapBlock {
+        { buffer, _ in worker.consume(buffer) }
     }
 
     func pause() {

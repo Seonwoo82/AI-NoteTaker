@@ -4,7 +4,7 @@
 
 최근 갱신: 2026-09-09
 
-이 문서는 사용자가 요청했거나 승인한 회의 분석 기능을 추적합니다. 사용자는 2026-09-09에 FluidAudio와 모델 사용을 승인했습니다. Mac/iOS 1.3 빌드 7 기준으로 코드 기능, Mac 설치, Cloudflare Worker 배포는 완료되었고, 물리 iPhone 설치 확인만 CoreDevice 연결 타임아웃으로 남아 있습니다.
+이 문서는 사용자가 요청했거나 승인한 회의 분석 기능을 추적합니다. 사용자는 2026-09-09에 FluidAudio와 모델 사용을 승인했습니다. Mac/iOS 1.3.1 빌드 8 기준으로 코드 기능, 양쪽 Release 빌드, Mac 설치·코드서명·실행, 실제 iPhone 설치, Cloudflare Worker 배포, GitHub 게시를 완료했습니다. iPhone은 2026-09-09 09:43:15 KST에 실행했고, 09:44:21 KST에도 동일 PID 13689가 실행 중임을 확인했습니다.
 
 ## 이번 릴리스에 포함되는 기능
 
@@ -123,17 +123,20 @@
 
 ## 릴리스 게이트
 
-- [x] Mac 통합 빌드와 단위 테스트 통과: 359개 통과.
-- [x] iOS 시뮬레이터 통합 빌드와 단위 테스트 통과: 234개 통과.
+- [x] Mac 통합 빌드와 단위 테스트 통과: 360개 통과.
+- [x] iOS 시뮬레이터 통합 빌드와 단위 테스트 통과: 236개 통과.
 - [x] FluidAudio `0.15.6` 실제 의존성 경로 링크 빌드 확인.
 - [x] 공개 30.9초 2화자 fixture에서 2개 화자 ID 검출 확인.
 - [x] held-out voice 비교 확인: owner cosine 약 0.843, other 약 0.211.
 - [x] 라이브 owner/other 표시 Mac과 iOS 확인.
 - [x] 손상된 모델 캐시 복구와 cached-only restore Mac 테스트 통과.
 - [x] Cloudflare 마이그레이션 0004와 Worker 배포 확인: Worker `05739fdc-f5e9-4403-b0c5-7d4ecd87e962`, 신규 인증 endpoint 200, 기존 녹음 2개 보존.
-- [x] 개인 Mac 앱 설치본 교체 확인: 서명된 Release `/Applications/AI-NoteTaker.app` 설치·실행, 기존 앱과 데이터 백업, 모델 사전 준비 완료.
-- [x] iOS 1.3 빌드 7 Release 서명·프로파일 검증 및 IPA 준비.
-- [ ] 개인 iPhone 물리 설치 확인: CoreDevice 연결 타임아웃으로 하드웨어 연결 확인 후 재시도 필요.
-- [x] README와 라이선스 고지 최종값 반영.
+- [x] 개인 Mac 앱 설치본 교체 확인: 1.3.1 빌드 8 Release `/Applications/AI-NoteTaker.app` 설치·코드서명·실행 확인.
+- [x] iOS 1.3.1 빌드 8 Release 빌드 통과, IPA `build/releases/AI-NoteTaker-iOS-1.3.1-build8.ipa` 생성·버전 검증, 실제 iPhone 설치 완료.
+- [x] iPhone 공개 모델 파일 보존 확인: 1.3.1 업데이트 후 공개 모델 파일 13개, 총 13,987,593바이트 보존, 각 상대 경로와 크기 비교 완료.
+- [x] VoiceEnrollmentCapture tap의 MainActor 상속 SIGTRAP 수정 및 observed-recording tap 동일 패턴 예방 수정.
+- [x] 회귀 테스트 추가: MainActor에서 만든 production block을 background synthetic PCM에서 실행.
+- [x] iPhone 1.3.1 빌드 8 실행과 1분 이상 프로세스 유지 확인: 2026-09-09 09:43:15 KST launch 성공, 09:44:21 KST에도 동일 PID 13689 실행 확인.
+- [x] README와 라이선스 고지 갱신.
 
 설계와 구현 기록: [설계](design/MEETING-INTELLIGENCE.md), [구현 계획](implementation/MEETING-INTELLIGENCE.md), [검증 기록](implementation/MEETING-INTELLIGENCE-VERIFICATION.md)

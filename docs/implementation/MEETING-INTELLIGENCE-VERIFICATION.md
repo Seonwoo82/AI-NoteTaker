@@ -1,6 +1,6 @@
 # 회의 분석 기능 구현·검증 기록
 
-상태: FluidAudio 연결 및 검증 완료. **Mac 1.3 (7) 설치·실행, Cloudflare 배포 완료.** iOS 1.3 (7)은 실물 기기용 서명 빌드와 IPA가 준비되었으며, 실제 iPhone 설치는 CoreDevice 통신 오류로 연결 확인이 남아 있다.
+상태: FluidAudio 연결 및 검증 완료. **Mac 1.3.1 (8) 설치·코드서명·실행, Cloudflare 배포, GitHub 게시, 실제 iPhone 1.3.1 (8) 설치 완료.** iPhone은 2026-09-09 09:43:15 KST에 실행했고, 09:44:21 KST에도 동일 PID 13689가 실행 중임을 확인했다.
 
 ## 구현된 작업 범위
 
@@ -28,8 +28,8 @@ Mac과 iPhone의 동시 녹음을 한 회의로 합치는 기능은 포함하지
 
 | 범위 | 결과 | 로컬 증거 |
 | --- | --- | --- |
-| Mac 단위 테스트 | 359개 통과 | `build/meeting-intelligence/release-mac-tests.log` |
-| iPhone 시뮬레이터 단위 테스트 | 234개 통과 | `build/meeting-intelligence/release-ios-tests.log` |
+| Mac 단위 테스트 | 360개 통과 | `build/meeting-intelligence/tap-fix-mac-tests.log` |
+| iPhone 시뮬레이터 단위 테스트 | 236개 통과 | `build/meeting-intelligence/tap-fix-ios-tests.log` |
 | 정적 화면 렌더 | Mac 1개 / iOS 2개 XCTest 통과 | 같은 Xcode 로그, `build/visual-qa/` |
 | 실제 FluidAudio 모델 | Mac·iOS 시뮬레이터 공개 음성 검증 통과 | `build/fluidaudio-validation/model-validation-*.json` |
 | 모델 캐시 복구 | 캐시만으로 재시작, 손상된 캐시 복구 통과 | `build/meeting-intelligence/fluidaudio-cache-recovery-tests.log` |
@@ -51,13 +51,16 @@ FluidAudio 0.15.6을 두 앱에 정확한 버전으로 연결했다. 화자 인�
 
 기본 설정에서 다른 목소리를 하나로 합치는 현상을 재현한 뒤, SDK가 문서화한 스트리밍 화자 비교 기준(거리 0.65, 임베딩 갱신 0.45)을 사용하도록 수정했다. 손상된 모델 폴더가 있어도 사용자가 모델 준비를 다시 실행하면 SDK의 검증·복구 경로를 사용한다. 캐시를 읽는 시작 경로는 새 다운로드를 시작하지 않는다.
 
-## 배포·설치
+## 1.3.1 빌드 8 수정 사항
 
-- Mac: 버전 1.3, 빌드 7. 서명을 검증하고 `/Applications/AI-NoteTaker.app`에 교체 설치한 뒤 실행을 확인했다. 이전 앱과 라이브러리는 `~/Library/Application Support/NoteTaker Backups/`에 보관했다.
+1.3 빌드 7의 설치 요청은 성공했지만 이후 전체 프로세스 snapshot에서 AI-NoteTaker 프로세스가 유지되지 않았다. crash log의 원인은 RealtimeMessenger audio queue에서 실행된 VoiceEnrollmentCapture start inline tap closure가 MainActor를 상속해 background audio callback에서 SIGTRAP이 발생한 것이었다. 공유 voice enrollment 경로를 nonisolated callback factory로 수정했고, iOS observed-recording tap 경로에도 같은 패턴을 예방 차원에서 적용했다. 회귀 테스트는 MainActor에서 만든 production block을 background synthetic PCM에서 실행한다. 수정 후 Mac 360개, iOS 시뮬레이터 236개 테스트와 양쪽 Release 빌드가 통과했다. Mac 테스트 증거는 `build/meeting-intelligence/tap-fix-mac-tests.log`, iOS 테스트 증거는 `build/meeting-intelligence/tap-fix-ios-tests.log`에 있다.
+
+
+- Mac: 1.3.1 빌드 8 Release 빌드가 통과했다. 코드서명을 검증하고 `/Applications/AI-NoteTaker.app`에 교체 설치한 뒤 실행을 확인했다. 이전 앱과 라이브러리는 `~/Library/Application Support/NoteTaker Backups/`에 보관했다.
 - Cloudflare: 마이그레이션 0004 적용, Worker `05739fdc-f5e9-4403-b0c5-7d4ecd87e962` 배포. 기존 녹음 수 2개가 유지되었고, 인증된 health/profile/intelligence/meeting-edits/recordings 조회가 모두 HTTP 200을 반환했다. 검증용 가짜 녹음은 운영 서버에 쓰지 않았다.
-- iOS: 버전 1.3, 빌드 7의 Release 앱·IPA 서명을 검증했다. 서명 프로필에 대상 iPhone이 포함됨을 확인했다. `build/releases/AI-NoteTaker-iOS-1.3-build7.ipa`는 개인 설치용이며 공개 저장소에 올리지 않는다.
-- 실물 iPhone: 기기 조회는 가능했으나 설치 시 CoreDevice 연결 시간 초과/기기 탐색 오류가 발생했다. USB 연결과 잠금 해제 후 설치 및 기기 내 모델 준비를 확인해야 한다. 설치 완료로 기록하지 않는다.
+- iOS: 1.3.1 빌드 8 Release 빌드가 통과했고 `build/releases/AI-NoteTaker-iOS-1.3.1-build8.ipa` 생성과 버전 검증을 완료했다. 실제 iPhone 설치도 완료했다. `devicectl` 앱 조회로 `com.seonwoo.notetaker.ios` 1.3.1 빌드 8 설치값을 재확인했고, launch는 2026-09-09 09:43:15 KST에 성공했다. 09:44:21 KST, launch 약 66초 뒤에도 전체 프로세스 목록에서 동일 PID 13689가 실행 중임을 확인했다.
+- 실물 iPhone 모델 파일: 1.3.1 업데이트 후 공개 모델 파일 13개, 총 13,987,593바이트가 기기 앱 데이터 컨테이너의 `Library/Application Support/AI-NoteTaker/VoiceModels` 아래에 보존되어 있음을 확인했으며 각 상대 경로와 크기를 비교했다. 개인 목소리 등록 데이터는 전송하거나 녹음하지 않았다.
 
-실제 사용자 목소리는 수집하지 않았다. 개인 목소리 인식은 설치된 앱의 설정 → 프로필에서 직접 등록한 뒤 사용할 수 있다. OpenRouter 유료 요청에 대한 새 실서비스 생성 테스트는 수행하지 않았다.
+실제 사용자 목소리는 수집하지 않았고, 물리 iPhone 검증에서도 개인 목소리 등록을 전송하거나 녹음하지 않았다. 실제 사용자 마이크 녹음 테스트도 수행하지 않았다. iPhone 기본 실행과 1분 이상 프로세스 유지 확인은 완료했다. `ios-process-verification-131.json`에는 관찰 시간과 `physicalMicRecordingTested: false`가 기록되어 있다. 물리 기기에서의 개인 음성 등록 재현 검증은 수행하지 않았다. 개인 목소리 인식은 설치된 앱의 설정 → 프로필에서 직접 등록한 뒤 사용할 수 있다. OpenRouter 유료 요청에 대한 새 실서비스 생성 테스트는 수행하지 않았다.
 
 소스의 기준은 `Shared/MeetingIntelligence/`와 플랫폼 소스다. `build/meeting-intelligence/*.draft.swift`는 검토 중간 자료이므로 소스 위에 다시 복사하지 않는다.

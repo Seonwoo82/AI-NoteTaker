@@ -1,6 +1,6 @@
 # Meeting intelligence design
 
-Status: implemented and verified (2026-09-09); Mac 1.3 and the sync server are deployed, and the signed iOS build awaits a stable physical-device connection.
+Status: implemented and verified (2026-09-09); Mac and the sync server are deployed. Mac/iOS 1.3.1 build 8 fixes the VoiceEnrollmentCapture tap SIGTRAP and is installed on Mac and the physical iPhone. Mac code signing and launch are verified. The iPhone launched at 2026-09-09 09:43:15 KST, and the same PID 13689 was still present at 09:44:21 KST.
 
 ## Approved scope
 
@@ -27,3 +27,8 @@ Speaker-attributed timed transcripts; local owner voice enrollment in a Profile 
 ## Verification
 
 Sequential Xcode builds/tests (`-jobs 2`), fake-provider contract tests without paid calls, real on-device model checks using non-private labeled samples with the approved dependency, synthetic audio recording checks, static screen rendering without global mouse/keyboard automation, sync conflict/cancellation/integrity tests, and in-place signed app upgrades only after checks pass. Do not claim perfect biometric or AI accuracy.
+
+
+## Release state
+
+Mac/iOS 1.3.1 build 8 is installed on Mac and the physical iPhone. Mac code signing and launch are verified. The physical iPhone install succeeded, launch succeeded at 2026-09-09 09:43:15 KST, and the same PID 13689 was still present at 09:44:21 KST. Public model-file preservation was verified after the 1.3.1 update: 13 files totaling 13,987,593 bytes in the app data container. Personal voice enrollment, user voice samples, and real microphone tests were not transferred, recorded, or verified during these checks.

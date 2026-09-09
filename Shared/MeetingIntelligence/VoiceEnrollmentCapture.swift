@@ -42,8 +42,7 @@ final class VoiceEnrollmentCapture {
             stop()
             throw AIError(message: "등록할 목소리를 받을 마이크를 찾지 못했어요.")
         }
-        let emitter = EnrollmentAudioEmitter(handler: handler)
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in emitter.consume(buffer) }
+        input.installTap(onBus: 0, bufferSize: 4096, format: format, block: Self.makeTapHandler(handler: handler))
         do {
             engine.prepare()
             try engine.start()
@@ -72,6 +71,13 @@ final class VoiceEnrollmentCapture {
             Task { @MainActor in self?.interrupt() }
         }
         #endif
+    }
+
+    // AVFAudio calls the block on its realtime worker queue. Create it outside
+    // MainActor so Swift 6 does not insert a UI-executor check into that block.
+    nonisolated static func makeTapHandler(handler: @escaping LiveAudioSampleHandler) -> AVAudioNodeTapBlock {
+        let emitter = EnrollmentAudioEmitter(handler: handler)
+        return { buffer, _ in emitter.consume(buffer) }
     }
 
     func stop() {
