@@ -10,6 +10,7 @@ final class AIConfiguration {
         static let enhancementModelID = "ai.enhancementModelID"
         static let transcriptionModelID = "ai.transcriptionModelID"
         static let autoGenerate = "ai.autoGenerate"
+        static let transcriptCleanupEnabled = "ai.transcriptCleanupEnabled"
         static let outputLanguage = "ai.outputLanguage"
         static let modelCatalog = "ai.modelCatalog"
     }
@@ -54,6 +55,13 @@ final class AIConfiguration {
         }
     }
 
+    var transcriptCleanupEnabled: Bool {
+        didSet {
+            defaults.set(transcriptCleanupEnabled, forKey: Keys.transcriptCleanupEnabled)
+            if transcriptCleanupEnabled != oldValue { preferencesChanged() }
+        }
+    }
+
     var outputLanguage: String {
         didSet {
             guard Self.allowedLanguages.contains(outputLanguage) else {
@@ -89,6 +97,11 @@ final class AIConfiguration {
         return models.isEmpty || models.contains { $0.id == modelID && $0.supportsSummary }
     }
 
+    var isTranscriptCleanupConfigured: Bool {
+        guard hasAPIKey && !modelID.isEmpty else { return false }
+        return models.isEmpty || models.contains { $0.id == modelID && $0.supportsSummary }
+    }
+
     init(
         client: any OpenRouterServing,
         keyStore: any APIKeyStoring,
@@ -114,6 +127,11 @@ final class AIConfiguration {
         hasAPIKey = hasStoredKey
         let savedAutoGenerate = (defaults.object(forKey: Keys.autoGenerate) as? Bool) ?? false
         autoGenerate = savedAutoGenerate
+        let savedTranscriptCleanup = defaults.object(forKey: Keys.transcriptCleanupEnabled) as? Bool
+        transcriptCleanupEnabled = savedTranscriptCleanup ?? true
+        if savedTranscriptCleanup == nil {
+            defaults.set(true, forKey: Keys.transcriptCleanupEnabled)
+        }
         models = defaults.data(forKey: Keys.modelCatalog).flatMap {
             try? JSONDecoder().decode([OpenRouterModel].self, from: $0)
         } ?? []
@@ -279,7 +297,7 @@ final class AIConfiguration {
         } else if syncState.preferences != nil {
             syncState.pending = true
             persistSyncState()
-        } else if !modelID.isEmpty || !enhancementModelID.isEmpty || !transcriptionModelID.isEmpty || autoGenerate || outputLanguage != "ko" {
+        } else if !modelID.isEmpty || !enhancementModelID.isEmpty || !transcriptionModelID.isEmpty || autoGenerate || !transcriptCleanupEnabled || outputLanguage != "ko" {
             preferencesChanged(notify: false)
         }
     }
@@ -297,9 +315,12 @@ final class AIConfiguration {
         transcriptionModelID = preferences.transcriptionModelID
         outputLanguage = preferences.outputLanguage
         autoGenerate = preferences.autoGenerate
+        let acceptedTranscriptCleanupEnabled = preferences.transcriptCleanupEnabled ?? transcriptCleanupEnabled
+        transcriptCleanupEnabled = acceptedTranscriptCleanupEnabled
         applyingSharedPreferences = false
         syncState.preferences = AISharedPreferences(modelID: preferences.modelID, enhancementModelID: preferences.enhancementModelID ?? acceptedEnhancementModelID,
             transcriptionModelID: preferences.transcriptionModelID, outputLanguage: preferences.outputLanguage, autoGenerate: preferences.autoGenerate,
+            transcriptCleanupEnabled: preferences.transcriptCleanupEnabled ?? acceptedTranscriptCleanupEnabled,
             modifiedAt: preferences.modifiedAt, mutationID: preferences.mutationID)
         syncState.pending = false
         syncState.hasSynced = true
@@ -332,7 +353,8 @@ final class AIConfiguration {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let modified = max(now, min((syncState.preferences?.modifiedAt ?? 0) + 1, 9_007_199_254_740_991))
         syncState.preferences = AISharedPreferences(modelID: modelID, enhancementModelID: enhancementModelID,
-            transcriptionModelID: transcriptionModelID, outputLanguage: outputLanguage, autoGenerate: autoGenerate, modifiedAt: modified, mutationID: UUID())
+            transcriptionModelID: transcriptionModelID, outputLanguage: outputLanguage, autoGenerate: autoGenerate,
+            transcriptCleanupEnabled: transcriptCleanupEnabled, modifiedAt: modified, mutationID: UUID())
         syncState.pending = true
         persistSyncState()
         if notify { onSyncStateChanged?() }

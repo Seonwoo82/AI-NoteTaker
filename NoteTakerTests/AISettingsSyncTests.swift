@@ -86,6 +86,33 @@ struct AISettingsSyncTests {
         #expect(first.config.outputLanguage == "source")
     }
 
+    @Test("legacy synced preferences without transcript cleanup preserve the existing local choice")
+    func legacyPreferencesPreserveExistingTranscriptCleanup() throws {
+        let first = fixture(configured: true)
+        first.config.transcriptCleanupEnabled = false
+        let json = """
+        {"schemaVersion":1,"modelID":"fixture/summary","transcriptionModelID":"fixture/transcription","outputLanguage":"source","autoGenerate":true,"modifiedAt":9007199254740991,"mutationID":"\(phone.uuidString)"}
+        """
+        let decoded = try JSONDecoder().decode(AISharedPreferences.self, from: Data(json.utf8))
+
+        first.config.acceptSharedPreferences(decoded)
+
+        #expect(first.config.transcriptCleanupEnabled == false)
+        #expect(first.config.outputLanguage == "source")
+    }
+
+    @Test("new clients upload an explicit transcript cleanup preference")
+    func uploadsExplicitTranscriptCleanupPreference() async throws {
+        let server = SettingsServer()
+        let first = fixture(configured: true)
+        first.config.transcriptCleanupEnabled = false
+
+        try await AISettingsSynchronizer(configuration: first.config, deviceID: mac).synchronize(transport: server, workspace: workspace)
+
+        #expect(server.preferences?.transcriptCleanupEnabled == false)
+        #expect(first.config.transcriptCleanupEnabled == false)
+    }
+
     @Test("entering a local key preserves a synced disabled automatic-generation preference")
     func enteringKeyPreservesSharedPreference() async throws {
         let server = SettingsServer()
@@ -196,6 +223,8 @@ struct AISettingsSyncTests {
     @Test("model catalog defaults do not masquerade as edits on a new device")
     func catalogRefreshIsNotSharedEdit() async {
         let first = fixture()
+        #expect(first.config.transcriptCleanupEnabled)
+        #expect(first.config.pendingPreferencesUpload == nil)
         await first.config.refreshModels()
         #expect(first.config.pendingPreferencesUpload == nil)
     }

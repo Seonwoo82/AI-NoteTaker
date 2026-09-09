@@ -487,6 +487,7 @@ final class SyncEngine {
             throw SyncError.invalidResponse
         }
         guard document.audioVersion == audioVersion else { return nil }
+        try document.transcriptCleanup?.validate(transcript: document.transcript, speakerTranscript: document.speakerTranscript)
         return LocalMeetingNotes(
             document: document,
             data: data,
@@ -537,6 +538,7 @@ final class SyncEngine {
         else {
             throw SyncError.invalidResponse
         }
+        try document.transcriptCleanup?.validate(transcript: document.transcript, speakerTranscript: document.speakerTranscript)
     }
 
     private func meetingNotesURL(for recordingID: UUID, library: LibraryStore) -> URL {

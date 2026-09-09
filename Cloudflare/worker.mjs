@@ -10,6 +10,7 @@ const UUID_PATTERN = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const REVISION_PATTERN = /^[0-9a-f]{64}$/;
 const NOTE_CURSOR_PATTERN = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}:\d{10}$/;
+const CLEANUP_SOURCE_HASH_PATTERN = /^[0-9a-f]{64}$/;
 const MODES = new Set(["micAndSystem", "micOnly", "systemOnly"]);
 const RECORDING_FIELDS = new Set([
   "schemaVersion",
@@ -58,7 +59,10 @@ const NOTE_FIELDS = new Set([
   "costUSD",
   "speakerTranscript",
   "enhancement",
+  "transcriptCleanup",
 ]);
+const TRANSCRIPT_CLEANUP_FIELDS = new Set(["schemaVersion", "modelID", "sourceKind", "sourceHash", "passages"]);
+const TRANSCRIPT_CLEANUP_PASSAGE_FIELDS = new Set(["id", "text"]);
 const PROFILE_LIMIT_BYTES = 64 * 1024;
 const PROFILE_BODY_FIELDS = new Set(["profile"]);
 const PROFILE_FIELDS = new Set(["schemaVersion", "displayName", "aliases", "role", "terms", "automaticallyAnalyze", "modifiedAt", "mutationID"]);
@@ -189,7 +193,7 @@ async function handleRequest(request, env) {
 const AI_SETTINGS_LIMIT_BYTES = 16 * 1024;
 const AI_PREFERENCE_FIELDS = new Set([
   "schemaVersion", "modelID", "enhancementModelID", "transcriptionModelID", "outputLanguage",
-  "autoGenerate", "modifiedAt", "mutationID",
+  "autoGenerate", "transcriptCleanupEnabled", "modifiedAt", "mutationID",
 ]);
 
 function exactObject(value, fields, label) {
@@ -234,12 +238,16 @@ function validateAIPreferences(value, previousPreferences = null) {
   if (!Object.hasOwn(normalized, "enhancementModelID")) {
     normalized.enhancementModelID = previousPreferences?.enhancementModelID ?? "";
   }
+  if (!Object.hasOwn(normalized, "transcriptCleanupEnabled")) {
+    normalized.transcriptCleanupEnabled = previousPreferences?.transcriptCleanupEnabled ?? true;
+  }
   const validModelID = (id) => typeof id === "string" && id.length <= 256 &&
     (id === "" || /^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$/.test(id));
   if (normalized.schemaVersion !== 1 || !validModelID(normalized.modelID) ||
       !validModelID(normalized.enhancementModelID) || !validModelID(normalized.transcriptionModelID) ||
       !["ko", "en", "source"].includes(normalized.outputLanguage) ||
-      typeof normalized.autoGenerate !== "boolean" || !Number.isSafeInteger(normalized.modifiedAt) || normalized.modifiedAt < 0) {
+      typeof normalized.autoGenerate !== "boolean" || typeof normalized.transcriptCleanupEnabled !== "boolean" ||
+      !Number.isSafeInteger(normalized.modifiedAt) || normalized.modifiedAt < 0) {
     throw new HttpError(400, "invalid_ai_settings", "AI preference values are invalid.");
   }
   validateUUID(normalized.mutationID, "settings mutation ID");
@@ -797,7 +805,7 @@ async function putNote(request, env, pathID, pathAudioVersion) {
     throw new HttpError(400, "invalid_json", "Meeting notes document must be valid JSON.");
   }
 
-  const note = validateMeetingNotesDocument(candidate, pathID, audioVersion);
+  const note = await validateMeetingNotesDocument(candidate, pathID, audioVersion);
   const recording = await env.DB.prepare(
     `SELECT id, audio_version
        FROM recordings
@@ -1042,13 +1050,13 @@ function validateFolder(value, pathID, previousFolder = null) {
   return normalized;
 }
 
-function validateMeetingNotesDocument(value, pathID, audioVersion) {
+async function validateMeetingNotesDocument(value, pathID, audioVersion) {
   if (!isPlainObject(value)) {
     throw new HttpError(400, "invalid_notes", "Meeting notes document must be a JSON object.");
   }
   for (const field of NOTE_FIELDS) {
     if (!Object.hasOwn(value, field)) {
-      if (["costUSD", "speakerTranscript", "enhancement"].includes(field)) {
+      if (["costUSD", "speakerTranscript", "enhancement", "transcriptCleanup"].includes(field)) {
         continue;
       }
       throw new HttpError(400, "invalid_notes", `Meeting notes document is missing ${field}.`);
@@ -1090,7 +1098,90 @@ function validateMeetingNotesDocument(value, pathID, audioVersion) {
       throw new HttpError(400, "invalid_notes", "Enhancement instructions exceed 8000 UTF-8 bytes.");
     }
   }
+  if (value.transcriptCleanup != null) {
+    await validateTranscriptCleanup(value.transcriptCleanup, value.transcript, value.speakerTranscript ?? null);
+  }
   return value;
+}
+
+async function validateTranscriptCleanup(value, transcript, speakerTranscript) {
+  exactPlainObject(value, TRANSCRIPT_CLEANUP_FIELDS, "Transcript cleanup", "invalid_notes");
+  requireFields(value, TRANSCRIPT_CLEANUP_FIELDS, "Transcript cleanup", "invalid_notes");
+  validateInteger(value.schemaVersion, "transcriptCleanup.schemaVersion", 1, SCHEMA_VERSION, "invalid_notes");
+  validateString(value.modelID, "transcript cleanup modelID", 1, 512, "invalid_notes");
+  if (!["plain", "speakers"].includes(value.sourceKind)) {
+    throw new HttpError(400, "invalid_notes", "Transcript cleanup sourceKind is invalid.");
+  }
+  if (typeof value.sourceHash !== "string" || !CLEANUP_SOURCE_HASH_PATTERN.test(value.sourceHash)) {
+    throw new HttpError(400, "invalid_notes", "Transcript cleanup sourceHash must be a lowercase SHA-256 hex digest.");
+  }
+  if (!Array.isArray(value.passages) || value.passages.length > 20_000) {
+    throw new HttpError(400, "invalid_notes", "Transcript cleanup passages must be an array of up to 20000 entries.");
+  }
+
+  const expectedIDs = value.sourceKind === "plain" ? plainCleanupSourceIDs(transcript) : speakerCleanupSourceIDs(speakerTranscript);
+  if (value.passages.length !== expectedIDs.length) {
+    throw new HttpError(400, "invalid_notes", "Transcript cleanup passages must match the source transcript.");
+  }
+
+  let totalBytes = 0;
+  let hasNonEmptyText = false;
+  const seenIDs = new Set();
+  for (const [index, passage] of value.passages.entries()) {
+    exactPlainObject(passage, TRANSCRIPT_CLEANUP_PASSAGE_FIELDS, "Transcript cleanup passage", "invalid_notes");
+    requireFields(passage, TRANSCRIPT_CLEANUP_PASSAGE_FIELDS, "Transcript cleanup passage", "invalid_notes");
+    validateString(passage.id, "transcript cleanup passage id", 1, 512, "invalid_notes");
+    if (seenIDs.has(passage.id) || passage.id !== expectedIDs[index]) {
+      throw new HttpError(400, "invalid_notes", "Transcript cleanup passage ids must match the source transcript order.");
+    }
+    seenIDs.add(passage.id);
+    validateString(passage.text, "transcript cleanup passage text", 0, 32 * 1024, "invalid_notes");
+    const byteLength = new TextEncoder().encode(passage.text).byteLength;
+    if (byteLength > 32 * 1024) {
+      throw new HttpError(400, "invalid_notes", "Transcript cleanup passage text exceeds 32 KiB.");
+    }
+    totalBytes += byteLength;
+    if (totalBytes > 1024 * 1024) {
+      throw new HttpError(400, "invalid_notes", "Transcript cleanup text exceeds 1 MiB.");
+    }
+    if (passage.text.trim().length > 0) {
+      hasNonEmptyText = true;
+    }
+  }
+  if (!hasNonEmptyText) {
+    throw new HttpError(400, "invalid_notes", "Transcript cleanup must include at least one non-empty passage.");
+  }
+
+  const expectedHash = value.sourceKind === "plain"
+    ? await sha256Text(`plain-v1\n${transcript}`)
+    : await sha256Text(`speakers-v1\n${speakerHashPayload(speakerTranscript)}`);
+  if (value.sourceHash !== expectedHash) {
+    throw new HttpError(400, "invalid_notes", "Transcript cleanup sourceHash does not match the source transcript.");
+  }
+}
+
+function plainCleanupSourceIDs(transcript) {
+  const ids = [];
+  for (const paragraph of transcript.split("\n\n")) {
+    const scalars = Array.from(paragraph);
+    for (let offset = 0; offset < scalars.length; offset += 2000) {
+      if (scalars.slice(offset, offset + 2000).length > 0) {
+        ids.push(`p${ids.length}`);
+      }
+    }
+  }
+  return ids;
+}
+
+function speakerCleanupSourceIDs(speakerTranscript) {
+  if (speakerTranscript == null) {
+    throw new HttpError(400, "invalid_notes", "Speaker transcript cleanup requires an embedded speaker transcript.");
+  }
+  return speakerTranscript.turns.map((turn) => turn.id);
+}
+
+function speakerHashPayload(speakerTranscript) {
+  return speakerTranscript.turns.map((turn) => `${utf8Length(turn.id)}:${turn.id}${utf8Length(turn.text)}:${turn.text}`).join("");
 }
 
 function validateProfile(value) {
@@ -1567,6 +1658,14 @@ async function readLimitedBytes(request, limit, message) {
 async function sha256Hex(bytes) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256Text(text) {
+  return sha256Hex(new TextEncoder().encode(text));
+}
+
+function utf8Length(text) {
+  return new TextEncoder().encode(text).byteLength;
 }
 
 function noteDescriptorFromRow(row) {

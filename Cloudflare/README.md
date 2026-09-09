@@ -103,6 +103,12 @@ Notes documents may include `speakerTranscript` (the existing validated timed tr
 
 AI shared preferences may include `enhancementModelID`. Omission from an older client preserves the current server choice; an explicit empty string resets it to follow the meeting-notes model. No database migration is required for these optional JSON fields.
 
+### Contextual transcript cleanup
+
+Notes may include `transcriptCleanup` with `schemaVersion: 1`, `modelID`, `sourceKind` (`plain` or `speakers`), `sourceHash`, and ordered `passages` containing only `id` and `text`. Empty text hides a noise passage in the cleaned view; the original transcript and speaker timestamps remain present. The Worker verifies the source hash and exact source IDs, bounds each cleaned passage to 32 KiB and total cleaned text to 1 MiB, and keeps the existing 2 MiB notes envelope limit. No migration is required.
+
+AI preferences may include boolean `transcriptCleanupEnabled`. Omission preserves the previous value, defaulting to true when no previous value exists. API keys and voice profiles remain outside this DTO.
+
 ## Recording folders
 
 Apply `0005_recording_folders.sql` before deploying this version. Empty folders have their own D1 rows, independent of recordings. Folder documents include `schemaVersion: 1`, `id`, `name`, `createdAt`, `modifiedAt`, `mutationID`, and optional `deletedAt`. Folder conflicts use the same atomic `(modifiedAt, mutationID)` order as recording metadata. Names are trimmed, non-empty, at most 120 grapheme clusters and 512 UTF-8 bytes.

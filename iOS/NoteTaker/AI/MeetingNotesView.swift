@@ -15,6 +15,7 @@ struct MeetingNotesView: View {
     @State private var showingEnhancement = false
     @State private var showEnhancementSettingsAfterDismiss = false
     @State private var selectedTab = NotesTab.minutes
+    @State private var selectedTranscriptMode = TranscriptDisplayMode.cleaned
     @State private var showingRegenerateConfirmation = false
     @State private var copied = false
     @State private var selectedOutlineBlock: Int?
@@ -25,7 +26,9 @@ struct MeetingNotesView: View {
         configuration: AIConfiguration,
         openAISettings: (() -> Void)? = nil,
         resolvedTranscript: MeetingTranscript? = nil,
-        participantPreparationProgress: ParticipantPreparationProgress? = nil
+        participantPreparationProgress: ParticipantPreparationProgress? = nil,
+        initiallyShowsTranscript: Bool = false,
+        initiallyShowsOriginalTranscript: Bool = false
     ) {
         self.recording = recording
         self.service = service
@@ -33,6 +36,8 @@ struct MeetingNotesView: View {
         self.openAISettings = openAISettings
         self.resolvedTranscript = resolvedTranscript
         self.participantPreparationProgress = participantPreparationProgress
+        _selectedTab = State(initialValue: initiallyShowsTranscript ? .transcript : .minutes)
+        _selectedTranscriptMode = State(initialValue: initiallyShowsOriginalTranscript ? .original : .cleaned)
     }
 
     private var document: MeetingNotesDocument? {
@@ -49,6 +54,12 @@ struct MeetingNotesView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     progressView
+                    if !progress.isRunning, let cleanupNotice = service.cleanupNotice(for: recording.id) {
+                        Label(cleanupNotice, systemImage: "info.circle")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("transcript-cleanup-status")
+                    }
 
                     if let document {
                         documentTabs(document) { heading in
@@ -80,10 +91,14 @@ struct MeetingNotesView: View {
             showingEnhancement = false
             copied = false
             selectedTab = .minutes
+            selectedTranscriptMode = .cleaned
         }
         .onChange(of: document?.markdown) {
             copied = false
             selectedOutlineBlock = nil
+        }
+        .onChange(of: document?.transcriptCleanup?.sourceHash) {
+            selectedTranscriptMode = .cleaned
         }
         .sheet(isPresented: $showingEnhancement, onDismiss: {
             if showEnhancementSettingsAfterDismiss {
@@ -176,6 +191,12 @@ struct MeetingNotesView: View {
                 detail: participantPreparationProgress?.status,
                 fraction: participantPreparationProgress?.fraction ?? fraction(completed: completed, total: total)
             )
+        case .refiningTranscript(let completed, let total):
+            runningCard(
+                title: String(localized: "Cleaning transcript"),
+                detail: nil,
+                fraction: fraction(completed: completed, total: total)
+            )
         case .failed(let message):
             NotesCard {
                 Label(String(localized: "Generation failed"), systemImage: "exclamationmark.triangle")
@@ -189,11 +210,18 @@ struct MeetingNotesView: View {
     }
 
     private var controls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { primaryControls; cleanupControl }
+                .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 8) { primaryControls; cleanupControl }
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private var primaryControls: some View {
         HStack(spacing: 8) {
             if progress.isRunning {
-                Button {
-                    service.cancel(recording.id)
-                } label: {
+                Button { service.cancel(recording.id) } label: {
                     Label(String(localized: "Cancel"), systemImage: "xmark.circle")
                 }
             } else if document != nil {
@@ -204,15 +232,28 @@ struct MeetingNotesView: View {
                     Label(String(localized: "Enhance Minutes"), systemImage: "wand.and.stars")
                 }
                 .accessibilityIdentifier("ai-enhance-minutes")
-                Button {
-                    showingRegenerateConfirmation = true
-                } label: {
+                Button { showingRegenerateConfirmation = true } label: {
                     Label(String(localized: "Regenerate"), systemImage: "arrow.clockwise")
                 }
                 .disabled(!configuration.isConfigured)
             }
         }
-        .buttonStyle(.bordered)
+    }
+
+    @ViewBuilder
+    private var cleanupControl: some View {
+        if !progress.isRunning, document != nil {
+            Button {
+                selectedTab = .transcript
+                selectedTranscriptMode = .cleaned
+                service.refineTranscript(recording)
+            } label: {
+                Label(document?.transcriptCleanup == nil ? String(localized: "Clean transcript") : String(localized: "Reclean transcript"),
+                      systemImage: "text.badge.checkmark")
+            }
+            .disabled(!configuration.isTranscriptCleanupConfigured)
+            .accessibilityIdentifier("ai-clean-transcript")
+        }
     }
 
     private func documentTabs(_ document: MeetingNotesDocument, onSelectHeading: @escaping (MarkdownDocument.Heading) -> Void) -> some View {
@@ -247,37 +288,106 @@ struct MeetingNotesView: View {
                     }
                     MarkdownDocumentView(document: markdown)
                 case .transcript:
-                    if let transcript = document.participantTranscript(resolvingWith: resolvedTranscript) {
-                        Text(String(localized: "Participant labels are estimates. Overlapping or unclear speech may remain unidentified."))
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text("\(String(localized: "Participant Transcript Model")): \(transcript.transcriptionModelID)")
-                            .font(.caption).foregroundStyle(.secondary)
-                        NumberedTranscriptView(transcript: transcript)
-                    } else {
-                        Text(String(localized: "Participant labels are not available yet. Identify participants to add speaker numbers to this transcript."))
-                            .font(.callout).foregroundStyle(.secondary)
-                        if recording.deletedAt == nil {
-                            Button {
-                                service.identifyParticipants(recording)
-                            } label: {
-                                Label(String(localized: "Identify Participants"), systemImage: "person.2.wave.2")
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(progress.isRunning || !configuration.isConfigured)
-                            .accessibilityIdentifier("ai-identify-participants")
-                        }
-                        Text(document.transcript.isEmpty ? String(localized: "No transcript was stored.") : document.transcript)
-                            .font(.body).lineSpacing(4).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if !progress.isRunning, let notice = service.transcriptNotice(for: recording.id) {
-                        Label(notice, systemImage: "info.circle")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("participant-identification-status")
-                    }
+                    transcriptPanel(document)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptPanel(_ document: MeetingNotesDocument) -> some View {
+        let cleanup = validTranscriptCleanup(for: document)
+        if cleanup != nil {
+            Picker(String(localized: "Transcript version"), selection: $selectedTranscriptMode) {
+                Text(String(localized: "AI-cleaned")).tag(TranscriptDisplayMode.cleaned)
+                Text(String(localized: "Original")).tag(TranscriptDisplayMode.original)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 240)
+            .accessibilityIdentifier("transcript-version-picker")
+            if let cleanup {
+                HStack {
+                    Text(String(localized: "Transcript cleanup model"))
+                    Text(cleanup.modelID).textSelection(.enabled)
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                if cleanup.removedPassageCount > 0 {
+                    Text(String(localized: "AI excluded \(cleanup.removedPassageCount) transcript passages. Check Original to compare."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+
+        Text(String(localized: "Transcript cleanup uses the selected minutes model. The original transcript is retained."))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+        if selectedTranscriptMode == .cleaned, let cleanup {
+            cleanedTranscript(document, cleanup: cleanup)
+        } else {
+            originalTranscript(document)
+        }
+
+        if !progress.isRunning, let notice = service.transcriptNotice(for: recording.id) {
+            Label(notice, systemImage: "info.circle")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("participant-identification-status")
+        }
+    }
+
+    @ViewBuilder
+    private func cleanedTranscript(_ document: MeetingNotesDocument, cleanup: TranscriptCleanup) -> some View {
+        switch cleanup.sourceKind {
+        case .speakers:
+            if let transcript = document.participantTranscript(resolvingWith: resolvedTranscript) {
+                NumberedTranscriptView(transcript: transcript, textOverrides: cleanup.textOverrides)
+            } else {
+                plainTranscriptText(cleanup.cleanedText)
+            }
+        case .plain:
+            plainTranscriptText(cleanup.cleanedText)
+        }
+    }
+
+    @ViewBuilder
+    private func originalTranscript(_ document: MeetingNotesDocument) -> some View {
+        if let transcript = document.participantTranscript(resolvingWith: resolvedTranscript) {
+            Text(String(localized: "Participant labels are estimates. Overlapping or unclear speech may remain unidentified."))
+                .font(.caption).foregroundStyle(.secondary)
+            Text("\(String(localized: "Participant Transcript Model")): \(transcript.transcriptionModelID)")
+                .font(.caption).foregroundStyle(.secondary)
+            NumberedTranscriptView(transcript: transcript)
+        } else {
+            Text(String(localized: "Participant labels are not available yet. Identify participants to add speaker numbers to this transcript."))
+                .font(.callout).foregroundStyle(.secondary)
+            if recording.deletedAt == nil {
+                Button {
+                    service.identifyParticipants(recording)
+                } label: {
+                    Label(String(localized: "Identify Participants"), systemImage: "person.2.wave.2")
+                }
+                .buttonStyle(.bordered)
+                .disabled(progress.isRunning || !configuration.isConfigured)
+                .accessibilityIdentifier("ai-identify-participants")
+            }
+            plainTranscriptText(document.transcript.isEmpty ? String(localized: "No transcript was stored.") : document.transcript)
+        }
+    }
+
+    private func plainTranscriptText(_ text: String) -> some View {
+        Text(text)
+            .font(.body).lineSpacing(4).textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func validTranscriptCleanup(for document: MeetingNotesDocument) -> TranscriptCleanup? {
+        guard let cleanup = document.transcriptCleanup else { return nil }
+        do {
+            try cleanup.validate(transcript: document.transcript, speakerTranscript: document.participantTranscript(resolvingWith: resolvedTranscript))
+            return cleanup
+        } catch {
+            return nil
         }
     }
 
@@ -418,6 +528,11 @@ struct MeetingNotesView: View {
 private enum NotesTab: Hashable {
     case minutes
     case transcript
+}
+
+private enum TranscriptDisplayMode: Hashable {
+    case cleaned
+    case original
 }
 
 private struct NotesCard<Content: View>: View {

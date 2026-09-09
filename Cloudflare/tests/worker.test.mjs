@@ -68,6 +68,25 @@ function noteRevision(body) {
   return createHash("sha256").update(body).digest("hex");
 }
 
+function cleanupSourceHash(kind, source) {
+  if (kind === "plain") {
+    return createHash("sha256").update(`plain-v1\n${source}`, "utf8").digest("hex");
+  }
+  const payload = source.turns.map((turn) => `${new TextEncoder().encode(turn.id).byteLength}:${turn.id}${new TextEncoder().encode(turn.text).byteLength}:${turn.text}`).join("");
+  return createHash("sha256").update(`speakers-v1\n${payload}`, "utf8").digest("hex");
+}
+
+function transcriptCleanup(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    modelID: "openai/gpt-cleanup",
+    sourceKind: "plain",
+    sourceHash: cleanupSourceHash("plain", "Complete transcript"),
+    passages: [{ id: "p0", text: "Clean complete transcript." }],
+    ...overrides,
+  };
+}
+
 async function publishRecording(env, payload = recording()) {
   await uploadAudio(env, payload.id, payload.audioVersion);
   const response = await request(env, `/v1/recordings/${payload.id}`, {
@@ -962,9 +981,9 @@ print('worker-generated upsert sql ok')
       speakerTranscript: {
         schemaVersion: 1, recordingID: VALID_ID, audioVersion: 1, transcriptionModelID: "fixture/stt",
         speakers: [{ id: "p1", name: "Participant", isOwner: false, manuallyAssigned: false }],
-        turns: [{ id: "t1", start: 0, end: 1, speakerID: "p1", text: "승원입니다." }],
+        turns: [{ id: "t1", start: 0, end: 1, speakerID: "p1", text: "7월 출시는 목표입니다." }],
       },
-      enhancement: { modelID: "fixture/enhance", instructions: "승현은 승원입니다." },
+      enhancement: { modelID: "fixture/enhance", instructions: "7월 출시는 확정 일정이 아니라 목표입니다." },
     }));
     const put = await request(env, `/v1/recordings/${VALID_ID}/notes/1`, {
       method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body,
@@ -972,6 +991,35 @@ print('worker-generated upsert sql ok')
     assert.equal(put.status, 200);
     const fetched = await request(env, `/v1/recordings/${VALID_ID}/notes/1/${noteRevision(body)}`, { headers: authHeaders() });
     assert.equal(await fetched.text(), body);
+  });
+
+  test("transcript cleanup metadata round trips with notes and older notes may omit it", async () => {
+    const env = makeEnv();
+    await publishRecording(env);
+    const legacyBody = JSON.stringify(meetingNotes());
+    const cleanupBody = JSON.stringify(meetingNotes({
+      generatedAt: "2026-09-08T03:04:06.000Z",
+      transcript: "First paragraph.\n\nSecond paragraph.",
+      transcriptCleanup: {
+        schemaVersion: 1,
+        modelID: "openai/gpt-cleanup",
+        sourceKind: "plain",
+        sourceHash: cleanupSourceHash("plain", "First paragraph.\n\nSecond paragraph."),
+        passages: [{ id: "p0", text: "First paragraph." }, { id: "p1", text: "Second paragraph." }],
+      },
+    }));
+
+    const legacy = await request(env, `/v1/recordings/${VALID_ID}/notes/1`, {
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body: legacyBody,
+    });
+    const cleanup = await request(env, `/v1/recordings/${VALID_ID}/notes/1`, {
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body: cleanupBody,
+    });
+
+    assert.equal(legacy.status, 200);
+    assert.equal(cleanup.status, 200);
+    const fetched = await request(env, `/v1/recordings/${VALID_ID}/notes/1/${noteRevision(cleanupBody)}`, { headers: authHeaders() });
+    assert.equal(await fetched.text(), cleanupBody);
   });
 
   test("enhanced notes reject credential fields and mismatched transcript identity", async () => {
@@ -986,6 +1034,41 @@ print('worker-generated upsert sql ok')
       const response = await request(env, `/v1/recordings/${VALID_ID}/notes/1`, {
         method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(meetingNotes(extra)),
+      });
+      assert.equal(response.status, 400);
+    }
+  });
+
+  test("transcript cleanup rejects incorrect hash, ids, oversize text, empty output, and unknown fields", async () => {
+    const env = makeEnv();
+    await publishRecording(env);
+    const speakerTranscript = {
+      schemaVersion: 1, recordingID: VALID_ID, audioVersion: 1, transcriptionModelID: "fixture/stt",
+      speakers: [{ id: "p1", name: "Participant", isOwner: false, manuallyAssigned: false }],
+      turns: [
+        { id: "t1", start: 0, end: 1, speakerID: "p1", text: "Alpha" },
+        { id: "t2", start: 1, end: 2, speakerID: "p1", text: "Beta" },
+      ],
+    };
+    const validSpeakersCleanup = transcriptCleanup({
+      sourceKind: "speakers",
+      sourceHash: cleanupSourceHash("speakers", speakerTranscript),
+      passages: [{ id: "t1", text: "Alpha." }, { id: "t2", text: "Beta." }],
+    });
+    const cases = [
+      transcriptCleanup({ sourceHash: "0".repeat(64) }),
+      transcriptCleanup({ passages: [{ id: "p1", text: "Clean complete transcript." }] }),
+      transcriptCleanup({ passages: [{ id: "p0", text: "x".repeat(32 * 1024 + 1) }] }),
+      transcriptCleanup({ passages: [{ id: "p0", text: "   " }] }),
+      { ...transcriptCleanup(), apiKey: "secret" },
+      { ...validSpeakersCleanup, passages: [{ id: "t2", text: "Beta." }, { id: "t1", text: "Alpha." }] },
+      { ...validSpeakersCleanup, passages: [{ id: "t1", text: "Alpha." }, { id: "t2", text: "Beta." }, { id: "t3", text: "extra" }] },
+    ];
+
+    for (const cleanup of cases) {
+      const response = await request(env, `/v1/recordings/${VALID_ID}/notes/1`, {
+        method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(meetingNotes({ speakerTranscript, transcriptCleanup: cleanup })),
       });
       assert.equal(response.status, 400);
     }

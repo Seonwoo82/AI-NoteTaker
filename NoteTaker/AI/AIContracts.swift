@@ -66,18 +66,20 @@ nonisolated struct MeetingNotesDocument: Codable, Equatable, Sendable {
     var costUSD: Double? = nil
     var speakerTranscript: MeetingTranscript? = nil
     var enhancement: MeetingNotesEnhancement? = nil
+    var transcriptCleanup: TranscriptCleanup? = nil
 }
 
 nonisolated enum MeetingNotesProgress: Equatable, Sendable {
     case idle, queued
     case transcribing(completed: Int, total: Int)
+    case refiningTranscript(completed: Int, total: Int)
     case summarizing(completed: Int, total: Int)
     case completed, cancelled
     case failed(String)
 
     var isRunning: Bool {
         switch self {
-        case .queued, .transcribing, .summarizing: true
+        case .queued, .transcribing, .refiningTranscript, .summarizing: true
         default: false
         }
     }

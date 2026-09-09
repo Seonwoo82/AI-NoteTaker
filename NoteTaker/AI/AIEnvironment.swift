@@ -47,6 +47,15 @@ nonisolated struct FakeOpenRouterClient: OpenRouterServing {
     }
     func complete(system: String, user: String, model: String, apiKey: String, maxTokens: Int) async throws -> AITextResponse {
         try await Task.sleep(for: .milliseconds(150))
+        if system == TranscriptCleanupPrompts.system {
+            let object = try JSONSerialization.jsonObject(with: Data(user.utf8)) as? [String: Any]
+            let passages = (object?["passages"] as? [[String: Any]] ?? []).compactMap { passage -> [String: String]? in
+                guard let id = passage["id"] as? String, let text = passage["text"] as? String else { return nil }
+                return ["id": id, "text": text]
+            }
+            let data = try JSONSerialization.data(withJSONObject: ["passages": passages])
+            return AITextResponse(text: String(decoding: data, as: UTF8.self), costUSD: 0)
+        }
         return AITextResponse(text: """
         # 제품 회의록
 

@@ -69,4 +69,30 @@ struct NumberedTranscriptTests {
         [0:02] \(String(localized: "Unidentified participant")): Bad speaker ID.
         """)
     }
+
+    @Test("cleaned speaker overrides hide empty noise lines after numbering without changing source turns")
+    func cleanedSpeakerOverridesPreserveTimingAndParticipantNumbers() {
+        let transcript = MeetingTranscript(recordingID: recordingID, audioVersion: 1,
+            transcriptionModelID: "fixture/stt",
+            speakers: [
+                MeetingSpeaker(id: "speaker-a", name: "Avery", isOwner: false),
+                MeetingSpeaker(id: "speaker-b", name: "Bailey", isOwner: false)
+            ],
+            turns: [
+                TranscriptTurn(id: "noise", start: 0, end: 1, speakerID: "speaker-a", text: "[background noise]"),
+                TranscriptTurn(id: "kept", start: 1, end: 2, speakerID: "speaker-b", text: "Original words."),
+                TranscriptTurn(id: "rewritten", start: 2, end: 3, speakerID: "speaker-a", text: "Rough werds.")
+            ])
+
+        let numbered = NumberedTranscript(transcript, textOverrides: [
+            "noise": "",
+            "rewritten": "Rough words."
+        ])
+
+        #expect(numbered.lines.map(\.id) == ["kept", "rewritten"])
+        #expect(numbered.lines.map(\.start) == [1, 2])
+        #expect(numbered.lines.map(\.text) == ["Original words.", "Rough words."])
+        #expect(numbered.lines.map(\.participantNumber) == [2, 1])
+        #expect(transcript.turns.map(\.text) == ["[background noise]", "Original words.", "Rough werds."])
+    }
 }

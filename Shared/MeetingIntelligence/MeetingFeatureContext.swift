@@ -56,6 +56,9 @@ final class MeetingFeatureContext {
             self.notes.recordingDidFinish(current)
         }
         if environment.client is any DetailedTranscriptionServing {
+            notes.existingSpeakerTranscriptProvider = { [weak self] recording in
+                self?.store.document(for: recording.id)?.transcript
+            }
             notes.speakerTranscriptProvider = { [weak self] recording, modelID in
                 guard let self else { throw CancellationError() }
                 return try await self.analysis.prepareNumberedTranscript(recording, transcriptionModelID: modelID)

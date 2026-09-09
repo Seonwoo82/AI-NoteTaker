@@ -13,15 +13,15 @@ struct MeetingNotesEnhancementTests {
     func previewAndApply() async throws {
         let h = try await EnhancementHarness.make()
         let original = try #require(h.service.document(for: h.recording.id))
-        await h.client.setMarkdown("# 수정된 회의록\n승원이 다음 주까지 제안서를 전달합니다.")
-        h.service.enhance(h.recording, instructions: "승현은 승원입니다. 전달 일정은 다음 주입니다.")
+        await h.client.setMarkdown("# 수정된 회의록\n7월 출시는 목표이며 예산 검토 후 최종 일정을 정합니다.")
+        h.service.enhance(h.recording, instructions: "7월 출시는 확정 일정이 아니라 목표입니다. 최종 일정은 예산 검토 후 결정합니다.")
         try await h.wait()
         let preview = try #require(h.service.enhancementPreview(for: h.recording.id))
         #expect(h.service.document(for: h.recording.id) == original)
-        #expect(preview.markdown.contains("승원"))
+        #expect(preview.markdown.contains("7월 출시"))
         #expect(await h.client.modelsUsed == ["fixture/summary", "fixture/enhance"])
         #expect(await h.client.transcriptions == 1)
-        #expect(await h.client.prompts.last?.contains("승현은 승원") == true)
+        #expect(await h.client.prompts.last?.contains("7월 출시는 확정 일정이 아니라 목표") == true)
         try h.service.applyEnhancement(h.recording)
         let applied = try #require(h.service.document(for: h.recording.id))
         #expect(applied.markdown == preview.markdown)
@@ -38,12 +38,12 @@ struct MeetingNotesEnhancementTests {
         let h = try await EnhancementHarness.make()
         let original = h.service.document(for: h.recording.id)
         await h.client.setFails(true)
-        h.service.enhance(h.recording, instructions: "이름을 승원으로 수정")
+        h.service.enhance(h.recording, instructions: "7월 출시를 목표 일정으로 수정")
         try await h.wait()
         #expect(h.service.document(for: h.recording.id) == original)
         #expect(h.service.enhancementPreview(for: h.recording.id) == nil)
         await h.client.setFails(false)
-        h.service.enhance(h.recording, instructions: "이름을 승원으로 수정")
+        h.service.enhance(h.recording, instructions: "7월 출시를 목표 일정으로 수정")
         try await h.wait()
         h.service.discardEnhancement(h.recording.id)
         #expect(h.service.document(for: h.recording.id) == original)
@@ -86,7 +86,7 @@ struct MeetingNotesEnhancementTests {
         let h = try await EnhancementHarness.make()
         let original = h.service.document(for: h.recording.id)
         h.config.transcriptionModelID = ""
-        h.service.enhance(h.recording, instructions: "승현은 승원입니다.")
+        h.service.enhance(h.recording, instructions: "7월 출시는 목표입니다.")
         try await h.wait()
         #expect(h.service.enhancementPreview(for: h.recording.id) != nil)
         #expect(await h.client.transcriptions == 1)
@@ -214,7 +214,7 @@ struct MeetingNotesEnhancementTests {
         var calls = 0
         let transcript = MeetingTranscript(recordingID: h.recording.id, audioVersion: h.recording.audioVersion,
             transcriptionModelID: "fixture/stt", speakers: [MeetingSpeaker(id: "p1", name: "Speaker", isOwner: false)],
-            turns: [TranscriptTurn(id: "turn1", start: 0, end: 1, speakerID: "p1", text: "승현이 제안서를 전달합니다.")])
+            turns: [TranscriptTurn(id: "turn1", start: 0, end: 1, speakerID: "p1", text: "7월 출시는 목표입니다.")])
         h.config.transcriptionModelID = "fixture/new-stt"
         var requestedModel: String?
         h.service.speakerTranscriptProvider = { _, model in calls += 1; requestedModel = model; return transcript }
@@ -258,6 +258,7 @@ private struct EnhancementHarness {
                 inputModalities: ["audio"], outputModalities: ["transcription"])]
         defaults.set(try JSONEncoder().encode(models), forKey: "ai.modelCatalog")
         let config = AIConfiguration(client: client, keyStore: InMemoryAPIKeyStore(), defaults: defaults)
+        config.transcriptCleanupEnabled = false // These cases exercise the original notes/enhancement path.
         try config.saveKey("fixture")
         config.modelID = "fixture/summary"
         config.transcriptionModelID = "fixture/stt"
@@ -289,7 +290,7 @@ private actor EnhancementClient: OpenRouterServing {
     private(set) var transcriptions = 0
     private(set) var modelsUsed: [String] = []
     private(set) var prompts: [String] = []
-    private var markdown = "# 회의록\n승현이 제안서를 전달합니다."
+    private var markdown = "# 회의록\n7월 출시가 확정 일정으로 기록되었습니다."
     private var fails = false
     private var hold = false
     private var continuation: CheckedContinuation<Void, Never>?
@@ -301,7 +302,7 @@ private actor EnhancementClient: OpenRouterServing {
     func release() { hold = false; continuation?.resume(); continuation = nil }
     func transcribe(audio: Data, format: String, model: String, apiKey: String, language: String?) async throws -> AITextResponse {
         transcriptions += 1
-        return AITextResponse(text: "승현이 제안서를 전달합니다.")
+        return AITextResponse(text: "7월 출시가 확정 일정으로 기록되었습니다.")
     }
     func complete(system: String, user: String, model: String, apiKey: String, maxTokens: Int) async throws -> AITextResponse {
         modelsUsed.append(model)

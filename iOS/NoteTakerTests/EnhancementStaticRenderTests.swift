@@ -23,20 +23,20 @@ final class EnhancementStaticRenderTests: XCTestCase {
         try library.add(recording)
         let transcript = MeetingTranscript(recordingID: recording.id, audioVersion: recording.audioVersion,
             transcriptionModelID: "fixture/transcription",
-            speakers: [MeetingSpeaker(id: "a", name: "승원", isOwner: false), MeetingSpeaker(id: "b", name: "지민", isOwner: false)],
-            turns: [TranscriptTurn(id: "t1", start: 0, end: 5, speakerID: "a", text: "다음 주까지 수정된 제안서를 전달하겠습니다."),
-                    TranscriptTurn(id: "t2", start: 6, end: 12, speakerID: "b", text: "디자인 검토를 마친 뒤 출시 일정을 확정하겠습니다."),
+            speakers: [MeetingSpeaker(id: "a", name: "참여자 1", isOwner: false), MeetingSpeaker(id: "b", name: "참여자 2", isOwner: false)],
+            turns: [TranscriptTurn(id: "t1", start: 0, end: 5, speakerID: "a", text: "7월 출시는 확정 일정이 아니라 목표입니다."),
+                    TranscriptTurn(id: "t2", start: 6, end: 12, speakerID: "b", text: "예산 검토를 마친 뒤 출시 일정을 확정하겠습니다."),
                     TranscriptTurn(id: "t3", start: 13, end: 16, speakerID: "a", text: "변경된 일정은 회의록에도 반영해 주세요."),
                     TranscriptTurn(id: "t4", start: 18, end: 20, speakerID: nil, text: "목소리가 겹쳐 참여자를 확인하기 어려운 구간입니다.")])
         let document = MeetingNotesDocument(recordingID: recording.id, audioVersion: recording.audioVersion,
             generatedAt: Date(timeIntervalSince1970: 1_756_800_000), modelID: "fixture/summary",
-            transcriptionModelID: "fixture/transcription", markdown: "# 제품 출시 회의\n\n승현이 내일까지 제안서를 전달합니다.",
+            transcriptionModelID: "fixture/transcription", markdown: "# 제품 출시 회의\n\n7월 출시가 확정 일정으로 기록되었습니다.",
             transcript: NumberedTranscript.text(transcript), speakerTranscript: transcript)
         try AIArtifactStore(paths: library.paths).saveDocument(document, recording: recording)
         let service = MeetingNotesService(configuration: configuration, client: environment.client,
             chunker: environment.chunker, library: library)
         await service.load(recording)
-        let correction = "승현은 승원의 잘못된 표기입니다. 제안서는 내일이 아니라 다음 주에 전달하기로 합의했습니다."
+        let correction = "7월 출시는 확정 일정이 아니라 목표입니다. 예산 검토를 마친 뒤 최종 일정을 정하기로 했다는 맥락을 반영해 주세요."
         try render(NumberedTranscriptView(transcript: transcript).padding(24), name: "numbered-transcript")
         try render(MeetingEnhancementView(recording: recording, service: service, configuration: configuration,
             onOpenSettings: {}, onClose: {}, initialInstructions: correction), name: "enhancement-ready")
@@ -49,6 +49,18 @@ final class EnhancementStaticRenderTests: XCTestCase {
         try render(MeetingEnhancementView(recording: recording, service: service, configuration: configuration,
             onOpenSettings: {}, onClose: {}, initialInstructions: correction), name: "enhancement-preview")
         try render(AISettingsView(configuration: configuration), name: "enhancement-settings")
+        let cleanupSource = try TranscriptCleanupSource.make(transcript: document.transcript, speakerTranscript: transcript)
+        var cleanedDocument = document
+        cleanedDocument.transcriptCleanup = TranscriptCleanup(modelID: "fixture/summary", sourceKind: .speakers,
+            sourceHash: cleanupSource.hash, passages: cleanupSource.passages.map {
+                TranscriptCleanupPassage(id: $0.id, text: $0.id == "t4" ? "" : $0.text)
+            })
+        try AIArtifactStore(paths: library.paths).saveDocument(cleanedDocument, recording: recording)
+        await service.reload(recording)
+        try render(MeetingNotesView(recording: recording, service: service, configuration: configuration,
+            initiallyShowsTranscript: true), name: "transcript-cleaned")
+        try render(MeetingNotesView(recording: recording, service: service, configuration: configuration,
+            initiallyShowsTranscript: true, initiallyShowsOriginalTranscript: true), name: "transcript-original")
     }
 
     private func render<Content: View>(_ content: Content, name: String) throws {

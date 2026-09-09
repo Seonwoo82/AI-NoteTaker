@@ -208,6 +208,7 @@ private struct FeatureHarness {
         let keyStore = InMemoryAPIKeyStore()
         let defaults = UserDefaults(suiteName: "MeetingFeatureContextTests.\(UUID().uuidString)")!
         let config = AIConfiguration(client: client, keyStore: keyStore, defaults: defaults)
+        config.transcriptCleanupEnabled = false // These cases exercise the original notes/enhancement path.
         if configured {
             try config.saveKey("fixture-key")
             config.modelID = "fixture/summary"

@@ -21,7 +21,7 @@ nonisolated struct NumberedTranscript: Equatable, Sendable {
     let lines: [Line]
     private let numbersBySpeakerID: [String: Int]
 
-    init(_ transcript: MeetingTranscript) {
+    init(_ transcript: MeetingTranscript, textOverrides: [String: String] = [:]) {
         let knownSpeakers = transcript.speakers.reduce(into: [String: MeetingSpeaker]()) { speakers, speaker in
             speakers[speaker.id] = speakers[speaker.id] ?? speaker
         }
@@ -43,9 +43,12 @@ nonisolated struct NumberedTranscript: Equatable, Sendable {
             } else {
                 participantNumber = nil
             }
-            lines.append(Line(id: turn.id, start: turn.start, text: turn.text,
-                speakerID: speaker?.id, participantNumber: participantNumber,
-                speakerName: speaker?.name))
+            let text = textOverrides[turn.id] ?? turn.text
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lines.append(Line(id: turn.id, start: turn.start, text: text,
+                    speakerID: speaker?.id, participantNumber: participantNumber,
+                    speakerName: speaker?.name))
+            }
         }
 
         self.lines = lines
@@ -56,8 +59,8 @@ nonisolated struct NumberedTranscript: Equatable, Sendable {
         numbersBySpeakerID[speakerID]
     }
 
-    static func text(_ transcript: MeetingTranscript) -> String {
-        NumberedTranscript(transcript).lines.map { line in
+    static func text(_ transcript: MeetingTranscript, textOverrides: [String: String] = [:]) -> String {
+        NumberedTranscript(transcript, textOverrides: textOverrides).lines.map { line in
             "[\(timestamp(line.start))] \(line.speakerLabel): \(line.text)"
         }.joined(separator: "\n")
     }
@@ -84,8 +87,8 @@ nonisolated struct NumberedTranscript: Equatable, Sendable {
 struct NumberedTranscriptView: View {
     private let numberedTranscript: NumberedTranscript
 
-    init(transcript: MeetingTranscript) {
-        self.numberedTranscript = NumberedTranscript(transcript)
+    init(transcript: MeetingTranscript, textOverrides: [String: String] = [:]) {
+        self.numberedTranscript = NumberedTranscript(transcript, textOverrides: textOverrides)
     }
 
     var body: some View {

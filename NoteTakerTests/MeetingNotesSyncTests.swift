@@ -39,6 +39,77 @@ func meetingNotesSyncUploadsDownloadsAndSkipsUnchangedRevisions() async throws {
 }
 
 @MainActor
+@Test("meeting notes sync preserves valid transcript cleanup metadata")
+func meetingNotesSyncPreservesTranscriptCleanup() async throws {
+    let server = InMemoryMeetingNotesTransport()
+    let first = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueNotesSyncLibraryRoot(), arguments: []))
+    let second = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueNotesSyncLibraryRoot(), arguments: []))
+    let recording = notesSyncRecording(
+        id: try #require(UUID(uuidString: "87777777-8888-9999-8AAA-BBBBBBBBBBBB")),
+        audioVersion: 1
+    )
+    let cleanup = transcriptCleanup(forPlainTranscript: "First paragraph.\n\nSecond paragraph.",
+                                    texts: ["First paragraph.", "Second paragraph."])
+    let document = meetingNotesDocument(for: recording, markdown: "# Cleaned",
+                                        transcript: "First paragraph.\n\nSecond paragraph.",
+                                        transcriptCleanup: cleanup)
+    try first.add(recording)
+    try second.applyRemote(recording)
+    try writeAudio(in: first, recording: recording)
+    try writeMeetingNotes(document, in: first)
+
+    try await SyncEngine(transport: server).sync(library: first)
+    try await SyncEngine(transport: server).sync(library: second)
+
+    #expect(try readMeetingNotes(in: second, id: recording.id).transcriptCleanup == cleanup)
+}
+
+@MainActor
+@Test("artifact store clears invalid transcript cleanup while retaining raw notes")
+func artifactStoreClearsInvalidTranscriptCleanupOnLoad() async throws {
+    let store = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueNotesSyncLibraryRoot(), arguments: []))
+    let recording = notesSyncRecording(
+        id: try #require(UUID(uuidString: "88888888-9999-AAAA-8BBB-CCCCCCCCCCCC")),
+        audioVersion: 1
+    )
+    let invalidCleanup = TranscriptCleanup(modelID: "fixture/cleanup", sourceKind: .plain,
+                                           sourceHash: String(repeating: "0", count: 64),
+                                           passages: [TranscriptCleanupPassage(id: "p0", text: "Cleaned")])
+    let document = meetingNotesDocument(for: recording, markdown: "# Raw", transcript: "Raw transcript",
+                                        transcriptCleanup: invalidCleanup)
+    try store.add(recording)
+    try writeMeetingNotes(document, in: store)
+
+    let loaded = await AIArtifactStore(paths: store.paths).loadDocument(recording)
+
+    #expect(loaded?.markdown == "# Raw")
+    #expect(loaded?.transcript == "Raw transcript")
+    #expect(loaded?.transcriptCleanup == nil)
+}
+
+@MainActor
+@Test("meeting notes sync refuses cleanup that no longer matches its transcript")
+func meetingNotesSyncRejectsMismatchedTranscriptCleanup() async throws {
+    let server = InMemoryMeetingNotesTransport()
+    let store = await LibraryStore.open(paths: LibraryPaths(libraryRoot: uniqueNotesSyncLibraryRoot(), arguments: []))
+    let recording = notesSyncRecording(
+        id: try #require(UUID(uuidString: "89999999-AAAA-BBBB-8CCC-DDDDDDDDDDDD")),
+        audioVersion: 1
+    )
+    let staleCleanup = transcriptCleanup(forPlainTranscript: "Original transcript", texts: ["Original transcript"])
+    let document = meetingNotesDocument(for: recording, markdown: "# Stale", transcript: "Edited transcript",
+                                        transcriptCleanup: staleCleanup)
+    try store.add(recording)
+    try writeAudio(in: store, recording: recording)
+    try writeMeetingNotes(document, in: store)
+
+    await #expect(throws: Error.self) {
+        try await SyncEngine(transport: server).sync(library: store)
+    }
+    #expect(server.noteUploadCount(for: recording.id, audioVersion: 1) == 0)
+}
+
+@MainActor
 @Test("meeting notes corrupt download keeps existing local document")
 func meetingNotesCorruptDownloadKeepsExistingLocalDocument() async throws {
     let recording = notesSyncRecording(
@@ -241,7 +312,8 @@ private func meetingNotesDocument(
     for recording: Recording,
     generatedAt: Date = Date(timeIntervalSince1970: 1_788_318_245),
     markdown: String,
-    transcript: String
+    transcript: String,
+    transcriptCleanup: TranscriptCleanup? = nil
 ) -> MeetingNotesDocument {
     MeetingNotesDocument(
         recordingID: recording.id,
@@ -251,8 +323,22 @@ private func meetingNotesDocument(
         transcriptionModelID: "openai/whisper-test",
         markdown: markdown,
         transcript: transcript,
-        costUSD: nil
+        costUSD: nil,
+        transcriptCleanup: transcriptCleanup
     )
+}
+
+private func transcriptCleanup(forPlainTranscript transcript: String, texts: [String]) -> TranscriptCleanup {
+    TranscriptCleanup(
+        modelID: "fixture/cleanup",
+        sourceKind: .plain,
+        sourceHash: sha256Hex("plain-v1\n\(transcript)"),
+        passages: texts.enumerated().map { TranscriptCleanupPassage(id: "p\($0.offset)", text: $0.element) }
+    )
+}
+
+private func sha256Hex(_ text: String) -> String {
+    SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
 }
 
 @MainActor

@@ -41,7 +41,7 @@ function environment(t) {
 }
 function preferences(overrides = {}) {
   return { schemaVersion: 1, modelID: 'test/summary', enhancementModelID: 'test/enhancement', transcriptionModelID: 'test/stt', outputLanguage: 'ko', autoGenerate: true,
-    modifiedAt: 1000, mutationID: MAC, ...overrides };
+    transcriptCleanupEnabled: true, modifiedAt: 1000, mutationID: MAC, ...overrides };
 }
 async function request(env, { method = 'GET', id = PHONE, payload, auth = true } = {}) {
   const url = 'https://example.test/v1/ai-settings' + (method === 'GET' ? `?deviceID=${id}` : '');
@@ -108,6 +108,7 @@ test('old clients that omit enhancementModelID do not erase a newer enhancement 
   assert.deepEqual((await response.json()).preferences, {
     ...oldClient.preferences,
     enhancementModelID: 'test/enhancement',
+    transcriptCleanupEnabled: true,
   });
 });
 test('explicit empty enhancementModelID clears a previous custom enhancement choice', async t => {
@@ -121,6 +122,29 @@ test('explicit empty enhancementModelID clears a previous custom enhancement cho
 
   assert.equal(response.status, 200);
   assert.equal((await response.json()).preferences.enhancementModelID, '');
+});
+test('old clients that omit transcriptCleanupEnabled keep the previous cleanup preference or default on', async t => {
+  const env = environment(t);
+  await request(env, { method: 'PUT', payload: upload(preferences({ transcriptCleanupEnabled: false })) });
+  const oldClient = upload({
+    schemaVersion: 1,
+    modelID: 'test/summary',
+    enhancementModelID: 'test/enhancement',
+    transcriptionModelID: 'test/stt',
+    outputLanguage: 'en',
+    autoGenerate: false,
+    modifiedAt: 1001,
+    mutationID: PHONE,
+  }, { id: PHONE, platform: 'iOS', hasAPIKey: true });
+  const preserved = await request(env, { method: 'PUT', payload: oldClient });
+
+  assert.equal(preserved.status, 200);
+  assert.equal((await preserved.json()).preferences.transcriptCleanupEnabled, false);
+
+  const fresh = environment(t);
+  const defaulted = await request(fresh, { method: 'PUT', payload: oldClient });
+  assert.equal(defaulted.status, 200);
+  assert.equal((await defaulted.json()).preferences.transcriptCleanupEnabled, true);
 });
 test('an unconfigured new phone cannot erase shared settings', async t => {
   const env = environment(t);

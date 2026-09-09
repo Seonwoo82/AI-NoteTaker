@@ -26,16 +26,61 @@ struct AIConfigurationTests {
 
     @Test("defaults require a stored key before auto generation is enabled")
     func defaultsRequireStoredKeyBeforeAutoGeneration() throws {
+        let defaults = try isolatedDefaults()
         let configuration = AIConfiguration(
             client: StubOpenRouterClient(models: []),
             keyStore: InMemoryAPIKeyStore(),
-            defaults: try isolatedDefaults()
+            defaults: defaults
         )
 
         #expect(configuration.outputLanguage == "ko")
         #expect(configuration.autoGenerate == false)
+        #expect(configuration.transcriptCleanupEnabled == true)
+        #expect(defaults.object(forKey: "ai.transcriptCleanupEnabled") as? Bool == true)
+        #expect(configuration.pendingPreferencesUpload == nil)
         #expect(configuration.hasAPIKey == false)
         #expect(configuration.isConfigured == false)
+    }
+
+    @Test("explicit transcript cleanup opt out persists across configuration reloads")
+    func transcriptCleanupOptOutPersists() throws {
+        let defaults = try isolatedDefaults()
+        defaults.set(false, forKey: "ai.transcriptCleanupEnabled")
+        let configuration = AIConfiguration(
+            client: StubOpenRouterClient(models: []),
+            keyStore: InMemoryAPIKeyStore(),
+            defaults: defaults
+        )
+
+        #expect(configuration.transcriptCleanupEnabled == false)
+        configuration.transcriptCleanupEnabled = true
+        let reloaded = AIConfiguration(
+            client: StubOpenRouterClient(models: []),
+            keyStore: InMemoryAPIKeyStore(),
+            defaults: defaults
+        )
+        #expect(reloaded.transcriptCleanupEnabled == true)
+    }
+
+    @Test("transcript cleanup readiness requires only a valid minutes model and local key")
+    func transcriptCleanupReadinessUsesMinutesModelAndKey() async throws {
+        let defaults = try isolatedDefaults()
+        defaults.set("fixture/summary", forKey: "ai.modelID")
+        let models = [
+            OpenRouterModel(id: "fixture/summary", name: "Summary", contextLength: 9000, inputModalities: ["text"], outputModalities: ["text"])
+        ]
+        let configuration = AIConfiguration(
+            client: StubOpenRouterClient(models: models),
+            keyStore: InMemoryAPIKeyStore(),
+            defaults: defaults
+        )
+
+        #expect(configuration.isTranscriptCleanupConfigured == false)
+        try configuration.saveKey("fixture-key")
+        #expect(configuration.isTranscriptCleanupConfigured == true)
+        await configuration.refreshModels()
+        configuration.modelID = "fixture/missing-summary"
+        #expect(configuration.isTranscriptCleanupConfigured == false)
     }
 
     @Test("saveKey trims outer whitespace, rejects CRLF, avoids defaults, and preserves explicit opt out")

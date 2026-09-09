@@ -20,7 +20,7 @@ actor AIArtifactStore {
     init(paths: LibraryPaths) { self.paths = paths }
 
     func loadDocument(_ recording: Recording) -> MeetingNotesDocument? {
-        guard let doc = try? JSONFile.load(MeetingNotesDocument.self, from: documentURL(recording.id)),
+        guard var doc = try? JSONFile.load(MeetingNotesDocument.self, from: documentURL(recording.id)),
               doc.schemaVersion == 1, doc.recordingID == recording.id,
               doc.audioVersion == recording.audioVersion else { return nil }
         if let transcript = doc.speakerTranscript {
@@ -31,6 +31,10 @@ actor AIArtifactStore {
         if let enhancement = doc.enhancement {
             guard !enhancement.modelID.isEmpty, enhancement.modelID.utf8.count <= 512,
                   !enhancement.instructions.isEmpty, enhancement.instructions.utf8.count <= 8_000 else { return nil }
+        }
+        if let cleanup = doc.transcriptCleanup,
+           (try? cleanup.validate(transcript: doc.transcript, speakerTranscript: doc.speakerTranscript)) == nil {
+            doc.transcriptCleanup = nil
         }
         return doc
     }
@@ -45,6 +49,7 @@ actor AIArtifactStore {
     }
 
     @MainActor func saveDocument(_ document: MeetingNotesDocument, recording: Recording) throws {
+        try document.transcriptCleanup?.validate(transcript: document.transcript, speakerTranscript: document.speakerTranscript)
         try save(document, to: documentURL(recording.id), recording: recording)
     }
 

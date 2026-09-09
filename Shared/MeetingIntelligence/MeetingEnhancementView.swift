@@ -43,7 +43,7 @@ struct MeetingEnhancementView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(String(localized: "Corrections and missing context")).font(.headline)
-                    Text(String(localized: "Example: The names Seungwon and Seunghyeon refer to Seungwon. We agreed to send the proposal next week, not tomorrow."))
+                    Text(String(localized: "Example: July launch is a target, not a confirmed schedule. Reflect that the final timeline will be decided after the budget review."))
                         .font(.callout).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     TextEditor(text: $instructions)

@@ -4248,12 +4248,12 @@
         }
       }
     },
-    "Example: The names Seungwon and Seunghyeon refer to Seungwon. We agreed to send the proposal next week, not tomorrow.": {
+    "Example: July launch is a target, not a confirmed schedule. Reflect that the final timeline will be decided after the budget review.": {
       "localizations": {
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "예: 승원과 승현은 같은 사람이며, 정확한 이름은 승원입니다. 제안서는 내일이 아니라 다음 주에 전달하기로 했습니다."
+            "value": "예: 7월 출시는 확정 일정이 아니라 목표입니다. 예산 검토를 마친 뒤 최종 일정을 정하기로 했다는 맥락을 반영해 주세요."
           }
         }
       }
@@ -4804,6 +4804,116 @@
           "stringUnit": {
             "state": "translated",
             "value": "참여자를 구분하는 중"
+          }
+        }
+      }
+    },
+    "Cleaning transcript": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사문을 정리하는 중"
+          }
+        }
+      }
+    },
+    "Clean transcript": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사 정리"
+          }
+        }
+      }
+    },
+    "Reclean transcript": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사 다시 정리"
+          }
+        }
+      }
+    },
+    "Transcript version": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사 보기"
+          }
+        }
+      }
+    },
+    "AI-cleaned": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 정리본"
+          }
+        }
+      }
+    },
+    "Original": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "원문"
+          }
+        }
+      }
+    },
+    "Transcript cleanup model": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사 정리 모델"
+          }
+        }
+      }
+    },
+    "AI excluded %lld transcript passages. Check Original to compare.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI가 전사 구간 %lld개를 제외했습니다. 원문에서 비교할 수 있습니다."
+          }
+        }
+      }
+    },
+    "Transcript cleanup uses the selected minutes model. The original transcript is retained.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "선택한 회의록 모델로 전사문을 정리합니다. 원문은 그대로 보관합니다."
+          }
+        }
+      }
+    },
+    "Context-aware transcript cleanup": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "맥락 기반 전사 정리"
+          }
+        }
+      }
+    },
+    "The original transcript is retained. Your current minutes model cleans noise and ASR artifacts before notes are generated and may incur additional model usage.": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의록 작성 전에 선택한 회의록 모델이 맥락을 보고 잡음성 문구와 반복 오인식을 정리합니다. 원문은 보관되며 추가 모델 사용료가 발생할 수 있습니다."
           }
         }
       }

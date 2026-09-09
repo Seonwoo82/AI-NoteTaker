@@ -7,6 +7,7 @@ nonisolated struct AISharedPreferences: Codable, Equatable, Sendable {
     let transcriptionModelID: String
     let outputLanguage: String
     let autoGenerate: Bool
+    var transcriptCleanupEnabled: Bool? = nil
     let modifiedAt: Int64
     let mutationID: UUID
 

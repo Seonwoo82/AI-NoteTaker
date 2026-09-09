@@ -292,6 +292,7 @@ private struct MinutesHarness {
             defaults.set(try JSONEncoder().encode(models), forKey: "ai.modelCatalog")
         }
         let config = AIConfiguration(client: client, keyStore: keyStore, defaults: defaults)
+        config.transcriptCleanupEnabled = false // These cases exercise the original notes/enhancement path.
         try config.saveKey("fixture-key")
         config.modelID = summaryModel?.id ?? "fixture/summary"
         config.transcriptionModelID = "fixture/transcription"

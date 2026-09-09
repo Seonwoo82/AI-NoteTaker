@@ -223,6 +223,15 @@ struct AISettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            Toggle(isOn: $configuration.transcriptCleanupEnabled) {
+                Label(String(localized: "Context-aware transcript cleanup"), systemImage: "text.magnifyingglass")
+            }
+            Text(String(localized: "The original transcript is retained. Your current minutes model cleans noise and ASR artifacts before notes are generated and may incur additional model usage."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("ai-transcript-cleanup-help")
+
             if let profile {
                 Toggle(isOn: Binding(
                     get: { profile.profile.automaticallyAnalyze },
