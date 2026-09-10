@@ -4917,6 +4917,16 @@
           }
         }
       }
+    },
+    "Saving recording…": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "녹음 저장 중…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

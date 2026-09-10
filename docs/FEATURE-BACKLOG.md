@@ -239,3 +239,13 @@
 - [ ] iPhone 재연결 후 1.6.0 (17) 설치.
 
 [구현과 검증 기록](implementation/CONTEXTUAL-TRANSCRIPT-CLEANUP.md)
+
+## iPhone 녹음 바 — iOS 1.6.1 (빌드 18)
+
+- [x] 시간·목소리 상태와 조작 버튼 영역 분리.
+- [x] 좁은 화면과 큰 글자에서 적응형 배치, 버튼 제목의 세로 줄바꿈 제거.
+- [x] 녹음·일시정지·저장·저장 대기와 최대 접근성 크기 검증.
+- [x] iOS 전체 테스트와 녹음 바 레이아웃 테스트 3개 통과, 10개 화면 렌더 확인.
+- [x] iPhone 1.6.1 (18) 설치·실행 완료. 앞선 iOS 설치 대기 기능도 이 버전에 포함됨.
+
+[변경 및 검증 기록](implementation/IOS-RECORDING-BAR-LAYOUT.md)
