@@ -6,6 +6,8 @@ API 키와 상품화 구조는 [현재 AI 처리 방식](docs/implementation/PRO
 
 개발 소스에는 **모델 검색과 별도 보완 모델, 회의록 보완 미리보기/적용, 원문과 분리한 전사 정리, 제목 목차 이동**도 추가했습니다. 전사 정리는 기본 활성화이며 AI 설정에서 끌 수 있습니다. 정리 실패 시 원문으로 회의록을 만듭니다. [구현과 검증 범위](docs/implementation/FULL-PORT-STEP6.md)
 
+동기화는 Apple/Worker 통신 계약과 Windows의 M4A 교환까지 구현·검증했습니다. 라이브러리 병합 실행기와 자동/수동 동기화 UI는 아직 구현 중입니다. 기존 서버에서 Windows 기기 등록을 사용하려면 `0008_windows_devices.sql`까지 적용하고 Worker를 배포해야 합니다. [동기화 단계 검증과 남은 범위](docs/implementation/FULL-PORT-STEP7.md)
+
 Apple 앱의 컴포넌트 구성을 유지한 Windows 데스크톱 앱입니다. WPF 화면과 WASAPI 녹음 엔진을 사용합니다. 0.3에서는 **무료 로컬 전사·회의록**과 **클로바노트 파일 연동**을 추가했습니다. 원래 Swift 프로젝트는 그대로 유지됩니다.
 
 Windows 소스·프로젝트 설정·의존성·테스트·문서·배포 스크립트는 모두 이 `Windows/` 폴더 안에서 관리합니다. Windows의 `Directory.Build.props`는 이 하위 프로젝트에만 적용되고, Apple의 Xcode/Swift 빌드와 버전을 공유하지 않습니다. Windows 빌드는 저장소 루트에서 `Windows/build.ps1`을 명시적으로 실행합니다.

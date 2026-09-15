@@ -24,7 +24,7 @@ c.commit(); print(json.dumps(rows))`;
 
 function database(path) {
   const execute = (sql, values = [], script = false) => {
-    const result = spawnSync("python3", ["-c", python], {
+    const result = spawnSync(process.env.PYTHON ?? "python3", ["-c", python], {
       input: JSON.stringify({ path, sql, values, script }),
       encoding: "utf8",
     });

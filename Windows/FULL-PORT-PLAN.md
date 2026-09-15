@@ -22,8 +22,8 @@
 | F-009 수동 수정 | 화자·업무 상태·프로젝트 UI와 이력 구현 | 화자명·본인 표시·개별 발화·업무 상태·프로젝트 편집 구현. 같은 근거의 재분석에서 업무 상태 유지 검증. 전체 sync, 모델/화자 그룹 변화 시 재연결 검증 필요 |
 | 회의록 AI 보완·전사 정리 | 구현·단위/WPF·실제 로컬 모델 검증 | 지시→미리보기→적용/버리기, 취소·동시 변경 보호, 원본 별도 보존, 유지한 발화의 숫자/시간·전체 발화 ID 검증, 원본 비교·자동 실패 시 원문 사용. 정리한 참여자 발화 표시 구현. 실제 다자 회의의 의미 보존은 추가 검증 |
 | 회의록 목차 | 구현·실제 WPF 스크롤 검증 | H1–H6 제목, 같은 제목의 서로 다른 위치 이동, 코드 블록 내부 제목 제외. 밝은/어두운 테마와 작은 창 렌더 확인 |
-| 전체 Cloudflare 동기화 및 F-010 | 공유만 구현 | Apple wire schema 호환: M4A/metadata/folders/tombstones/notes/intelligence/edits/profile/AI preferences; hash·size·revision·atomic publication; offline outbox/retry/auto/manual/status |
-| 동기화 비밀 제외 | 검증 필요 | 키/토큰/목소리/임베딩 업로드 금지, Windows 플랫폼 인식 서버 계약, fixture 기반 상호운용 테스트 |
+| 전체 Cloudflare 동기화 및 F-010 | 전체 통신 계약·M4A 변환·실제 Worker HTTP 왕복 구현, 실행기/UI 대기 | Apple schema의 오디오/메타/폴더/회의록/분석/수정/프로필/AI 설정 수락과 문서 hash·size 확인. 라이브러리 병합·원자적 적용·영속 outbox/retry/auto/manual/status는 미구현. [단계 7](docs/implementation/FULL-PORT-STEP7.md) |
+| 동기화 비밀 제외 | 전용 DTO·Windows 서버 계약 및 SQLite 마이그레이션 검증, 실행기 경로 검증 대기 | DTO와 서버는 API 키/토큰/목소리/임베딩 값을 설정 본문에 포함하지 않는다. 기기별 키 보유 여부만 전달. 실제 실행기 전체 경로와 프로필·음성 파일 격리는 후속 검증 |
 | 지속 웹 공유 | 최신 구현 반영, native 검증 필요 | 생성/반복 복사/재시작 복구/취소/만료, title+Markdown만 전송, 실제 WPF 및 local Worker HTTP 검증 |
 | 배포·문서·PR | 미완료 | 독립 Windows 버전/폴더형 self-contained ZIP, 새 폴더에서 실행 검증, 기능별 증거/제약 문서와 GitHub PR |
 

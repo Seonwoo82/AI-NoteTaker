@@ -97,7 +97,7 @@ public sealed class RecordingFolderStore
         if (name.Length == 0 || name.EnumerateRunes().Count() > 120) throw new ArgumentException("폴더 이름은 1~120자로 입력해 주세요.");
         return name;
     }
-    private static void Validate(RecordingCollectionFolder folder)
+    public static void Validate(RecordingCollectionFolder folder)
     {
         if (folder.SchemaVersion != 1 || folder.Id == Guid.Empty || folder.Name is null || ValidName(folder.Name) != folder.Name || folder.ModifiedAt is < 0 or > 9007199254740991 ||
             !Guid.TryParseExact(folder.MutationID, "D", out _) || folder.MutationID != folder.MutationID.ToUpperInvariant() || folder.SortOrder is < 0 or > 9007199254740991)

@@ -292,7 +292,7 @@ async function putAISettings(request, env) {
   exactObject(candidate.device, new Set(["id", "platform", "hasAPIKey"]), "Device");
   const device = candidate.device;
   validateUUID(device.id, "device ID");
-  if (!["macOS", "iOS"].includes(device.platform) ||
+  if (!["macOS", "iOS", "Windows"].includes(device.platform) ||
       (device.hasAPIKey != null && typeof device.hasAPIKey !== "boolean")) {
     throw new HttpError(400, "invalid_ai_settings", "Device information is invalid.");
   }
