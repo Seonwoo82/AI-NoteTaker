@@ -6,6 +6,7 @@ public sealed class ParticipantAnalysisService(LibraryStore library, string mode
         int knownSpeakerCount, IProgress<string> progress, CancellationToken token)
     {
         if (recording.IsRecording || recording.DeletedAt is not null) throw new InvalidOperationException("저장된 녹음을 선택해 주세요.");
+        SpeakerAudioWindows.ValidateDuration(recording.DurationSeconds);
         var store = new MeetingWorkspaceStore(library);
         string? revision = store.Revision(recording.Id); var previous = store.Load(recording);
         var edits = store.Edits(recording.Id);

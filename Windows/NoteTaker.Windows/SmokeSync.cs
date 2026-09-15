@@ -182,7 +182,7 @@ internal static class SmokeSync
         public Task<double> StopAsync() { Stopped = true; return Task.FromResult(1d); }
         public ValueTask DisposeAsync() { Stopped = true; return ValueTask.CompletedTask; }
     }
-    private sealed class FixtureServer(Process process, int port) : IDisposable
+    internal sealed class FixtureServer(Process process, int port) : IDisposable
     {
         public bool Offline;
         private bool blocking;

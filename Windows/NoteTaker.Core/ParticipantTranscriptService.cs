@@ -17,6 +17,7 @@ public sealed class ParticipantTranscriptService(LibraryStore library, string mo
     public async Task<(string Model, List<TranscriptSegment> Segments)> PrepareAsync(Recording recording, TranscriptCache original,
         AppSettings settings, string key, IProgress<string> progress, CancellationToken token)
     {
+        SpeakerAudioWindows.ValidateDuration(recording.DurationSeconds);
         // An imported transcript is an explicit source choice; do not replace it with a second recognition.
         if (original.Source == "import" || original.Segments.Any(s => s.Words.Count > 0)) return (original.Model, original.Segments);
         string audio = library.AudioPath(recording.Id), hash = await MeetingNotesService.AudioHashAsync(audio, token);
@@ -34,7 +35,6 @@ public sealed class ParticipantTranscriptService(LibraryStore library, string mo
         if (cache.Chunks is not { Count: <= 180 }) throw new InvalidDataException("상세 전사 캐시가 올바르지 않습니다.");
         foreach (var chunk in cache.Chunks) TranscriptTiming.Validate(chunk, 120);
         if (cache.Complete) return Flatten(cache, recording.DurationSeconds);
-        if (recording.DurationSeconds > 6 * 3600) throw new InvalidOperationException("참여자 분석은 6시간 이하 녹음을 지원합니다.");
         if (factory is null && settings.TranscriptionProvider != "openrouter")
         {
             progress.Report("참여자 발화 시간을 확인할 로컬 Whisper를 준비합니다. 기존 전사문은 유지됩니다.");

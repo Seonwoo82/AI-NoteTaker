@@ -24,7 +24,8 @@
 | 회의록 목차 | 구현·실제 WPF 스크롤 검증 | H1–H6 제목, 같은 제목의 서로 다른 위치 이동, 코드 블록 내부 제목 제외. 밝은/어두운 테마와 작은 창 렌더 확인 |
 | 전체 Cloudflare 동기화 및 F-010 | 전체 core 병합과 WPF 자동/수동 실행 구현·검증 | 녹음/폴더/삭제 상태와 회의록/분석/수정 이력/프로필/AI 설정 병합, 원본 바이트·원문 버전, 영속 대기/수신함·cursor/재시도·중단 복구·동시 변경 검증. 두 WPF 라이브러리의 auto/manual/status UI, 연결 확인, 실패·재시작·취소·설정·녹음·종료 흐름을 실제 Worker HTTP/SQLite로 확인. 실제 Apple 기기/Cloudflare 배포는 별도. [단계 10](docs/implementation/FULL-PORT-STEP10.md) |
 | 동기화 비밀 제외 | core 경로와 WPF 설정·키 보유 안내 검증 | DTO와 실제 JSON 요청 본문에 API 키/토큰/목소리/임베딩 값이 포함되지 않음을 확인. 기기별 키 보유 여부만 전달하며 읽을 수 없으면 unknown. WPF 설정 편집은 실행 중인 동기화를 취소하고 기다린 후 적용 |
-| 지속 웹 공유 | 최신 구현 반영, native 검증 필요 | 생성/반복 복사/재시작 복구/취소/만료, title+Markdown만 전송, 실제 WPF 및 local Worker HTTP 검증 |
+| 지속 웹 공유 | 구현·실제 WPF/Worker 검증 | 생성/반복 복사/앱·서버 재시작 복구/스냅샷 교체/해제/만료, title+Markdown만 전송, 응답 유실·오프라인 새로고침 복구와 종료 대기 검증. [단계 11](docs/implementation/FULL-PORT-STEP11.md) |
+| 6시간 화자 분석 | 구간 처리·실제 모델 fixture 검증 | 5분 구간+2초 문맥, 음성 특징에 의한 전체 참여자 연결, 원본 시간·해시 보존. 자동/4명 지정으로 6시간 파일·구간 경계·4시간 이후·취소 확인, 최대 약 815MiB. 대부분 무음인 검증 파일이며 자연 회의 속도/정확도 증거와 구분 |
 | 배포·문서·PR | 미완료 | 독립 Windows 버전/폴더형 self-contained ZIP, 새 폴더에서 실행 검증, 기능별 증거/제약 문서와 GitHub PR |
 
 근거: 루트 README.md, docs/FEATURE-BACKLOG.md (F-001–010과 후속 릴리스), NoteTaker/Playback, Shared/MeetingIntelligence, NoteTaker/Sync, Shared/WebSharing, Cloudflare/README.md.
@@ -44,4 +45,4 @@ Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은
 
 - Windows 런타임은 NuGet `org.k2fsa.sherpa.onnx` 1.13.8, ONNX Runtime 1.28.2, Pyannote segmentation-3.0과 3D-Speaker ERes2Net-Base다. 512차원 모델 ID를 명시하며 Apple의 기기 로컬 음성 벡터와 상호 교환하지 않는다. 취소는 소유 worker 프로세스 종료로 처리한다.
 - 공식 예제: https://github.com/k2-fsa/sherpa-onnx/blob/master/dotnet-examples/offline-speaker-diarization/Program.cs . 바인딩 소스는 `scripts/dotnet/OfflineSpeakerDiarization.cs`, `OfflineSpeakerDiarizationConfig.cs`, `SpeakerEmbeddingExtractor.cs`에 있다. 모델·공개 다중 화자 WAV는 공식 `speaker-segmentation-models`, 임베딩은 `speaker-recongition-models` release에 있다.
-- 모델 선택/예산·정리/보완·목차, 전체 동기화 병합과 WPF 자동/수동 실행·작업 수명 연결을 구현했다. 다음은 지속 공유 검증·장시간 처리·의미 품질·최종 배포다. 4B 모델의 구조화 분석 의미 분류 오류도 모델 비교로 검증한다. 상세 시간 전사는 120초×180구간(6시간), 현재 Sherpa 전체 오디오 로더는 4시간 상한이므로 장시간 처리 범위를 함께 맞추고 검증해야 한다. 실제 WPF/Worker/SQLite 왕복은 통과했지만 실제 Apple 기기/Cloudflare 배포 및 물리 입력·청취 검증과 구분한다.
+- 모델 선택/예산·정리/보완·목차, 전체 동기화, 지속 공유와 6시간 화자 분석을 구현하고 검증했다. [단계 11](docs/implementation/FULL-PORT-STEP11.md): 테스트 208 통과/5 장치 건너뜀, WPF 동기화·기존 UI 회귀 성공. GitHub [Draft PR #5](https://github.com/Seonwoo82/AI-NoteTaker/pull/5)를 생성했다. 다음은 upstream 전체 기능 대조·한국어 자연 음성/의미 품질·최종 배포다. 실제 WPF/Worker/SQLite 왕복과 긴 무음 fixture 결과는 실제 Apple 기기/Cloudflare 배포, 실제 장시간 회의 정확도, 물리 입력·청취 검증과 구분한다.

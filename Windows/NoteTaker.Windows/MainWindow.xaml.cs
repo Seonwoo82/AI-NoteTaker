@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private bool loaded, transitioning, finishing, closePending, allowClose, playbackLoaded;
     private DesktopIntegration? desktop;
     private bool exitRequested;
+    private WebShareWindow? webShareWindow;
     internal DesktopIntegration? Desktop => desktop;
 
     public MainWindow(LibraryStore library, bool discoverDevices = true, string? aiModelRoot = null, bool enableDesktopIntegration = true, Func<IRecordingSession>? recordingFactory = null, Func<SyncConfiguration, HttpMessageHandler>? syncHandlerFactory = null)
@@ -592,10 +593,14 @@ public partial class MainWindow : Window
     }
     private void ShareWeb_Click(object sender, RoutedEventArgs e)
     {
-        if (selected is null || notes is null) return;
-        var dialog = new WebShareWindow(selected, notes, settings) { Owner = this };
-        _ = dialog.ShowDialog();
-        SetStatus("웹 공유 상태를 확인했습니다.");
+        if (selected is null || notes is null || runningWork is not null || recorder is not null || transitioning || ModalOperationOpen) return;
+        try
+        {
+            webShareWindow = new WebShareWindow(selected, notes, settings, syncHandlerFactory) { Owner = this };
+            _ = webShareWindow.ShowDialog();
+            SetStatus("웹 공유 창을 닫았습니다.");
+        }
+        finally { webShareWindow = null; UpdateControls(); }
     }
 
     private void UpdateControls()
@@ -676,6 +681,7 @@ public partial class MainWindow : Window
         closePending = true;
         if (profileWindow is { } profileDialog) await profileDialog.StopAndCloseAsync();
         if (notesEditingWindow is { } editor) await editor.StopAndCloseAsync();
+        if (webShareWindow is { } share) await share.StopAndCloseAsync();
         SetStatus("진행 중인 작업을 정리하고 종료하는 중…");
         workCancellation?.Cancel();
         if (runningWork is { } work) await work;
@@ -706,6 +712,8 @@ internal sealed class WebShareWindow : Window
     private readonly Recording recording;
     private readonly MeetingNotes notes;
     private readonly AppSettings settings;
+    private readonly Func<SyncConfiguration, HttpMessageHandler>? handlerFactory;
+    private readonly Action<string> copyLink;
     private readonly CancellationTokenSource cancellation = new();
     private readonly TextBlock statusText = new() { TextWrapping = TextWrapping.Wrap, LineHeight = 20 };
     private readonly Grid linkRow = new() { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
@@ -714,15 +722,23 @@ internal sealed class WebShareWindow : Window
     private readonly Button publishButton = new() { Content = "웹 링크 만들기", MinWidth = 110, IsEnabled = false };
     private readonly Button copyButton = new() { Content = "복사", ToolTip = "링크 복사", MinWidth = 56, IsEnabled = false };
     private readonly Button revokeButton = new() { Content = "공유 취소", MinWidth = 90, Visibility = Visibility.Collapsed };
+    private readonly Button refreshButton = new() { Content = "상태 새로고침", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 12, 0, 0) };
+    private bool busy, closing, allowClose;
+    private Task? closingTask;
+    internal Task CurrentOperation { get; private set; } = Task.CompletedTask;
+    internal string? CurrentUrl => currentUrl;
     private bool statusLoaded;
     private bool knownActive;
     private string? currentUrl;
 
-    public WebShareWindow(Recording recording, MeetingNotes notes, AppSettings settings)
+    public WebShareWindow(Recording recording, MeetingNotes notes, AppSettings settings, Func<SyncConfiguration, HttpMessageHandler>? handlerFactory = null, Action<string>? copyLink = null)
     {
         this.recording = recording;
         this.notes = notes;
         this.settings = settings;
+        this.handlerFactory = handlerFactory; this.copyLink = copyLink ?? Clipboard.SetText;
+        NameScope.SetNameScope(this, new NameScope());
+        foreach (var entry in new[] { ("PublishWebShareButton", publishButton), ("RevokeWebShareButton", revokeButton), ("CopyWebShareButton", copyButton), ("RefreshWebShareButton", refreshButton) }) RegisterName(entry.Item1, entry.Item2);
         Title = "웹 공유"; Width = 520; Height = 420; MinWidth = 460; MinHeight = 360;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false; WindowStyle = WindowStyle.None;
         Style = (Style)FindResource(typeof(Window));
@@ -771,8 +787,10 @@ internal sealed class WebShareWindow : Window
         linkRow.Children.Add(urlButton);
         linkRow.Children.Add(copyButton);
         body.Children.Add(linkRow);
-        Grid.SetRow(body, 1);
-        grid.Children.Add(body);
+        body.Children.Add(refreshButton);
+        refreshButton.Click += async (_, _) => await LoadStatusAsync();
+        var scroll = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        Grid.SetRow(scroll, 1); grid.Children.Add(scroll);
 
         var footer = new Border { Padding = new Thickness(24, 14, 24, 14), BorderThickness = new Thickness(0, 1, 0, 0) };
         footer.SetResourceReference(BorderBrushProperty, "Separator");
@@ -791,7 +809,22 @@ internal sealed class WebShareWindow : Window
 
         Content = root;
         Loaded += async (_, _) => await LoadStatusAsync();
-        Closed += (_, _) => cancellation.Cancel();
+        Closing += async (_, e) =>
+        {
+            if (allowClose) return;
+            e.Cancel = true; if (closing) return;
+            await StopAndCloseAsync();
+        };
+        Closed += (_, _) => cancellation.Dispose();
+    }
+
+    internal Task StopAndCloseAsync() => closingTask ??= CloseCoreAsync();
+    private async Task CloseCoreAsync()
+    {
+        if (allowClose) return;
+        closing = true; cancellation.Cancel(); SetBusy(true);
+        await CurrentOperation;
+        allowClose = true; await Dispatcher.Yield(DispatcherPriority.Background); Close();
     }
 
     private WebShareClient CreateClient()
@@ -800,11 +833,13 @@ internal sealed class WebShareWindow : Window
             throw new InvalidOperationException("설정에서 웹 공유 서버 주소를 저장해 주세요.");
         if (!Uri.TryCreate(settings.SharingServerUrl, UriKind.Absolute, out var uri))
             throw new InvalidOperationException("웹 공유 서버 주소를 확인해 주세요.");
-        return new WebShareClient(uri, SettingsStore.ReadSharingToken(settings));
+        var configuration = new SyncConfiguration(uri.AbsoluteUri, SettingsStore.ReadSharingToken(settings));
+        return new WebShareClient(uri, configuration.Token, handlerFactory?.Invoke(configuration));
     }
 
     private async Task LoadStatusAsync()
     {
+        if (busy || closing) return;
         currentUrl = null;
         linkRow.Visibility = Visibility.Collapsed;
         statusLoaded = false;
@@ -826,7 +861,7 @@ internal sealed class WebShareWindow : Window
 
     private async void Publish_Click(object sender, RoutedEventArgs e)
     {
-        if (knownActive || !statusLoaded) return;
+        if (knownActive || !statusLoaded || busy || closing) return;
         await RunAsync("회의록 스냅샷을 업로드하는 중…", async client =>
         {
             var publication = await client.PublishAsync(recording.Id, recording.Title, notes.Markdown, cancellation.Token);
@@ -836,11 +871,12 @@ internal sealed class WebShareWindow : Window
             linkRow.Visibility = Visibility.Visible;
             copyButton.Content = "복사";
             SetStatus("웹 링크가 활성화되어 있습니다." + ExpiryText(publication.ExpiresAt));
-        });
+        }, mutation: true);
     }
 
     private async void Revoke_Click(object sender, RoutedEventArgs e)
     {
+        if (!knownActive || !statusLoaded || busy || closing) return;
         await RunAsync("공유를 취소하는 중…", async client =>
         {
             await client.RevokeAsync(recording.Id, cancellation.Token);
@@ -848,15 +884,15 @@ internal sealed class WebShareWindow : Window
             knownActive = false;
             linkRow.Visibility = Visibility.Collapsed;
             SetStatus("공유를 취소했습니다.");
-        });
+        }, mutation: true);
     }
 
     private void Copy_Click(object sender, RoutedEventArgs e)
     {
-        if (currentUrl is null) return;
+        if (currentUrl is null || busy || closing || !statusLoaded) return;
         try
         {
-            Clipboard.SetText(currentUrl);
+            copyLink(currentUrl);
             copyButton.Content = "복사됨";
             SetStatus("링크를 클립보드에 복사했습니다.");
         }
@@ -866,8 +902,11 @@ internal sealed class WebShareWindow : Window
         }
     }
 
-    private async Task RunAsync(string progress, Func<WebShareClient, Task> action)
+    private async Task RunAsync(string progress, Func<WebShareClient, Task> action, bool mutation = false)
     {
+        if (busy || closing) return;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CurrentOperation = completion.Task;
         SetBusy(true);
         SetStatus(progress);
         try
@@ -876,17 +915,23 @@ internal sealed class WebShareWindow : Window
             await action(client);
         }
         catch (OperationCanceledException) { SetStatus("웹 공유 작업을 취소했습니다.", true); }
-        catch (Exception ex) { SetStatus(ex.Message, true); }
-        finally { SetBusy(false); }
+        catch (Exception ex)
+        {
+            if (mutation) { statusLoaded = false; knownActive = false; currentUrl = null; linkRow.Visibility = Visibility.Collapsed; }
+            SetStatus(ex.Message + (mutation ? " 상태 새로고침으로 서버의 결과를 확인해 주세요." : ""), true);
+        }
+        finally { SetBusy(closing); completion.TrySetResult(); }
     }
 
     private void SetBusy(bool busy)
     {
+        this.busy = busy;
         publishButton.Visibility = knownActive ? Visibility.Collapsed : Visibility.Visible;
         publishButton.IsEnabled = !busy && statusLoaded && !knownActive;
         revokeButton.Visibility = knownActive ? Visibility.Visible : Visibility.Collapsed;
-        revokeButton.IsEnabled = !busy && knownActive;
-        copyButton.IsEnabled = urlButton.IsEnabled = !busy && currentUrl is not null;
+        revokeButton.IsEnabled = !busy && statusLoaded && knownActive;
+        copyButton.IsEnabled = urlButton.IsEnabled = !busy && statusLoaded && currentUrl is not null;
+        refreshButton.IsEnabled = !busy;
     }
 
     private void SetStatus(string text, bool error = false)

@@ -9,8 +9,16 @@ try
 {
     string command = args[0], source = args[1] == "-" ? "-" : Path.GetFullPath(args[1]), root = Path.GetFullPath(args[2]), output = Path.GetFullPath(args[3]);
     await SpeakerModels.VerifyAsync(root, default);
+    int knownCount = args.Length == 6 ? int.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture) : 0;
+    if (knownCount is < 0 or > 64) throw new InvalidDataException("참여자 수가 올바르지 않습니다.");
+    float threshold = args.Length >= 5 ? float.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture) : .9f;
+    if (!float.IsFinite(threshold) || threshold is < .05f or > 1.5f) throw new InvalidDataException("화자 구분 설정이 올바르지 않습니다.");
+    if (command == "diarize" && SpeakerAudioWindows.Duration(source) is var duration && duration > SpeakerAudioWindows.WindowSeconds)
+    {
+        LongSpeakerDiarization.Run(source, root, output, duration, knownCount, threshold, Progress); return 0;
+    }
     Progress("화자 분석용 오디오를 읽는 중…");
-    var samples = source == "-" && command == "embed-live" ? ReadLiveAudio() : ReadAudio(source, command.StartsWith("embed", StringComparison.Ordinal) ? 60 : 4 * 3600);
+    var samples = source == "-" && command == "embed-live" ? ReadLiveAudio() : ReadAudio(source, command.StartsWith("embed", StringComparison.Ordinal) ? 60 : SpeakerAudioWindows.WindowSeconds);
     if (samples.Length < 1600) throw new InvalidDataException("분석할 음성이 너무 짧습니다.");
     if (command.StartsWith("embed", StringComparison.Ordinal)) NormalizeQuietSpeech(samples);
     var config = new OfflineSpeakerDiarizationConfig();
@@ -18,11 +26,8 @@ try
     config.Segmentation.NumThreads = 2;
     config.Embedding.Model = ModelDownload.PathFor(root, SpeakerModels.Embedding);
     config.Embedding.NumThreads = 2;
-    int knownCount = args.Length == 6 ? int.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture) : 0;
-    if (knownCount is < 0 or > 64) throw new InvalidDataException("참여자 수가 올바르지 않습니다.");
     config.Clustering.NumClusters = knownCount == 0 ? -1 : knownCount;
-    config.Clustering.Threshold = args.Length >= 5 ? float.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture) : .9f;
-    if (!float.IsFinite(config.Clustering.Threshold) || config.Clustering.Threshold is < .05f or > 1.5f) throw new InvalidDataException("화자 구분 설정이 올바르지 않습니다.");
+    config.Clustering.Threshold = threshold;
     using var diarizer = new OfflineSpeakerDiarization(config);
     if (diarizer.SampleRate != 16000) throw new InvalidDataException("화자 모델의 오디오 형식이 맞지 않습니다.");
     Progress("음성 구간과 참여자를 구분하는 중…");

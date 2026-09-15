@@ -37,7 +37,7 @@ ZIP을 **폴더째 풀고** `AI-NoteTaker.exe`를 실행하세요. 옆의 DLL·r
 
 **첫 설치 공간:** Whisper 약 1.62GB, 요약 모델 약 3.4GB, Ollama 다운로드 약 1.47GB와 압축 해제 공간이 추가로 필요합니다. 기본 조합은 여유 공간 **10GB 이상**을 권장합니다. 별도 선택인 Qwen3-ASR 1.7B는 모델·프로젝터 약 2.81GB, 0.6B는 약 1.18GB이고 실행 환경 약 254MB가 추가됩니다. 다운로드 ZIP과 중단 파일도 보관됩니다. 9B 요약 모델은 별도 다운로드가 필요하며 이번 PC에서 검증한 모델은 4B입니다.
 
-Qwen3-ASR은 설정의 전사 엔진에서 선택할 수 있습니다. 언어를 자동 감지하며 1.7B·0.6B를 제공합니다. Whisper는 문장 구간 시간을, Qwen은 처리한 120초 구간 범위를 저장합니다. **Qwen의 구간 시간은 단어별 정렬이 아닙니다.** 자동 화자 분리는 아직 지원하지 않습니다.
+Qwen3-ASR은 설정의 전사 엔진에서 선택할 수 있습니다. 언어를 자동 감지하며 1.7B·0.6B를 제공합니다. Whisper는 문장 구간 시간을, Qwen은 처리한 120초 구간 범위를 저장합니다. **Qwen의 구간 시간은 단어별 정렬이 아닙니다.** 현재 개발 소스에서는 **참여자 분석**으로 별도의 상세 시간 전사와 로컬 화자 구분을 실행할 수 있습니다. 최대 6시간 파일의 구간 처리 검증과 정확도 범위는 [단계 11](docs/implementation/FULL-PORT-STEP11.md)에 있습니다.
 
 68.66초 한국어 합성 회의의 GPU 전사는 Whisper 4.50초, Qwen 1.7B 7.93초, Qwen 0.6B 4.35초였습니다. 모델 확인·로딩을 포함한 단일 실행이며 실제 다중 화자 회의의 정확도나 모든 PC의 속도를 보장하는 벤치마크는 아닙니다. 이름·숫자·담당자·기한과 AI가 덧붙인 해석을 원문과 대조하세요.
 
@@ -121,4 +121,4 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 # whisper 대신 qwen, 추가 옵션 small(0.6B), cpu, cancel-resume(120초 초과 파일)
 ```
 
-현재 개발 소스의 자동 테스트 135개 통과, 장치 테스트 5개는 일반 test에서 건너뜁니다. 새 기능의 WPF·Windows Shell·실제 로컬 AI 검증은 위 단계별 검증 문서, 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
+현재 개발 소스의 자동 테스트 208개 통과, 장치 테스트 5개는 일반 test에서 건너뜁니다. 지속 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
