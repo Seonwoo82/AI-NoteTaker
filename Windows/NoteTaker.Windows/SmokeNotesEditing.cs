@@ -148,6 +148,11 @@ internal static class SmokeNotesEditing
             var cleaned = new NotesDocumentStore(library).Load(recording)!;
             Require(cleaned.Cleanup?.ModelId == "qwen3.5:4b" && cleaned.Markdown == originalMarkdown && Find<TextBox>(window, "CleanedTranscriptBox").Text.Length > 0, "Cleanup compare view is missing or rewrote the notes.");
             await SmokeUi.CaptureAsync(window, Path.Combine(output, "cleanup.png"));
+            Require(cleaned.Original?.Transcript == string.Join("\n\n", cache.Chunks) && cleaned.Original.AudioHash == audioHash, "Cleanup did not retain its original source.");
+            JsonDisk.Write(library.TranscriptPath(recording.Id), cache with { Chunks = ["이후에 다시 만든 전사문입니다."] }); window.LoadDocuments(recording);
+            Require(Find<TextBox>(window, "CleanedTranscriptBox").Text.Length > 0 && Find<TextBlock>(window, "CleanupStatus").Text.Contains("생성 당시"), "Replacing a transcript hid or misidentified the original cleanup.");
+            await SmokeUi.CaptureAsync(window, Path.Combine(output, "cleanup-original-source.png"));
+            File.WriteAllText(library.TranscriptPath(recording.Id), transcriptOriginal); window.LoadDocuments(recording);
             Find<TabControl>(window, "DocumentTabs").SelectedIndex = 0;
             await Editor(window, async editor =>
             {
@@ -158,7 +163,7 @@ internal static class SmokeNotesEditing
                 Require(editor.Applied, "Real local preview was not applied.");
             });
             var final = new NotesDocumentStore(library).Load(recording)!;
-            Require(final.Enhancement?.ModelId == "qwen3.5:4b" && final.Cleanup is not null && final.Markdown.Contains("300") && final.Markdown.Contains("20"), "Local output lost required fixture values.");
+            Require(final.Enhancement?.ModelId == "qwen3.5:4b" && final.Cleanup is not null && final.Markdown.Contains("300") && final.Markdown.Contains("20") && final.Original?.Transcript == cleaned.Original?.Transcript, "Local output lost required fixture values or source.");
             Require(transcriptOriginal == File.ReadAllText(library.TranscriptPath(recording.Id)) && audioHash == await MeetingNotesService.AudioHashAsync(library.AudioPath(recording.Id), default), "Source text or audio changed.");
             Appearance.Apply(true); window.Width = 850; window.Height = 650;
             await SmokeUi.CaptureAsync(window, Path.Combine(output, "notes-compact-dark.png"));

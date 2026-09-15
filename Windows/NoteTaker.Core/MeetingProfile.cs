@@ -26,6 +26,7 @@ public sealed record MeetingProfile
     public long ModifiedAt { get; init; }
     [JsonPropertyName("mutationID")] public Guid MutationId { get; init; } = Guid.NewGuid();
     public const int MaximumBytes = 60 * 1024;
+    public const int MaximumStoredBytes = 3 * MaximumBytes;
 
     public void Validate()
     {
@@ -34,7 +35,8 @@ public sealed record MeetingProfile
         foreach (var alias in Aliases!) Text(alias, 120);
         MeetingValidation.Require(Aliases.Select(Normalized).Distinct(StringComparer.Ordinal).Count() == Aliases.Count);
         foreach (var term in Terms!) { MeetingValidation.Require(term is not null); term!.Validate(); }
-        MeetingValidation.Require(Terms.Select(t => t.Id).Distinct().Count() == Terms.Count && JsonSerializer.SerializeToUtf8Bytes(this, JsonDisk.Options).Length <= MaximumBytes);
+        MeetingValidation.Require(Terms.Select(t => t.Id).Distinct().Count() == Terms.Count);
+        _ = SyncJson.Encode(this, MaximumBytes);
     }
     [JsonIgnore] public string PromptContext
     {
@@ -107,7 +109,7 @@ public sealed class MeetingProfileStore(string root)
     public MeetingProfile Load()
     {
         if (!File.Exists(ProfilePath)) return new();
-        RequireSize(ProfilePath, MeetingProfile.MaximumBytes);
+        RequireSize(ProfilePath, MeetingProfile.MaximumStoredBytes);
         var profile = JsonDisk.Read<MeetingProfile>(ProfilePath) ?? throw new InvalidDataException("프로필을 읽지 못했습니다."); profile.Validate(); return profile;
     }
     public LocalVoiceProfile? LoadVoice()

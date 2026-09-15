@@ -77,7 +77,7 @@ public sealed class MeetingWorkspaceStore(LibraryStore library)
     public MeetingIntelligenceDocument? Load(Recording recording)
     {
         string path = DocumentPath(recording.Id); if (!File.Exists(path)) return null;
-        MeetingValidation.Require(new FileInfo(path).Length <= MeetingIntelligenceDocument.MaximumBytes);
+        MeetingValidation.Require(new FileInfo(path).Length <= MeetingIntelligenceDocument.MaximumStoredBytes);
         var document = JsonDisk.Read<MeetingIntelligenceDocument>(path) ?? throw new InvalidDataException("회의 분석 문서가 비어 있습니다.");
         document.Validate(recording.DurationSeconds);
         MeetingValidation.Require(document.RecordingId == recording.Id && document.AudioVersion == recording.AudioVersion);

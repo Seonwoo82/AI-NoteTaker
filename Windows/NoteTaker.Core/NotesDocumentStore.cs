@@ -56,6 +56,7 @@ public sealed class NotesDocumentStore(LibraryStore library)
     public static void Validate(MeetingNotes notes)
     {
         MeetingValidation.Utf8Text(notes.Markdown, 2 * 1024 * 1024); MeetingValidation.Utf8Text(notes.Model, 512);
-        MeetingValidation.Require(JsonSerializer.SerializeToUtf8Bytes(notes, JsonDisk.Options).Length <= 4 * 1024 * 1024);
+        // Local JSON retains the source snapshot and escapes Unicode; the separate wire document still has a 2 MiB limit.
+        MeetingValidation.Require(JsonSerializer.SerializeToUtf8Bytes(notes, JsonDisk.Options).Length <= 16 * 1024 * 1024);
     }
 }

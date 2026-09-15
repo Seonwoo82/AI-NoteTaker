@@ -76,7 +76,8 @@ public sealed class MeetingNotesEditingService(LibraryStore library, Func<AppSet
     {
         var store = new NotesDocumentStore(library); var snapshot = await store.SnapshotAsync(recording, token);
         var original = store.Load(recording) ?? throw new InvalidOperationException("회의록을 먼저 만들어 주세요.");
-        var (plain, speakers) = Sources(recording, snapshot.AudioHash);
+        var source = MeetingNotesSources.Resolve(library, recording, original, snapshot.AudioHash); original = original with { Original = source };
+        var (plain, speakers) = (source.Transcript, source.Speakers);
         using var model = (factory ?? AiProviders.Summarizer)(AiProviders.EnhancementSettings(settings), key);
         string transcript = plain;
         if (original.Cleanup is { } cleanup)
@@ -102,7 +103,7 @@ public sealed class MeetingNotesEditingService(LibraryStore library, Func<AppSet
     public Task ApplyAsync(Recording recording, MeetingEnhancementPreview preview, CancellationToken token)
     {
         if (preview.RecordingId != recording.Id) throw new InvalidOperationException("다른 회의의 미리보기는 적용할 수 없습니다.");
-        var updated = preview.Original with { Markdown = preview.Markdown, CreatedAt = DateTimeOffset.Now,
+        var updated = preview.Original with { Markdown = preview.Markdown, CreatedAt = MeetingNotesSources.NextEditTime(preview.Original),
             CostUsd = CombineCost(preview.Original.CostUsd, preview.CostUsd), Enhancement = new(preview.ModelId, preview.Instructions) };
         return new NotesDocumentStore(library).SaveAsync(recording, updated, preview.Snapshot, token);
     }
@@ -110,16 +111,11 @@ public sealed class MeetingNotesEditingService(LibraryStore library, Func<AppSet
     {
         var store = new NotesDocumentStore(library); var snapshot = await store.SnapshotAsync(recording, token);
         var original = store.Load(recording) ?? throw new InvalidOperationException("회의록을 먼저 만들어 주세요.");
-        var (plain, speakers) = Sources(recording, snapshot.AudioHash);
+        var source = MeetingNotesSources.Resolve(library, recording, original, snapshot.AudioHash);
+        var (plain, speakers) = (source.Transcript, source.Speakers);
         using var model = (factory ?? AiProviders.Summarizer)(settings, key);
         var result = await TranscriptCleanupService.PrepareAsync(CleanupSource.Make(plain, speakers), model, progress, token);
-        await store.SaveAsync(recording, original with { Cleanup = result.Cleanup, CleanupNotice = null, CostUsd = CombineCost(original.CostUsd, result.Cost) }, snapshot, token);
-    }
-    private (string Text, MeetingTranscript? Speakers) Sources(Recording recording, string audioHash)
-    {
-        var cache = JsonDisk.Read<TranscriptCache>(library.TranscriptPath(recording.Id));
-        if (cache?.Complete != true || cache.AudioHash != audioHash) throw new InvalidOperationException("현재 녹음의 전사문을 먼저 준비해 주세요.");
-        return (string.Join("\n\n", cache.Chunks), new MeetingWorkspaceStore(library).Resolve(recording)?.Transcript);
+        await store.SaveAsync(recording, original with { Original = source, CreatedAt = MeetingNotesSources.NextEditTime(original), Cleanup = result.Cleanup, CleanupNotice = null, CostUsd = CombineCost(original.CostUsd, result.Cost) }, snapshot, token);
     }
     public static decimal? CombineCost(decimal? first, decimal? second) => first is null && second is null ? null : (first ?? 0) + (second ?? 0);
 }

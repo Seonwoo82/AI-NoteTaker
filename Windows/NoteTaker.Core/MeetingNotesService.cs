@@ -86,6 +86,8 @@ public sealed class MeetingNotesService
         int textBudget = engine.MaximumInputBytes - Math.Max(Encoding.UTF8.GetByteCount(WithProfile(Prompt(settings.Language, true))), Encoding.UTF8.GetByteCount(WithProfile(Prompt(settings.Language, false))));
         if (textBudget < 4) throw new InvalidOperationException("모델 입력 범위에 프로필과 회의 내용을 담을 수 없습니다. 더 큰 문맥의 모델을 선택해 주세요.");
         string text = string.Join("\n\n", cache.Chunks);
+        string originalText = text;
+        MeetingTranscript? sourceSpeakers = null;
         decimal? summaryCost = null;
         TranscriptCleanup? cleanup = null; string? cleanupNotice = null;
         if (settings.TranscriptCleanupEnabled)
@@ -93,6 +95,7 @@ public sealed class MeetingNotesService
             try
             {
                 var speakers = new MeetingWorkspaceStore(library).Resolve(recording)?.Transcript;
+                sourceSpeakers = speakers;
                 var source = CleanupSource.Make(text, speakers);
                 var previous = store.Load(recording)?.Cleanup;
                 if (previous is not null && previous.ModelId == engine.Model && previous.SourceHash == source.Hash) { previous.Validate(source); cleanup = previous; }
@@ -123,7 +126,8 @@ public sealed class MeetingNotesService
         var response = await engine.CompleteAsync(WithProfile(Prompt(settings.Language, false)), text, token);
         if (response.CostUsd is { } finalCost) summaryCost = (summaryCost ?? 0) + finalCost;
         token.ThrowIfCancellationRequested();
-        var notes = new MeetingNotes(response.Text, DateTimeOffset.Now, engine.Model, summaryCost) { TranscriptHash = TranscriptContentHash(cache), Cleanup = cleanup, CleanupNotice = cleanupNotice };
+        var notes = new MeetingNotes(response.Text, DateTimeOffset.Now, engine.Model, summaryCost) { TranscriptHash = TranscriptContentHash(cache), Cleanup = cleanup, CleanupNotice = cleanupNotice,
+            Original = new(recording.AudioVersion, snapshot.AudioHash, originalText, cache.Model, sourceSpeakers) };
         await store.SaveAsync(recording, notes, snapshot, token);
         return notes;
     }

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace NoteTaker.Core;
 
-public sealed record SyncPending(string Kind, Guid Id, string Revision, int Attempts = 0, long RetryAfter = 0, string? Error = null);
+public sealed record SyncPending(string Kind, Guid Id, string Revision, int Attempts = 0, long RetryAfter = 0, string? Error = null, Guid? RecordingId = null, int? AudioVersion = null);
 public sealed record SyncState
 {
     public int SchemaVersion { get; init; } = 1;
@@ -11,6 +11,7 @@ public sealed record SyncState
     public Dictionary<string, SyncPending> Pending { get; init; } = [];
     public long EditCursor { get; init; }
     public DateTimeOffset? LastCompletedAt { get; init; }
+    public bool OtherDevicesHaveApiKey { get; init; }
 }
 public sealed class SyncStateStore
 {
@@ -35,14 +36,14 @@ public sealed class SyncStateStore
     public static string Key(string kind, Guid id) => kind + ":" + SyncJson.Id(id);
     private static void RequireKey(string key)
     {
-        if (!Regex.IsMatch(key, "^(recording|folder|notes|intelligence|edit):[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")) throw new InvalidDataException("동기화 상태 키가 올바르지 않습니다.");
+        if (!Regex.IsMatch(key, "^(recording|folder|notes|intelligence|edit|profile|settings):[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")) throw new InvalidDataException("동기화 상태 키가 올바르지 않습니다.");
     }
     private static void RequireRevision(string value) { if (!Regex.IsMatch(value, "^[0-9a-f]{64}$")) throw new InvalidDataException("동기화 상태 해시가 올바르지 않습니다."); }
-    public void Observe(string kind, Guid id, string revision)
+    public void Observe(string kind, Guid id, string revision, Guid? recordingId = null, int? audioVersion = null)
     {
         string key = Key(kind, id); RequireKey(key); RequireRevision(revision);
         if (State.Acknowledged.GetValueOrDefault(key) == revision) { if (State.Pending.Remove(key)) Save(); }
-        else if (!State.Pending.TryGetValue(key, out var previous) || previous.Revision != revision) { State.Pending[key] = new(kind, id, revision); Save(); }
+        else if (!State.Pending.TryGetValue(key, out var previous) || previous.Revision != revision) { State.Pending[key] = new(kind, id, revision, RecordingId: recordingId, AudioVersion: audioVersion); Save(); }
     }
     public void Acknowledge(string kind, Guid id, string revision)
     {
@@ -63,5 +64,13 @@ public sealed class SyncStateStore
         }
     }
     public void Completed() { State = State with { LastCompletedAt = DateTimeOffset.UtcNow }; Save(); }
+    public void SetKeyPresence(bool value) { if (State.OtherDevicesHaveApiKey != value) { State = State with { OtherDevicesHaveApiKey = value }; Save(); } }
+    public void Forget(string kind, Guid id) { if (State.Pending.Remove(Key(kind, id))) Save(); }
+    public void ForgetObsolete(Recording recording)
+    {
+        foreach (var entry in State.Pending.Values.Where(p => p.RecordingId == recording.Id && (recording.DeletedAt is not null || p.AudioVersion != recording.AudioVersion)).ToArray()) Forget(entry.Kind, entry.Id);
+    }
+    // Called only after this exact state was installed together with an edit page in a filesystem transaction.
+    public void AcceptCommitted(SyncState committed) => State = committed;
     private void Save() => JsonDisk.Write(Path, State);
 }

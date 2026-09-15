@@ -102,6 +102,7 @@ public sealed record MeetingIntelligenceDocument(
 {
     public int SchemaVersion { get; init; } = 1;
     public const int MaximumBytes = 4 * 1024 * 1024;
+    public const int MaximumStoredBytes = 3 * MaximumBytes; // Local indented/escaped JSON has different byte size from the wire body.
     public void Validate(double duration)
     {
         MeetingValidation.Require(SchemaVersion == 1 && RecordingId != Guid.Empty && MutationId != Guid.Empty && AudioVersion >= 1 && Transcript is not null &&
@@ -110,7 +111,7 @@ public sealed record MeetingIntelligenceDocument(
         Transcript!.Validate(duration); Insights?.Validate(Transcript);
         var actionIds = Insights?.Actions.Select(a => a.Id).ToHashSet(StringComparer.Ordinal) ?? [];
         foreach (var state in ActionStates!) MeetingValidation.Require(actionIds.Contains(state.Key) && state.Value is "open" or "done" or "dismissed");
-        MeetingValidation.Require(JsonSerializer.SerializeToUtf8Bytes(this, JsonDisk.Options).Length <= MaximumBytes);
+        _ = SyncJson.Encode(this, SyncJson.IntelligenceLimit);
     }
 }
 public static class MeetingValidation

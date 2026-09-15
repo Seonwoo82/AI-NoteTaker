@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace NoteTaker.Core;
 
 public sealed record SyncIssue(string Item, string Message);
-public sealed record LibrarySyncResult(int Uploaded, int Downloaded, int Pending, IReadOnlyList<SyncIssue> Issues);
+public sealed record LibrarySyncResult(int Uploaded, int Downloaded, int Pending, IReadOnlyList<SyncIssue> Issues, bool OtherDevicesHaveApiKey = false);
 internal sealed record SyncAudioIdentity(int AudioVersion, string WavHash, string M4aHash, string M4aPath);
 
 /// <summary>Library metadata/audio/folder reconciliation. Document and settings phases attach to the same durable state.</summary>
@@ -31,12 +31,13 @@ public sealed partial class LibrarySyncEngine : IDisposable
             foreach (var id in ids)
             {
                 token.ThrowIfCancellationRequested();
-                try { var local = SyncRecordings.Read(library, id); if (local is { IsRecording: false }) state.Observe("recording", id, Revision(local.SyncMetadata!)); }
+                try { var local = SyncRecordings.Read(library, id); if (local is { IsRecording: false }) { state.Observe("recording", id, Revision(local.SyncMetadata!)); await ObserveDocumentsAsync(local, token); } }
                 catch (Exception ex) when (Recoverable(ex, token)) { AddIssue(SyncStateStore.Key("recording", id), ex); }
             }
             var folders = new RecordingFolderStore(library.Root);
             foreach (var folder in folders.All) state.Observe("folder", folder.Id, Revision(folder));
             if (folders.LoadError is not null) issues.Add(new("folders", folders.LoadError));
+            ObserveAccount();
             progress?.Report("동기화 서버 연결 확인…");
             try { await transport.HealthAsync(token); }
             catch (Exception ex) when (Recoverable(ex, token))
@@ -60,12 +61,28 @@ public sealed partial class LibrarySyncEngine : IDisposable
                 try { await SyncRecordingAsync(id, remote.GetValueOrDefault(id), force, token); }
                 catch (Exception ex) when (Recoverable(ex, token)) { AddIssue(SyncStateStore.Key("recording", id), ex); }
             }
-            if (issues.Count == 0 && state.State.Pending.Count == 0) state.Completed();
+            foreach (bool intelligence in new[] { false, true })
+            {
+                try { await SyncDocumentsAsync(ids, intelligence, force, token); }
+                catch (Exception ex) when (Recoverable(ex, token)) { AddIssue(intelligence ? "intelligence" : "notes", ex); }
+            }
+            try { await SyncEditsAsync(ids, force, token); }
+            catch (Exception ex) when (Recoverable(ex, token)) { AddIssue("edits", ex); }
+            try { await SyncProfileAsync(force, token); }
+            catch (Exception ex) when (Recoverable(ex, token)) { AddIssue(SyncStateStore.Key("profile", deviceId), ex); }
+            try { await SyncSettingsAsync(force, token); }
+            catch (Exception ex) when (Recoverable(ex, token)) { AddIssue(SyncStateStore.Key("settings", deviceId), ex); }
+            if (issues.Count == 0 && PendingCount() == 0) state.Completed();
             return Result();
         }
         finally { gate.Release(); }
     }
-    private LibrarySyncResult Result() => new(uploaded, downloaded, state.State.Pending.Count, issues.ToArray());
+    private int PendingCount()
+    {
+        try { return state.State.Pending.Count + ReadInbox().Count; }
+        catch (Exception ex) when (Recoverable(ex, default)) { return state.State.Pending.Count; }
+    }
+    private LibrarySyncResult Result() => new(uploaded, downloaded, PendingCount(), issues.ToArray(), state.State.OtherDevicesHaveApiKey);
     private static bool Recoverable(Exception ex, CancellationToken token) => ex is IOException or InvalidDataException or HttpRequestException or InvalidOperationException or JsonException or UnauthorizedAccessException or ArgumentException || ex is OperationCanceledException && !token.IsCancellationRequested;
     private static string ErrorMessage(Exception ex) => ex is SyncHttpException or SyncLocalConflictException ? ex.Message : ex is HttpRequestException ? "서버에 연결하지 못했습니다. 연결 후 다시 시도합니다." : "자료를 적용하지 못했습니다. 기존 파일을 보존했으며 다시 비교해야 합니다.";
     private void AddIssue(string key, Exception ex) { string message = ErrorMessage(ex); issues.Add(new(key, message)); state.Failed(key, message); }

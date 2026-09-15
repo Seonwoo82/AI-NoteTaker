@@ -36,7 +36,22 @@ public static class SyncRecordings
             var recording = JsonDisk.Read<Recording>(path); if (recording is null) return null;
             if (recording.SchemaVersion != 1 || recording.Id != id || !Enum.IsDefined(recording.Mode)) throw new InvalidDataException("녹음 메타데이터가 올바르지 않습니다.");
             var wire = FromLocal(recording, recording.SyncMetadata, Math.Max(0, new DateTimeOffset(File.GetLastWriteTimeUtc(path)).ToUnixTimeMilliseconds()), stamp: false);
-            if (recording.SyncMetadata is null) { recording = recording with { SyncMetadata = wire }; JsonDisk.Write(path, recording); }
+            bool changed = recording.SyncMetadata is null;
+            string transcriptPath = library.TranscriptPath(id);
+            if (!recording.IsRecording && !wire.HasTranscript && File.Exists(transcriptPath) && new FileInfo(transcriptPath).Length <= 64 * 1024 * 1024)
+            {
+                try
+                {
+                    var cache = JsonDisk.Read<TranscriptCache>(transcriptPath);
+                    if (cache?.Complete == true && cache.Chunks is { Count: > 0 } && cache.Chunks.Any(text => !string.IsNullOrWhiteSpace(text)))
+                    {
+                        wire = wire with { HasTranscript = true, ModifiedAt = Math.Max(wire.ModifiedAt + 1, new DateTimeOffset(File.GetLastWriteTimeUtc(transcriptPath)).ToUnixTimeMilliseconds()), MutationId = Guid.NewGuid() };
+                        wire.Validate(); changed = true;
+                    }
+                }
+                catch (System.Text.Json.JsonException) { /* A broken transcript is reported by the document phase; audio/metadata can still synchronize. */ }
+            }
+            if (changed) { recording = recording with { SyncMetadata = wire }; JsonDisk.Write(path, recording); }
             return recording;
         }
     }

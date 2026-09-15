@@ -56,6 +56,7 @@ public sealed record AppSettings
     public bool KeepRunningInTray { get; init; } = true;
     public bool EnableGlobalShortcuts { get; init; }
     public bool AutoGenerate { get; init; }
+    public SyncPreferences? SharedSyncPreferences { get; init; }
 }
 
 public sealed record TranscriptWord(double StartSeconds, double EndSeconds, string Text);
@@ -79,7 +80,9 @@ public sealed record MeetingNotes(string Markdown, DateTimeOffset CreatedAt, str
     [JsonPropertyName("transcriptCleanup")] public TranscriptCleanup? Cleanup { get; init; }
     public MeetingNotesEnhancement? Enhancement { get; init; }
     public string? CleanupNotice { get; init; }
+    public MeetingNotesSource? Original { get; init; }
 }
+public sealed record MeetingNotesSource(int AudioVersion, string AudioHash, string Transcript, string TranscriptionModelId, MeetingTranscript? Speakers = null);
 public sealed record MeetingNotesEnhancement([property: JsonPropertyName("modelID")] string ModelId, string Instructions);
 public sealed record AudioDevice(string Id, string Name)
 {

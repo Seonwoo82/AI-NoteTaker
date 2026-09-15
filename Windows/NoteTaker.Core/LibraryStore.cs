@@ -138,7 +138,17 @@ public sealed class SettingsStore(string root)
             settings = settings with { TranscriptionProvider = "openrouter", SummaryProvider = "openrouter" };
         return settings;
     }
-    public void Save(AppSettings settings) => JsonDisk.Write(path, settings);
+    public void Save(AppSettings settings)
+    {
+        lock (JsonDisk.Gate)
+        {
+            var previous = Load();
+            var shared = previous.SharedSyncPreferences;
+            if (!SyncAccountData.SamePreferences(settings, previous)) shared = SyncAccountData.Preferences(settings,
+                Math.Max(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), shared is null ? 0 : checked(shared.ModifiedAt + 1)));
+            JsonDisk.Write(path, settings with { SharedSyncPreferences = shared });
+        }
+    }
     public static string? ProtectKey(string key) => string.IsNullOrWhiteSpace(key) ? null : Convert.ToBase64String(
         ProtectedData.Protect(Encoding.UTF8.GetBytes(key.Trim()), null, DataProtectionScope.CurrentUser));
     public static string ReadKey(AppSettings settings)

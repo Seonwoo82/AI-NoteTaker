@@ -161,13 +161,14 @@ public sealed class LibrarySyncTests
         string[] derived = ["transcript.json", "notes.json", "meeting-intelligence.json", "meeting-edits-local.json", "participant-transcript-local.json", "speaker-acoustic-local.json"];
         foreach (string file in derived) File.WriteAllText(Path.Combine(b.DirectoryFor(recording.Id), file), "previous-" + file);
         string keyFile = Path.Combine(b.Root, "settings.json"), voiceFile = Path.Combine(b.Root, "voice-profile-local.json");
-        File.WriteAllText(keyFile, "synthetic-local-key-record"); File.WriteAllText(voiceFile, "synthetic-local-voice-record");
+        JsonDisk.Write(keyFile, new AppSettings { ProtectedApiKey = "synthetic-local-key-record" }); string keyBefore = File.ReadAllText(keyFile);
+        File.WriteAllText(voiceFile, "synthetic-local-voice-record");
         string previousAudio = SyncFileTransaction.Revision(b.AudioPath(recording.Id))!;
         TestFolder.Wave(a.AudioPath(recording.Id), 2); a.Save(a.Load().Single() with { AudioVersion = 2, DurationSeconds = 2 });
         Success(await first.RunAsync()); Success(await second.RunAsync());
         Assert.Equal(2, b.Load().Single().AudioVersion); Assert.Equal(2, b.Load().Single().DurationSeconds);
         foreach (string file in derived) Assert.False(File.Exists(Path.Combine(b.DirectoryFor(recording.Id), file)));
-        Assert.Equal("synthetic-local-key-record", File.ReadAllText(keyFile)); Assert.Equal("synthetic-local-voice-record", File.ReadAllText(voiceFile));
+        Assert.Equal(keyBefore, File.ReadAllText(keyFile)); Assert.Equal("synthetic-local-voice-record", File.ReadAllText(voiceFile));
         Assert.Contains(Directory.GetFiles(Path.Combine(b.Root, ".sync", "transactions"), "old-*", SearchOption.AllDirectories), file => SyncFileTransaction.Revision(file) == previousAudio);
         string state = File.ReadAllText(new SyncStateStore(b.Root, Configuration().Endpoint).Path); Assert.DoesNotContain("synthetic-local-key", state); Assert.DoesNotContain("synthetic-local-voice", state);
     }
