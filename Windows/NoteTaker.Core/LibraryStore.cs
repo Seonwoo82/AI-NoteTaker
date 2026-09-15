@@ -78,6 +78,9 @@ public sealed partial class LibraryStore
     {
         SyncFileTransaction.Recover(Root);
         LoadWarnings.Clear();
+        try { PruneExpiredAudioShareCache(); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        { LoadWarnings.Add("오래된 오디오 공유 사본을 정리하지 못했습니다."); }
         var result = new List<Recording>();
         foreach (var directory in Directory.EnumerateDirectories(Path.Combine(Root, "Recordings")))
         {

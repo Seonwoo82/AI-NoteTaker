@@ -26,6 +26,15 @@ public sealed partial class LibraryStore
 
             string marker = PurgeMarkerPath(current.Id), pending = PurgePendingPath(current.Id);
             var files = new List<string>(); var directories = new List<string>();
+            // Remove managed sharing-cache entries before their per-recording ownership directories.
+            string sharing = SafePath($"Recordings/{current.Id:D}/SharedAudio");
+            if (Directory.Exists(sharing))
+                foreach (string share in Directory.EnumerateDirectories(sharing))
+                    if (Guid.TryParseExact(Path.GetFileName(share), "N", out var shareId))
+                    {
+                        string cache = AudioShareCacheDirectory(current.Id, shareId);
+                        if (Directory.Exists(cache)) { files.AddRange(InspectShareCache(cache)); directories.Add(cache); }
+                    }
             // Preflight the entire tree before removing anything. Never traverse junctions or symlinks.
             Inspect(SafePath($"Recordings/{current.Id:D}"));
             var inboxes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -87,11 +96,61 @@ public sealed partial class LibraryStore
     public async Task<string> CreateAudioShareCopyAsync(Recording recording, CancellationToken token = default)
     {
         if (recording.DeletedAt is not null) throw new InvalidOperationException("최근 삭제된 녹음을 먼저 복원해 주세요.");
-        string directory = SafePath($"Recordings/{recording.Id:D}/SharedAudio/{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
-        string path = Path.Combine(directory, AudioFileName(recording.Title));
-        try { await CopyAudioAsync(recording, path, true, token); return path; }
-        catch { if (!Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory); throw; }
+        Guid shareId = Guid.NewGuid();
+        string ownership = SafePath($"Recordings/{recording.Id:D}/SharedAudio/{shareId:N}");
+        string directory = AudioShareCacheDirectory(recording.Id, shareId);
+        // StorageFile does not support extended-length paths. Keep its snapshot in the user's temp cache.
+        string name = AudioFileName(recording.Title); int allowed = Math.Min(124, 239 - directory.Length);
+        if (allowed < 16) throw new InvalidOperationException("Windows 공유용 임시 폴더 경로가 너무 깁니다. 오디오 내보내기를 이용해 주세요.");
+        if (name.Length > allowed)
+        {
+            string stem = name[..(allowed - 4)].TrimEnd('.', ' ');
+            if (stem.Length > 0 && char.IsHighSurrogate(stem[^1])) stem = stem[..^1];
+            name = stem + ".wav";
+        }
+        string path = Path.Combine(directory, name);
+        Directory.CreateDirectory(ownership);
+        try { Directory.CreateDirectory(directory); await CopyAudioAsync(recording, path, true, token); return path; }
+        catch
+        {
+            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
+            if (!Directory.Exists(directory) && Directory.Exists(ownership) && !Directory.EnumerateFileSystemEntries(ownership).Any()) Directory.Delete(ownership);
+            throw;
+        }
+    }
+
+    private string AudioShareCacheDirectory(Guid id, Guid shareId)
+    {
+        string libraryId = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Root.ToUpperInvariant())))[..16];
+        return SyncFileTransaction.PathIn(Path.GetTempPath(), $"AI-NoteTaker-Share/{libraryId}-{id:N}-{shareId:N}");
+    }
+    private static string[] InspectShareCache(string directory)
+    {
+        // The directory was derived from this library and recording, never from a stored arbitrary path.
+        if (Directory.EnumerateDirectories(directory).Any()) throw new InvalidDataException("오디오 공유 임시 폴더에 알 수 없는 하위 폴더가 있습니다.");
+        string[] files = Directory.GetFiles(directory);
+        foreach (string file in files) _ = SyncFileTransaction.PathIn(Path.GetTempPath(), Path.GetRelativePath(Path.GetTempPath(), file));
+        return files;
+    }
+
+    private static void PruneExpiredAudioShareCache()
+    {
+        string parent = SyncFileTransaction.PathIn(Path.GetTempPath(), "AI-NoteTaker-Share");
+        if (!Directory.Exists(parent)) return;
+        foreach (string candidate in Directory.EnumerateDirectories(parent))
+        {
+            string[] parts = Path.GetFileName(candidate).Split('-');
+            if (parts.Length != 3 || parts[0].Length != 16 || !parts[0].All(Uri.IsHexDigit) ||
+                !Guid.TryParseExact(parts[1], "N", out _) || !Guid.TryParseExact(parts[2], "N", out _)) continue;
+            try
+            {
+                string directory = SyncFileTransaction.PathIn(Path.GetTempPath(), Path.GetRelativePath(Path.GetTempPath(), candidate));
+                if (DateTimeOffset.UtcNow - Directory.GetCreationTimeUtc(directory) < TimeSpan.FromDays(1)) continue;
+                foreach (string file in InspectShareCache(directory)) File.Delete(file);
+                Directory.Delete(directory);
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException) { /* A receiving app may still hold a file; retry next load. */ }
+        }
     }
 
     // Share targets may read after the source window closes. Keep copies for 24 hours, or until the recording is purged.
@@ -103,12 +162,16 @@ public sealed partial class LibraryStore
             if (!Directory.Exists(parent)) return;
             foreach (string directory in Directory.EnumerateDirectories(parent))
             {
-                if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out _)) continue;
+                if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out var shareId)) continue;
                 string safe = SafePath(Path.GetRelativePath(Root, directory));
-                if (now - Directory.GetCreationTimeUtc(safe) < TimeSpan.FromDays(1)) continue;
+                string cache = AudioShareCacheDirectory(id, shareId);
+                if (now - Directory.GetCreationTimeUtc(Directory.Exists(cache) ? cache : safe) < TimeSpan.FromDays(1)) continue;
                 string[] files = Directory.GetFiles(safe);
                 if (Directory.EnumerateDirectories(safe).Any()) continue;
+                string[] cached = Directory.Exists(cache) ? InspectShareCache(cache) : [];
                 foreach (string file in files) _ = SafePath(Path.GetRelativePath(Root, file));
+                foreach (string file in cached) File.Delete(file);
+                if (Directory.Exists(cache)) Directory.Delete(cache);
                 foreach (string file in files) File.Delete(file);
                 Directory.Delete(safe);
             }

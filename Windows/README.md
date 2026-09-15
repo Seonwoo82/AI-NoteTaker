@@ -128,4 +128,4 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 # whisper 대신 qwen, 추가 옵션 small(0.6B), cpu, cancel-resume(120초 초과 파일)
 ```
 
-현재 개발 소스의 자동 테스트 226개 통과, 장치 테스트 5개는 일반 test에서 건너뜁니다. Windows 시스템 공유·앱 명령·아이콘 검증은 [단계 15](docs/implementation/FULL-PORT-STEP15.md), 지속 웹 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
+현재 개발 소스의 자동 테스트 227개 통과, 장치 테스트 5개는 일반 test에서 건너뜁니다. Windows 시스템 공유는 긴 경로 수정을 반영한 배포 검증을 진행 중입니다. 명령·아이콘과 공유 검사 상태는 [단계 15](docs/implementation/FULL-PORT-STEP15.md), 지속 웹 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
