@@ -13,6 +13,8 @@ final class AIConfiguration {
         static let transcriptCleanupEnabled = "ai.transcriptCleanupEnabled"
         static let outputLanguage = "ai.outputLanguage"
         static let modelCatalog = "ai.modelCatalog"
+        static let processingMode = "ai.processingMode"
+        static let localSpeechLocaleIdentifier = "ai.localSpeechLocaleIdentifier"
     }
 
     private static let allowedLanguages = Set(["ko", "en", "source"])
@@ -27,14 +29,41 @@ final class AIConfiguration {
     @ObservationIgnored private var refreshGeneration = 0
     @ObservationIgnored private var applyingSharedPreferences = false
     @ObservationIgnored private var syncState: AIConfigurationSyncState
+    @ObservationIgnored private let localStatusProvider: @MainActor (String) -> LocalAIStatus
+    @ObservationIgnored private let localPreparation: @MainActor (String) async -> LocalAIStatus
     @ObservationIgnored var onSyncStateChanged: (() -> Void)?
     private(set) var hasSyncedPreferences = false
     private(set) var otherDeviceHasAPIKey = false
     private(set) var isSharingAISettings = false
 
-    var needsKeyForSyncedSettings: Bool { isSharingAISettings && otherDeviceHasAPIKey && !hasAPIKey }
+    var needsKeyForSyncedSettings: Bool { !usesLocalAI && isSharingAISettings && otherDeviceHasAPIKey && !hasAPIKey }
     var shouldEnableAutomaticGenerationOnFirstKeySave: Bool { !hasAPIKey && !hasSyncedPreferences }
     var pendingPreferencesUpload: AISharedPreferences? { syncState.pending ? syncState.preferences : nil }
+    var usesLocalAI: Bool { processingMode == .onDevice }
+
+    var processingMode: LocalAIProcessingMode {
+        didSet {
+            defaults.set(processingMode.rawValue, forKey: Keys.processingMode)
+            if processingMode != oldValue {
+                refreshLocalAIStatus()
+                onCredentialsChanged?()
+            }
+        }
+    }
+
+    var localSpeechLocaleIdentifier: String {
+        didSet {
+            guard LocalAIModel.supportedSpeechLocales.contains(localSpeechLocaleIdentifier) else {
+                localSpeechLocaleIdentifier = oldValue
+                return
+            }
+            defaults.set(localSpeechLocaleIdentifier, forKey: Keys.localSpeechLocaleIdentifier)
+            if localSpeechLocaleIdentifier != oldValue {
+                refreshLocalAIStatus()
+                if usesLocalAI { onCredentialsChanged?() }
+            }
+        }
+    }
 
     var modelID: String {
         didSet { defaults.set(modelID, forKey: Keys.modelID); if modelID != oldValue { preferencesChanged() } }
@@ -78,8 +107,15 @@ final class AIConfiguration {
     private(set) var isLoadingModels: Bool
     private(set) var connectionMessage: String?
     private(set) var lastError: String?
+    private(set) var localStatus: LocalAIStatus
+    private(set) var isPreparingLocalAI: Bool
 
     var isConfigured: Bool {
+        if usesLocalAI {
+            return localStatus.isAvailable
+                && !effectiveModelID.isEmpty
+                && !effectiveTranscriptionModelID.isEmpty
+        }
         guard hasAPIKey && !modelID.isEmpty && !transcriptionModelID.isEmpty else { return false }
         return models.isEmpty || (
             models.contains { $0.id == modelID && $0.supportsSummary }
@@ -87,17 +123,32 @@ final class AIConfiguration {
         )
     }
 
+    var effectiveModelID: String {
+        usesLocalAI ? LocalAIModel.summaryID : modelID
+    }
+
+    var effectiveTranscriptionModelID: String {
+        guard usesLocalAI else { return transcriptionModelID }
+        return LocalAIModel.transcriptionID(localeIdentifier: localSpeechLocaleIdentifier) ?? ""
+    }
+
+    var effectiveSummaryModel: OpenRouterModel? {
+        usesLocalAI ? LocalAIModel.summaryDescriptor : models.first { $0.id == modelID }
+    }
+
     var effectiveEnhancementModelID: String {
         enhancementModelID.isEmpty ? modelID : enhancementModelID
     }
 
     var isEnhancementConfigured: Bool {
+        guard !usesLocalAI else { return false }
         let modelID = effectiveEnhancementModelID
         guard hasAPIKey && !modelID.isEmpty else { return false }
         return models.isEmpty || models.contains { $0.id == modelID && $0.supportsSummary }
     }
 
     var isTranscriptCleanupConfigured: Bool {
+        guard !usesLocalAI else { return false }
         guard hasAPIKey && !modelID.isEmpty else { return false }
         return models.isEmpty || models.contains { $0.id == modelID && $0.supportsSummary }
     }
@@ -105,11 +156,15 @@ final class AIConfiguration {
     init(
         client: any OpenRouterServing,
         keyStore: any APIKeyStoring,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        localStatusProvider: @escaping @MainActor (String) -> LocalAIStatus = LocalAIAvailability.status,
+        localPreparation: @escaping @MainActor (String) async -> LocalAIStatus = LocalAIAvailability.prepare
     ) {
         self.client = client
         self.keyStore = keyStore
         self.defaults = defaults
+        self.localStatusProvider = localStatusProvider
+        self.localPreparation = localPreparation
         syncState = defaults.data(forKey: "ai.sync.state.v1").flatMap {
             try? JSONDecoder().decode(AIConfigurationSyncState.self, from: $0)
         } ?? AIConfigurationSyncState()
@@ -122,6 +177,12 @@ final class AIConfiguration {
         transcriptionModelID = defaults.string(forKey: Keys.transcriptionModelID) ?? ""
         let savedLanguage = defaults.string(forKey: Keys.outputLanguage) ?? "ko"
         outputLanguage = Self.allowedLanguages.contains(savedLanguage) ? savedLanguage : "ko"
+        let savedMode = defaults.string(forKey: Keys.processingMode)
+            .flatMap(LocalAIProcessingMode.init(rawValue:)) ?? .openRouter
+        processingMode = savedMode
+        let savedLocalLocale = defaults.string(forKey: Keys.localSpeechLocaleIdentifier) ?? "ko-KR"
+        let validatedLocalLocale = LocalAIModel.supportedSpeechLocales.contains(savedLocalLocale) ? savedLocalLocale : "ko-KR"
+        localSpeechLocaleIdentifier = validatedLocalLocale
         let storedKey = (try? keyStore.read()) ?? nil
         let hasStoredKey = storedKey?.isEmpty == false
         hasAPIKey = hasStoredKey
@@ -138,6 +199,8 @@ final class AIConfiguration {
         isLoadingModels = false
         connectionMessage = nil
         lastError = nil
+        localStatus = localStatusProvider(validatedLocalLocale)
+        isPreparingLocalAI = false
     }
 
     func saveKey(_ rawKey: String) throws {
@@ -180,7 +243,33 @@ final class AIConfiguration {
         return key
     }
 
+    func generationAPIKey() throws -> String {
+        usesLocalAI ? "" : try apiKey()
+    }
+
+    func refreshLocalAIStatus() {
+        localStatus = localStatusProvider(localSpeechLocaleIdentifier)
+    }
+
+    func prepareLocalAI() async {
+        guard !isPreparingLocalAI else { return }
+        let requestedLocale = localSpeechLocaleIdentifier
+        isPreparingLocalAI = true
+        defer { isPreparingLocalAI = false }
+        let preparedStatus = await localPreparation(requestedLocale)
+        if localSpeechLocaleIdentifier == requestedLocale {
+            localStatus = preparedStatus
+        } else {
+            refreshLocalAIStatus()
+        }
+    }
+
     func refreshModels() async {
+        guard !usesLocalAI else {
+            isLoadingModels = false
+            lastError = nil
+            return
+        }
         refreshGeneration += 1
         let generation = refreshGeneration
         isLoadingModels = true

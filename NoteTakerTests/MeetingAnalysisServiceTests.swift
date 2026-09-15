@@ -9,6 +9,30 @@ import Testing
 @MainActor
 @Suite("Meeting analysis service")
 struct MeetingAnalysisServiceTests {
+    @Test("local mode never starts cloud analysis even when a cloud key is saved")
+    func localModeBlocksCloudAnalysis() async throws {
+        let h = try await AnalysisHarness.make()
+        h.configuration.processingMode = .onDevice
+        #expect(h.configuration.isConfigured)
+        h.service.analyze(h.recording)
+        try await h.waitUntilFinished()
+        #expect(await h.client.completionCalls == 0)
+        #expect(await h.detailedClient.calls == 0)
+        #expect(h.store.document(for: h.recording.id) == nil)
+    }
+
+    @Test("local mode refuses cloud participant transcription before accessing audio")
+    func localModeBlocksCloudParticipants() async throws {
+        let h = try await AnalysisHarness.make()
+        h.configuration.processingMode = .onDevice
+        #expect(h.configuration.isConfigured)
+        await #expect(throws: AIError.self) {
+            try await h.service.prepareNumberedTranscript(h.recording)
+        }
+        #expect(await h.detailedClient.calls == 0)
+        #expect(await h.client.completionCalls == 0)
+    }
+
     @Test("analysis publishes timed transcript insights and keeps manual edits outside the generated artifact")
     func publishesAnalysisDocument() async throws {
         let harness = try await AnalysisHarness.make()
@@ -324,7 +348,8 @@ private struct AnalysisHarness {
                 inputModalities: ["audio"], outputModalities: ["transcription"])]
             defaults.set(try JSONEncoder().encode(models), forKey: "ai.modelCatalog")
         }
-        let configuration = AIConfiguration(client: client, keyStore: keyStore, defaults: defaults)
+        let configuration = AIConfiguration(client: client, keyStore: keyStore, defaults: defaults,
+            localStatusProvider: { _ in LocalAIStatus(isAvailable: true, message: "ready") })
         configuration.modelID = "fixture/analysis"
         configuration.transcriptionModelID = "fixture/stt"
         configuration.outputLanguage = "ko"

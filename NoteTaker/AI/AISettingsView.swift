@@ -15,9 +15,14 @@ struct AISettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
-                noticeCard
-                keyCard
-                modelCard
+                modeCard
+                if configuration.usesLocalAI {
+                    localAICard
+                } else {
+                    noticeCard
+                    keyCard
+                    modelCard
+                }
                 generationCard
                 statusCard
             }
@@ -26,8 +31,17 @@ struct AISettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .task {
-            await configuration.refreshModels()
+        .task(id: configuration.usesLocalAI) {
+            if configuration.usesLocalAI {
+                configuration.refreshLocalAIStatus()
+            } else {
+                await configuration.refreshModels()
+            }
+        }
+        .onChange(of: configuration.localSpeechLocaleIdentifier) {
+            if configuration.usesLocalAI {
+                configuration.refreshLocalAIStatus()
+            }
         }
     }
 
@@ -35,8 +49,83 @@ struct AISettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             Label(String(localized: "AI Meeting Notes"), systemImage: "sparkles")
                 .font(.title2.weight(.semibold))
-            Text(String(localized: "Configure OpenRouter transcription and minutes generation."))
+            Text(configuration.usesLocalAI
+                 ? String(localized: "Use Apple on-device transcription and minutes generation when this device is ready.")
+                 : String(localized: "Configure OpenRouter transcription and minutes generation."))
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var modeCard: some View {
+        SettingsCard {
+            Label(String(localized: "AI Provider"), systemImage: "switch.2")
+                .font(.headline)
+            Picker(String(localized: "AI Provider"), selection: $configuration.processingMode) {
+                Text(String(localized: "OpenRouter")).tag(LocalAIProcessingMode.openRouter)
+                Text(String(localized: "Free on this device")).tag(LocalAIProcessingMode.onDevice)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("ai-provider-mode")
+            Text(configuration.usesLocalAI
+                 ? String(localized: "Local mode keeps inference on this device. OpenRouter keys and model choices are preserved for when you switch back.")
+                 : String(localized: "OpenRouter mode can use cloud transcription, minutes, cleanup, enhancement, and speaker analysis with your saved key."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var localAICard: some View {
+        SettingsCard {
+            HStack {
+                Label(String(localized: "Free on-device AI"), systemImage: "iphone.and.arrow.forward")
+                    .font(.headline)
+                Spacer()
+                StatusBadge(
+                    text: configuration.localStatus.isAvailable ? String(localized: "Ready") : String(localized: "Needs Setup"),
+                    systemImage: configuration.localStatus.isAvailable ? "checkmark.circle.fill" : "exclamationmark.triangle"
+                )
+            }
+
+            Text(String(localized: "Requires macOS 26 on an Apple silicon Mac, Apple Intelligence enabled, the system model downloaded, and on-device speech recognition permission."))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(String(localized: "AI processing runs on this device. Device sync and web sharing operate separately according to their settings."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Picker(String(localized: "Speech Language"), selection: $configuration.localSpeechLocaleIdentifier) {
+                Text(String(localized: "Korean")).tag("ko-KR")
+                Text(String(localized: "English")).tag("en-US")
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("ai-local-speech-language")
+
+            Label(configuration.localStatus.message, systemImage: configuration.localStatus.isAvailable ? "checkmark.circle" : "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("ai-local-status")
+
+            Button {
+                Task { await configuration.prepareLocalAI() }
+            } label: {
+                Label(
+                    configuration.isPreparingLocalAI ? String(localized: "Checking...") : String(localized: "Prepare & Check"),
+                    systemImage: "checkmark.shield"
+                )
+            }
+            .buttonStyle(.bordered)
+            .disabled(configuration.isPreparingLocalAI)
+            .accessibilityIdentifier("ai-local-prepare")
+
+            Text(String(localized: "Setup may need internet access through Apple system settings, but generation does not fall back to the cloud in local mode."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -175,15 +264,21 @@ struct AISettingsView: View {
                 Label(String(localized: "Automatically generate minutes after recording"), systemImage: "wand.and.stars")
             }
 
-            if configuration.autoGenerate && !configuration.hasAPIKey {
+            if configuration.autoGenerate && !configuration.usesLocalAI && !configuration.hasAPIKey {
                 Text(String(localized: "Save an API key on this device to automatically generate minutes for new recordings."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if configuration.autoGenerate && configuration.usesLocalAI && !configuration.localStatus.isAvailable {
+                Text(String(localized: "Prepare local AI before automatic minutes can run on this device."))
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Toggle(isOn: $configuration.transcriptCleanupEnabled) {
+            Toggle(isOn: transcriptCleanupBinding) {
                 Label(String(localized: "Context-aware transcript cleanup"), systemImage: "text.magnifyingglass")
             }
-            Text(String(localized: "The original transcript is retained. Your current minutes model cleans noise and ASR artifacts before notes are generated and may incur additional model usage."))
+            .disabled(configuration.usesLocalAI)
+            Text(configuration.usesLocalAI
+                 ? String(localized: "Transcript cleanup uses cloud models and is unavailable while Free on this device is selected.")
+                 : String(localized: "The original transcript is retained. Your current minutes model cleans noise and ASR artifacts before notes are generated and may incur additional model usage."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -196,7 +291,10 @@ struct AISettingsView: View {
                 )) {
                     Label(String(localized: "Automatically analyze speaker conversations"), systemImage: "person.2.wave.2")
                 }
-                Text(String(localized: "When automatic generation is enabled, AI-NoteTaker also creates speaker-separated transcripts, commitments, decisions, and briefing sources. This setting syncs; API keys stay device-local."))
+                .disabled(configuration.usesLocalAI)
+                Text(configuration.usesLocalAI
+                     ? String(localized: "Speaker conversation analysis uses cloud models and is unavailable while Free on this device is selected.")
+                     : String(localized: "When automatic generation is enabled, AI-NoteTaker also creates speaker-separated transcripts, commitments, decisions, and briefing sources. This setting syncs; API keys stay device-local."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -223,7 +321,10 @@ struct AISettingsView: View {
                     .foregroundStyle(.red)
             }
             if (localMessage ?? configuration.connectionMessage) == nil && configuration.lastError == nil {
-                Label(String(localized: "AI settings are ready when a key and models are selected."), systemImage: "checklist")
+                Label(configuration.usesLocalAI
+                      ? String(localized: "Local AI is ready when this device reports on-device speech and Apple Intelligence availability.")
+                      : String(localized: "AI settings are ready when a key and models are selected."),
+                      systemImage: "checklist")
                     .foregroundStyle(.secondary)
             }
         }
@@ -239,6 +340,16 @@ struct AISettingsView: View {
 
     private var transcriptionModels: [OpenRouterModel] {
         filteredModels(configuration.models.filter(\.supportsTranscription), query: transcriptionSearch)
+    }
+
+    private var transcriptCleanupBinding: Binding<Bool> {
+        Binding(
+            get: { configuration.transcriptCleanupEnabled && !configuration.usesLocalAI },
+            set: { enabled in
+                guard !configuration.usesLocalAI else { return }
+                configuration.transcriptCleanupEnabled = enabled
+            }
+        )
     }
 
     private func filteredModels(_ models: [OpenRouterModel], query: String) -> [OpenRouterModel] {

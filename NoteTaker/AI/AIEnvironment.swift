@@ -8,7 +8,7 @@ struct AIEnvironment {
     let defaults: UserDefaults
 
     static func live() -> AIEnvironment {
-        AIEnvironment(client: OpenRouterClient(), keyStore: KeychainAPIKeyStore(),
+        AIEnvironment(client: RoutingAIClient(cloud: OpenRouterClient()), keyStore: KeychainAPIKeyStore(),
                       chunker: MeetingAudioChunker(), defaults: .standard)
     }
 

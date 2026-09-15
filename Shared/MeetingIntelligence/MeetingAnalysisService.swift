@@ -10,6 +10,10 @@ nonisolated struct ParticipantPreparationProgress: Equatable, Sendable {
 @MainActor
 @Observable
 final class MeetingAnalysisService {
+    private static var localModeMessage: String {
+        String(localized: "Speaker analysis is unavailable in local mode. Select OpenRouter in AI settings to use it.")
+    }
+
     private enum AnalysisProgress: Equatable {
         case idle
         case queued
@@ -113,6 +117,10 @@ final class MeetingAnalysisService {
               let current = library.recording(id: recording.id),
               current.deletedAt == nil,
               current.audioVersion == recording.audioVersion else { return }
+        guard !configuration.usesLocalAI else {
+            states[recording.id] = .failed(Self.localModeMessage)
+            return
+        }
         guard configuration.isConfigured else {
             states[recording.id] = .failed("설정에서 OpenRouter API 키와 AI 모델을 선택해 주세요.")
             return
@@ -186,6 +194,9 @@ final class MeetingAnalysisService {
 
     func prepareNumberedTranscript(_ recording: Recording, transcriptionModelID: String? = nil) async throws -> MeetingTranscript {
         try Task.checkCancellation()
+        guard !configuration.usesLocalAI else {
+            throw AIError(message: Self.localModeMessage)
+        }
         let requestedModelID = ParticipantTranscriptionPolicy.modelID(for: transcriptionModelID ?? configuration.transcriptionModelID)
         guard let current = library.recording(id: recording.id),
               current.deletedAt == nil,

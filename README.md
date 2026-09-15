@@ -16,9 +16,14 @@ AI-NoteTaker는 SwiftUI로 만든 macOS·iOS 개인용 음성 노트 앱입니�
 - [작업 예정 기능 목록](docs/FEATURE-BACKLOG.md)
 - [Cloudflare 배포 및 API 가이드](Cloudflare/README.md)
 - [Mac·iPhone·Windows 회의록 웹 공유](docs/WEB-SHARING.md)
+- [Mac·iPhone 무료 로컬 AI](docs/APPLE-LOCAL-AI.md)
 - [서드파티 라이선스 고지](THIRD-PARTY-NOTICES.md)
 
 ## 주요 기능
+
+### 무료 로컬 전사·회의록 — Mac·iPhone
+
+AI 설정에서 **무료 · 이 기기**를 선택하면 API 키 없이 Apple의 온디바이스 음성 인식과 Apple Intelligence 모델로 회의록을 생성합니다. Apple Intelligence가 준비된 macOS 26·iOS 26 지원 기기가 필요하며, 앱에서 기기·모델·음성 인식 권한 상태를 확인할 수 있습니다. 기존 OpenRouter 키와 모델 설정도 유지됩니다. [지원 조건·사용 방법](docs/APPLE-LOCAL-AI.md)
 
 ### 회의록 웹 공유 — Mac·iPhone·Windows
 

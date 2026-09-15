@@ -26,6 +26,8 @@
 	<string>18</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>AI-NoteTaker needs microphone access to record your voice notes.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>AI-NoteTaker uses on-device speech recognition to create transcripts.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

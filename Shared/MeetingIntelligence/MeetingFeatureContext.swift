@@ -148,7 +148,7 @@ final class MeetingFeatureContext {
 
     func recordingDidFinish(_ recording: Recording) {
         guard !isTerminating else { return }
-        if configuration.autoGenerate && configuration.isConfigured && profile.profile.automaticallyAnalyze {
+        if !configuration.usesLocalAI && configuration.autoGenerate && configuration.isConfigured && profile.profile.automaticallyAnalyze {
             pendingNotes.insert(recording.id)
             analysis.analyze(recording)
         } else { notes.recordingDidFinish(recording) }

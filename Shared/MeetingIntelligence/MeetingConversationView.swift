@@ -6,6 +6,7 @@ struct MeetingConversationView: View {
     let isBusy: Bool
     let hasAPIKey: Bool
     let editable: Bool
+    var usesLocalAI = false
     var initialSection: MeetingConversationTab = .transcript
     var canPlayTurns = true
     let profile: MeetingUserProfile
@@ -68,6 +69,14 @@ struct MeetingConversationView: View {
                 }
             }
 
+            if usesLocalAI {
+                Text(String(localized: "Speaker analysis uses OpenRouter. Switch to OpenRouter in AI settings to run it. Existing results remain available."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("meeting-local-mode-notice")
+            }
+
             if !status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label(status, systemImage: isBusy ? "clock.arrow.circlepath" : "info.circle")
                     .font(.callout)
@@ -96,7 +105,7 @@ struct MeetingConversationView: View {
                     Label(String(localized: "Cancel"), systemImage: "xmark.circle")
                 }
                 .accessibilityIdentifier("meeting-cancel-analysis")
-            } else if hasAPIKey {
+            } else if hasAPIKey && !usesLocalAI {
                 Button(action: onAnalyze) {
                     Label(content == nil ? String(localized: "Analyze") : String(localized: "Reanalyze"),
                           systemImage: "sparkles")
@@ -133,6 +142,14 @@ struct MeetingConversationView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .accessibilityIdentifier("meeting-loading-state")
+        } else if usesLocalAI, content == nil {
+            MeetingConversationCard {
+                ContentUnavailableView(
+                    String(localized: "Speaker Analysis Uses OpenRouter"),
+                    systemImage: "person.2.wave.2",
+                    description: Text(String(localized: "Free local transcription and minutes are available in the AI Meeting Notes tab."))
+                )
+            }
         } else if !hasAPIKey, content == nil {
             MeetingConversationCard {
                 ContentUnavailableView(

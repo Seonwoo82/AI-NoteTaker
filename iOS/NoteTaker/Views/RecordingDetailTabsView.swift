@@ -97,6 +97,7 @@ struct RecordingDetailTabsView: View {
             isBusy: meeting.analysis.isRunning(for: recording.id),
             hasAPIKey: model.aiConfiguration.hasAPIKey,
             editable: recording.deletedAt == nil,
+            usesLocalAI: model.aiConfiguration.usesLocalAI,
             canPlayTurns: !meeting.enrollmentIsBusy && !model.recorder.isRecording && !model.recorder.isBusy,
             profile: meeting.profile.profile,
             onAnalyze: {
