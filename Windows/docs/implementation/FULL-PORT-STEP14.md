@@ -30,4 +30,6 @@
 
 ## 검증의 경계
 
+최신 후보 ZIP은 `Windows/artifacts/AI-NoteTaker-0.4.0-win-x64.zip`, 버전 `0.4.0+fc9c7c61381a2e1648e9175b59bb17a6ab566c0a`, 650,547,924바이트다. SHA256: `95A8A27271F808EBE2F953E8F57F308B551C8BD178FE367E78D0152FD723AA40`. `verify-package.ps1 -AllFeatures`로 새 `verify-package-f2ab47fe` 폴더에서 9개 경로가 모두 통과했다. 결과는 같은 artifacts 폴더의 `AI-NoteTaker-0.4.0-win-x64.verification.json`에 있다. 같은 publish 결과의 `sync-step14-portable/result.json`도 완료 중 재진입 차단을 포함한 WPF/Worker 동기화 전체 통과다. 새 오디오 시스템 공유 등 남은 이식 항목을 포함한 최종 릴리스는 아니다.
+
 공개 서버나 사용자 라이브러리를 삭제하지 않았다. 테스트는 별도로 만든 녹음 폴더와 생성한 WAV만 사용했다. 저장 경로 선택은 WPF 검증에서 콜백으로 주입했으므로 Windows 운영체제의 Save 대화상자 조작 증거는 아니다. 삭제는 앱 파일 정리이며 디스크 보안 삭제나 서버 자산 삭제가 아니다. 외부 백업/내보낸 파일과, 이전 비정상 종료로 녹음 ID 없이 남은 임시 파일까지 찾아 지우는 기능은 포함하지 않는다. 실제 회의 품질, 실제 장치/Apple 기기/배포 서버와 전체 최종 배포 검증은 기존 전체 계획에 따라 남아 있다.

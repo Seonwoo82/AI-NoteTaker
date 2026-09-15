@@ -9,7 +9,9 @@
 | 영역 | 현재 상태 | 완료에 필요한 구현 및 증거 |
 | --- | --- | --- |
 | 녹음·가져오기·재생·삭제/복원·무료 AI·Clova 파일 연동 | 기존 구현, 회귀 검증 필요 | Windows 빌드/단위/실행/패키지 검증. 원본과 이전 성공 문서 보존 |
-| 영구 삭제·30일 삭제 보관·오디오 내보내기 | 구현·핵심 동작/WPF 확인, 전체 회귀·패키지 검증 진행 | 기기 로컬 purge 표식과 삭제 메타데이터 보존, 원격 오디오/회의록/참여자 수정 이력 복원, 확인/취소/오래된 확인 거부, 저장된 WAV 바이트 복사. [단계 14](docs/implementation/FULL-PORT-STEP14.md) |
+| 영구 삭제·30일 삭제 보관·오디오 내보내기 | 구현·221개 전체 테스트·WPF/Worker·후보 패키지 검증 | 기기 로컬 purge 표식과 삭제 메타데이터 보존, 원격 오디오/회의록/참여자 수정 이력 복원, 확인/취소/오래된 확인 거부, 저장된 WAV 바이트 복사. [단계 14](docs/implementation/FULL-PORT-STEP14.md) |
+| 오디오 파일 시스템 공유 | 추가 이식 필요 | Apple PlaybackDetailView/RecordingsListView의 SharedAudioFile ShareLink에 대응하는 Windows 파일 공유 UI. 회의록 웹 공유와 오디오 저장 내보내기는 별도 기능이다. 전체 동작 대조에서 후속 구현 대상으로 확인 |
+| 앱 명령과 배포 아이콘 | 추가 대조 필요 | LibraryCommands의 완료·내보내기·폴더 열기·동기화·즐겨찾기 단축키를 Windows 키 조합으로 대응하고 텍스트 편집 중 동작을 검증. 작업 표시줄/EXE 앱 아이콘과 트레이 아이콘의 원본 대응도 최종 점검 |
 | 5분 집중 파형과 전체 개요 | 구현·단위·WPF 검증 | 절대 시간 탐색, 15분 실제 생성 WAV 해상도, 드래그 중 고정 범위, 시작/끝·비정상 값 테스트, 2시간 범위 WPF 렌더링. 아래 검증 기록 참조 |
 | 녹음 폴더 | 구현·저장·WPF·Worker 동기화 검증 | 생성/이름/삭제/이동/정렬/접기·펼치기, 삭제 시 오디오 보존, 선택·재생 유지, 재시작 후 지속. 폴더 내 녹음은 파일 입력을 사용한 WPF 캡처 흐름으로 검증. 드래그 실제 포인터 검증과 폴더 내 가져오기 UI 추가 검증 필요 |
 | 트레이·전역 단축키·자동 AI | 구현·Windows API·실제 AI 검증 | Shell 트레이 등록, 창 숨김/복원, 3개 키 등록/해제, HWND 단축키 메시지, 명시적 종료 확인. 파일 입력의 녹음 중 트레이 유지·pause/resume·폴더 유지, 자동 생성 off/키 실패/종료 제외, 실제 Whisper/Ollama 완료 확인. 실제 장치 장시간 트레이 녹음·물리 키 입력은 별도 |
@@ -35,6 +37,8 @@ Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은
 
 ## 진행 기록
 
+- 2026-09-16: 영구 삭제·30일 보관·오디오 내보내기와 원격 수정 이력 복원을 구현했다. Release 221개 통과, 5 장치 테스트 건너뜀. 추가 포터블 동기화 검사에서 완료 중 재진입 경합을 재현·수정했고 같은 시점의 요청 거부를 실제 WPF/Worker로 확인했다. [단계 14](docs/implementation/FULL-PORT-STEP14.md). 원본 action bar와 sidebar의 오디오 ShareLink가 저장 내보내기와 별도임을 추가 확인했으므로 Windows 시스템 파일 공유 이식도 남아 있다.
+
 - 2026-09-16: 자연 한국어 대화 평가와 자동 전체 화자 병합, 폴더 앞·뒤 삽입선, 모델 질문/답변 schema 보완을 반영했다. Release 211개와 Worker 93개 통과, 별도 실제 출력 장치 재생 테스트 1개 통과. 0.4.0 후보 ZIP의 새 폴더 WPF/로컬 모델 검증 9개 통과. [단계 12](docs/implementation/FULL-PORT-STEP12.md), [단계 13](docs/implementation/FULL-PORT-STEP13.md). 추가 대조에서 영구 삭제·30일 보관·오디오 내보내기 누락을 확인했으므로 전체 목표와 최종 배포는 계속 진행 중이다.
 
 - 2026-09-16: 원격 main과 현재 HEAD가 일치함을 확인. 이전 질의 응답에서 API 구조와 서비스 한도를 검증했으며 구현 완료로 계산하지 않음. 전체 이식은 진행 중이다.
@@ -45,6 +49,8 @@ Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은
 - 2026-09-16: 구조화 회의 분석, 업무 상태와 근거 탐색, 프로젝트 편집/브리핑 추가. 테스트 135 통과/5 하드웨어 건너뜀. 실제 로컬 Qwen + WPF와 새 포터블 EXE 검증. [다섯 번째 단계 검증 및 4B 모델의 오분류](docs/implementation/FULL-PORT-STEP5.md). 모델 선택/예산·정리/보완·목차·전체 동기화·장시간/의미 정확도·최종 배포/PR은 미완료다.
 
 ## 다음 단계 조사 메모
+
+- 오디오 파일 공유는 [Microsoft WPF ShareSource 예제](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/ShareSource/wpf/MainWindow.xaml.cs)와 [데스크톱 HWND의 WinRT 공유 UI 안내](https://learn.microsoft.com/en-us/windows/apps/develop/ui/display-ui-objects)를 확인했다. `DataTransferManager`와 `IDataTransferManagerInterop.ShowShareUIForWindow`로 소유 창을 지정하는 경로가 있다. 아직 Windows 앱에는 연결하지 않았다. 기본 TFM은 `net10.0-windows`이므로 Windows SDK projection/타깃과 포터블 배포 의존성 확인도 필요하다.
 
 - Windows 런타임은 NuGet `org.k2fsa.sherpa.onnx` 1.13.8, ONNX Runtime 1.28.2, Pyannote segmentation-3.0과 3D-Speaker ERes2Net-Base다. 512차원 모델 ID를 명시하며 Apple의 기기 로컬 음성 벡터와 상호 교환하지 않는다. 취소는 소유 worker 프로세스 종료로 처리한다.
 - 공식 예제: https://github.com/k2-fsa/sherpa-onnx/blob/master/dotnet-examples/offline-speaker-diarization/Program.cs . 바인딩 소스는 `scripts/dotnet/OfflineSpeakerDiarization.cs`, `OfflineSpeakerDiarizationConfig.cs`, `SpeakerEmbeddingExtractor.cs`에 있다. 모델·공개 다중 화자 WAV는 공식 `speaker-segmentation-models`, 임베딩은 `speaker-recongition-models` release에 있다.
