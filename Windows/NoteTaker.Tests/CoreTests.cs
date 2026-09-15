@@ -339,7 +339,7 @@ public sealed class WebShareTests
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1790000000000), result.ExpiresAt);
     }
 
-    [Fact] public async Task StatusAndRevokeUseAuthenticatedManagementContractWithoutRawUrl()
+    [Fact] public async Task StatusRestoresTheAuthenticatedLinkAndRevokeUsesTheSameManagementContract()
     {
         var calls = new List<(HttpMethod Method, string Path)>();
         using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token", new StubHandler((request, _) =>
@@ -347,7 +347,7 @@ public sealed class WebShareTests
             calls.Add((request.Method, request.RequestUri!.PathAndQuery));
             Assert.Equal("sync-token", request.Headers.Authorization!.Parameter);
             return Task.FromResult(request.Method == HttpMethod.Get
-                ? StubHandler.Json("{\"active\":true,\"expiresAt\":1790000000000}")
+                ? StubHandler.Json("{\"active\":true,\"expiresAt\":1790000000000,\"url\":\"https://share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}")
                 : new HttpResponseMessage(HttpStatusCode.NoContent));
         }));
 
@@ -355,6 +355,7 @@ public sealed class WebShareTests
         await client.RevokeAsync(RecordingId, default);
 
         Assert.True(status.Active);
+        Assert.Equal("https://share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", status.Url);
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1790000000000), status.ExpiresAt);
         Assert.Equal([(HttpMethod.Get, "/v1/shares/AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"),
             (HttpMethod.Delete, "/v1/shares/AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")], calls);
@@ -364,12 +365,39 @@ public sealed class WebShareTests
     [InlineData("{}")]
     [InlineData("{\"active\":true}")]
     [InlineData("{\"active\":true,\"expiresAt\":0}")]
+    [InlineData("{\"active\":true,\"expiresAt\":1790000000000}")]
+    [InlineData("{\"active\":true,\"expiresAt\":1790000000000,\"url\":\"https://evil.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}")]
+    [InlineData("{\"active\":true,\"expiresAt\":1790000000000,\"url\":\"https://share.example.test/s/short\"}")]
     public async Task StatusRequiresExplicitActiveAndExpiryWhenActive(string responseBody)
     {
         using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token",
             new StubHandler((_, _) => Task.FromResult(StubHandler.Json(responseBody))));
 
         await Assert.ThrowsAsync<InvalidDataException>(() => client.GetStatusAsync(RecordingId, default));
+    }
+
+    [Fact] public async Task FreshClientsRecoverTheSameLinkWithoutPublishing()
+    {
+        const string url = "https://share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token",
+                new StubHandler((request, _) =>
+                {
+                    Assert.Equal(HttpMethod.Get, request.Method);
+                    return Task.FromResult(StubHandler.Json(JsonSerializer.Serialize(new { active = true, expiresAt = 1790000000000L, url })));
+                }));
+            Assert.Equal(url, (await client.GetStatusAsync(RecordingId, default)).Url);
+        }
+    }
+
+    [Fact] public async Task InactiveStatusDoesNotRestoreAnOldUrl()
+    {
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token",
+            new StubHandler((_, _) => Task.FromResult(StubHandler.Json("{\"active\":false,\"url\":\"https://share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"))));
+        var status = await client.GetStatusAsync(RecordingId, default);
+        Assert.False(status.Active);
+        Assert.Null(status.Url);
     }
 
     [Fact] public async Task RedirectResponsesAreFailuresAndDoNotLeakProviderBody()

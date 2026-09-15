@@ -568,7 +568,7 @@ async function health(env) {
   await env.DB.prepare("SELECT id FROM recordings ORDER BY id ASC LIMIT 1").first();
   await env.DB.prepare("SELECT id FROM recording_folders ORDER BY id ASC LIMIT 1").first();
   await env.DB.prepare("SELECT recording_id FROM meeting_notes ORDER BY sync_key ASC LIMIT 1").first();
-  await env.DB.prepare("SELECT source_id FROM web_shares ORDER BY source_id ASC LIMIT 1").first();
+  await env.DB.prepare("SELECT source_id, public_token FROM web_shares ORDER BY source_id ASC LIMIT 1").first();
   await env.AUDIO.head(".healthcheck");
   return json({ ok: true, schemaVersion: SCHEMA_VERSION });
 }

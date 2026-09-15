@@ -95,14 +95,20 @@ class MemoryStatement {
       return { ok: 1 };
     }
     if (this.sql.includes("FROM web_shares") && this.sql.includes("source_id = ?")) {
-      return this.db.shareRows.get(this.values[0]) ?? null;
+      const row = this.db.shareRows.get(this.values[0]);
+      if (this.sql.includes("object_key = ?")) {
+        const [, objectKey, tokenHash, publicToken, now] = this.values;
+        if (!row || row.object_key !== objectKey || row.expires_at <= now
+            || (row.token_hash !== tokenHash && row.public_token !== publicToken)) return null;
+      }
+      return row ? { ...row } : null;
     }
     if (this.sql.includes("FROM web_shares") && this.sql.includes("token_hash = ?")) {
-      const [tokenHash, now] = this.values;
+      const [tokenHash, publicToken, now] = this.values;
       const row = [...this.db.shareRows.values()].find((candidate) =>
-        candidate.token_hash === tokenHash && candidate.expires_at > now,
+        (candidate.token_hash === tokenHash || candidate.public_token === publicToken) && candidate.expires_at > now,
       );
-      return row ?? null;
+      return row ? { ...row } : null;
     }
     throw new Error(`unexpected first SQL: ${this.sql}`);
   }
@@ -126,20 +132,32 @@ class MemoryStatement {
           }
         });
       }
-      const [source_id, token_hash, object_key, title, created_at, expires_at] = this.values;
+      const [source_id, token_hash, public_token, object_key, title, created_at, expires_at] = this.values;
       for (const row of this.db.shareRows.values()) {
         if (row.source_id !== source_id && row.token_hash === token_hash) {
           throw new Error("UNIQUE constraint failed: web_shares.token_hash");
+        }
+        if (row.source_id !== source_id && row.public_token === public_token) {
+          throw new Error("UNIQUE constraint failed: web_shares.public_token");
         }
       }
       this.db.shareRows.set(source_id, {
         source_id,
         token_hash,
+        public_token,
         object_key,
         title,
         created_at,
         expires_at,
       });
+      return { success: true };
+    }
+    if (this.sql.includes("UPDATE web_shares SET public_token")) {
+      const [token, sourceID, tokenHash, now] = this.values;
+      const row = this.db.shareRows.get(sourceID);
+      if (row && row.token_hash === tokenHash && row.public_token == null && row.expires_at > now) {
+        row.public_token = token;
+      }
       return { success: true };
     }
     if (this.sql.includes("DELETE FROM web_shares")) {
@@ -235,7 +253,7 @@ describe("Cloudflare web sharing", () => {
     }
   });
 
-  test("publishes an escaped seven-day snapshot and stores only the token hash in D1", async () => {
+  test("publishes an escaped seven-day snapshot and privately persists its retrievable token", async () => {
     const env = makeEnv();
     const before = Date.now();
     const created = await publishShare(env, {
@@ -250,6 +268,7 @@ describe("Cloudflare web sharing", () => {
 
     assert.match(token, /^[A-Za-z0-9_-]{43}$/);
     assert.equal(row.token_hash, sha256Hex(token));
+    assert.equal(row.public_token, token);
     assert.equal(row.title, "Project <Planning>");
     assert.equal(row.expires_at, created.expiresAt);
     assert.ok(created.expiresAt >= before + 7 * DAY_MS);
@@ -327,7 +346,7 @@ describe("Cloudflare web sharing", () => {
     assert.match(html, /<td>R199<\/td>/);
   });
 
-  test("reports status without returning token, source content, or object keys", async () => {
+  test("returns the existing URL only in authenticated status without snapshot content or object keys", async () => {
     const env = makeEnv();
     const created = await publishShare(env);
 
@@ -336,8 +355,7 @@ describe("Cloudflare web sharing", () => {
     const activeBody = await readJson(active);
 
     assert.equal(active.status, 200);
-    assert.deepEqual(activeBody, { active: true, expiresAt: created.expiresAt });
-    assert.equal(JSON.stringify(activeBody).includes(tokenFromUrl(created.url)), false);
+    assert.deepEqual(activeBody, { active: true, url: created.url, expiresAt: created.expiresAt });
     assert.deepEqual(await readJson(inactive), { active: false });
   });
 

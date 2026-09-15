@@ -7,12 +7,20 @@ nonisolated struct WebSharePublication: Equatable, Sendable {
 
 nonisolated struct WebShareStatus: Equatable, Sendable {
     let active: Bool
+    let url: URL?
     let expiresAt: Date?
+
+    init(active: Bool, url: URL? = nil, expiresAt: Date?) {
+        self.active = active
+        self.url = url
+        self.expiresAt = expiresAt
+    }
 }
 
 nonisolated enum WebShareError: LocalizedError, Equatable, Sendable {
     case invalidContent(String)
     case invalidResponse
+    case activeLinkURLUnavailable
     case redirectRefused
     case server(statusCode: Int, message: String)
 
@@ -22,6 +30,8 @@ nonisolated enum WebShareError: LocalizedError, Equatable, Sendable {
             message
         case .invalidResponse:
             String(localized: "The sharing service returned an invalid response.")
+        case .activeLinkURLUnavailable:
+            String(localized: "The server could not restore the active link address. Update the sharing server, then reopen this window. You can still cancel sharing.")
         case .redirectRefused:
             String(localized: "Sharing stopped because the server tried to redirect the request.")
         case let .server(statusCode, message):
@@ -75,12 +85,18 @@ final class WebShareClient: @unchecked Sendable {
     }
 
     func status(sourceID: UUID) async throws -> WebShareStatus {
-        let (data, response) = try await session.data(for: request(path: "v1/shares/\(sourceID.uuidString.uppercased())"))
+        var request = request(path: "v1/shares/\(sourceID.uuidString.uppercased())")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         let decoded = try decoder.decode(WebShareStatusResponse.self, from: data)
-        let expiresAt = decoded.expiresAt.flatMap(Date.init(millisecondsSince1970:))
-        guard decoded.active == false || expiresAt != nil else { throw WebShareError.invalidResponse }
-        return WebShareStatus(active: decoded.active, expiresAt: expiresAt)
+        guard decoded.active else { return WebShareStatus(active: false, expiresAt: nil) }
+        guard let expiresAt = decoded.expiresAt.flatMap(Date.init(millisecondsSince1970:)) else {
+            throw WebShareError.invalidResponse
+        }
+        guard let address = decoded.url else { throw WebShareError.activeLinkURLUnavailable }
+        guard let url = validatedPublicURL(address) else { throw WebShareError.invalidResponse }
+        return WebShareStatus(active: true, url: url, expiresAt: expiresAt)
     }
 
     func revoke(sourceID: UUID) async throws {
@@ -194,6 +210,7 @@ private struct WebSharePublicationResponse: Decodable {
 
 private struct WebShareStatusResponse: Decodable {
     let active: Bool
+    let url: String?
     let expiresAt: Int64?
 }
 

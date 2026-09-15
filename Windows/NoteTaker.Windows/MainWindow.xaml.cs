@@ -704,15 +704,20 @@ internal sealed class WebShareWindow : Window
 
     private async Task LoadStatusAsync()
     {
+        currentUrl = null;
+        linkRow.Visibility = Visibility.Collapsed;
+        statusLoaded = false;
         await RunAsync("공유 상태를 확인하는 중…", async client =>
         {
             var status = await client.GetStatusAsync(recording.Id, cancellation.Token);
-            currentUrl = null;
-            linkRow.Visibility = Visibility.Collapsed;
+            currentUrl = status.Url;
+            urlText.Text = currentUrl ?? "";
+            linkRow.Visibility = currentUrl is null ? Visibility.Collapsed : Visibility.Visible;
+            copyButton.Content = "복사";
             statusLoaded = true;
             knownActive = status.Active;
             if (status.Active)
-                SetStatus("현재 웹에 공유되어 있습니다. 링크 주소는 만든 기기의 공유 창에서 복사할 수 있습니다. 여기에서도 공유를 취소할 수 있습니다." + ExpiryText(status.ExpiresAt));
+                SetStatus("웹 링크가 활성화되어 있습니다." + ExpiryText(status.ExpiresAt));
             else
                 SetStatus("현재 활성화된 웹 공유 링크가 없습니다.");
         });

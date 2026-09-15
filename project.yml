@@ -47,8 +47,8 @@ targets:
         CFBundleDisplayName: AI-NoteTaker
         CFBundleIdentifier: com.seonwoo.notetaker
         CFBundleName: AI-NoteTaker
-        CFBundleShortVersionString: "1.7.2"
-        CFBundleVersion: "21"
+        CFBundleShortVersionString: "1.7.3"
+        CFBundleVersion: "22"
         LSMinimumSystemVersion: "26.0"
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.seonwoo.notetaker.library-item

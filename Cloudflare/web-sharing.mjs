@@ -22,7 +22,7 @@ export async function handleShareManagement(request, env, sourceID) {
     return putShare(request, env, normalizedSourceID);
   }
   if (request.method === "GET") {
-    return getShareStatus(env, normalizedSourceID);
+    return getShareStatus(request, env, normalizedSourceID);
   }
   if (request.method === "DELETE") {
     return deleteShare(env, normalizedSourceID);
@@ -39,11 +39,11 @@ export async function handlePublicShare(env, token) {
   const tokenHash = await sha256Text(token);
   const now = Date.now();
   const row = await env.DB.prepare(
-    `SELECT source_id, object_key, title, expires_at
+    `SELECT source_id, token_hash, public_token, object_key, title, expires_at
        FROM web_shares
-      WHERE token_hash = ? AND expires_at > ?`,
+      WHERE (token_hash = ? OR public_token = ?) AND expires_at > ?`,
   )
-    .bind(tokenHash, now)
+    .bind(tokenHash, token, now)
     .first();
   if (!row) {
     return notFoundPage();
@@ -64,7 +64,22 @@ export async function handlePublicShare(env, token) {
     return notFoundPage();
   }
 
-  return htmlResponse(renderSharePage(snapshot.title, snapshot.markdown, row.expires_at), 200);
+  if (row.public_token == null) {
+    // Recover a legacy URL when its original token is presented. Never replace
+    // an alias already returned to an authenticated client or a newer share.
+    await persistShareToken(env, row.source_id, row.token_hash, token);
+  }
+  const current = await env.DB.prepare(
+    `SELECT expires_at FROM web_shares
+      WHERE source_id = ? AND object_key = ?
+        AND (token_hash = ? OR public_token = ?) AND expires_at > ?`,
+  )
+    .bind(row.source_id, row.object_key, tokenHash, token, Date.now())
+    .first();
+  if (!current) {
+    return notFoundPage();
+  }
+  return htmlResponse(renderSharePage(snapshot.title, snapshot.markdown, current.expires_at), 200);
 }
 
 async function putShare(request, env, sourceID) {
@@ -106,16 +121,17 @@ async function putShare(request, env, sourceID) {
   }
 
   await env.DB.prepare(
-    `INSERT INTO web_shares (source_id, token_hash, object_key, title, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO web_shares (source_id, token_hash, public_token, object_key, title, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source_id) DO UPDATE SET
        token_hash = excluded.token_hash,
+       public_token = excluded.public_token,
        object_key = excluded.object_key,
        title = excluded.title,
        created_at = excluded.created_at,
        expires_at = excluded.expires_at`,
   )
-    .bind(sourceID, tokenHash, objectKey, snapshot.title, now, expiresAt)
+    .bind(sourceID, tokenHash, token, objectKey, snapshot.title, now, expiresAt)
     .run();
 
   return shareJson({
@@ -124,18 +140,37 @@ async function putShare(request, env, sourceID) {
   });
 }
 
-async function getShareStatus(env, sourceID) {
-  const row = await env.DB.prepare(
-    `SELECT expires_at
+async function getShareStatus(request, env, sourceID) {
+  const read = () => env.DB.prepare(
+    `SELECT token_hash, public_token, expires_at
        FROM web_shares
       WHERE source_id = ?`,
   )
     .bind(sourceID)
     .first();
+  let row = await read();
   if (!row || row.expires_at <= Date.now()) {
     return shareJson({ active: false });
   }
-  return shareJson({ active: true, expiresAt: row.expires_at });
+  if (row.public_token == null) {
+    await persistShareToken(env, sourceID, row.token_hash, randomToken());
+    // Another GET, publication, or revocation may have won the conditional
+    // update. Return the persisted current state, never the candidate token.
+    row = await read();
+  }
+  if (!row || row.public_token == null || row.expires_at <= Date.now()) {
+    return shareJson({ active: false });
+  }
+  return shareJson({ active: true, url: `${new URL(request.url).origin}/s/${row.public_token}`, expiresAt: row.expires_at });
+}
+
+async function persistShareToken(env, sourceID, tokenHash, token) {
+  await env.DB.prepare(
+    `UPDATE web_shares SET public_token = ?
+      WHERE source_id = ? AND token_hash = ? AND public_token IS NULL AND expires_at > ?`,
+  )
+    .bind(token, sourceID, tokenHash, Date.now())
+    .run();
 }
 
 async function deleteShare(env, sourceID) {

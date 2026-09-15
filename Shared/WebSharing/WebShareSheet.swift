@@ -1,4 +1,5 @@
 import SwiftUI
+import Observation
 
 #if os(macOS)
 import AppKit
@@ -13,22 +14,18 @@ struct WebShareSheet: View {
     let openSyncSettings: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var isLoading = false
-    @State private var progressTitle = String(localized: "Checking web sharing...")
-    @State private var shareURL: URL?
-    @State private var expiresAt: Date?
-    @State private var isActive = false
-    @State private var statusIsKnown = false
-    @State private var message: String?
-    @State private var errorMessage: String?
-    @State private var copied = false
+    @State private var state = WebShareSheetState()
 
     var body: some View {
         NavigationStack {
-            WebShareSheetContent(isLoading: isLoading, progressTitle: progressTitle, shareURL: shareURL,
-                expiresAt: expiresAt, isActive: isActive, statusIsKnown: statusIsKnown, copied: copied,
-                message: message, errorMessage: errorMessage,
-                publish: publish, revoke: revoke, copy: copy, openSyncSettings: openSyncSettings)
+            WebShareSheetContent(isLoading: state.isLoading, progressTitle: state.progressTitle, shareURL: state.shareURL,
+                expiresAt: state.expiresAt, isActive: state.isActive, statusIsKnown: state.statusIsKnown, copied: state.copied,
+                message: state.message, errorMessage: state.errorMessage,
+                publish: {
+                    Task { await state.publish(sourceID: recording.id, title: recording.title, markdown: document.markdown, client: client) }
+                }, revoke: {
+                    Task { await state.revoke(sourceID: recording.id, client: client) }
+                }, copy: state.copy, openSyncSettings: openSyncSettings)
             .navigationTitle(String(localized: "Share to Web"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -39,83 +36,105 @@ struct WebShareSheet: View {
         #if os(macOS)
         .frame(width: 500, height: 500)
         #endif
-        .task(id: recording.id) {
-            await refreshStatus()
-        }
-    }
-
-    private func publish() {
-        guard statusIsKnown, !isActive, !isLoading else { return }
-        Task {
-            guard statusIsKnown, !isActive else { return }
-            await runSharingOperation(String(localized: "Creating web link...")) {
-                let publication = try await client().publish(
-                    sourceID: recording.id,
-                    title: recording.title,
-                    markdown: document.markdown
-                )
-                shareURL = publication.url
-                expiresAt = publication.expiresAt
-                isActive = true
-                copied = false
-                message = String(localized: "Web link created.")
-            }
-        }
-    }
-
-    private func revoke() {
-        Task {
-            await runSharingOperation(String(localized: "Revoking web link...")) {
-                try await client().revoke(sourceID: recording.id)
-                shareURL = nil
-                expiresAt = nil
-                isActive = false
-                copied = false
-                message = String(localized: "Web link revoked.")
-            }
-        }
-    }
-
-    private func refreshStatus() async {
-        await runSharingOperation(String(localized: "Checking web sharing...")) {
-            statusIsKnown = false
-            let status = try await client().status(sourceID: recording.id)
-            statusIsKnown = true
-            isActive = status.active
-            expiresAt = status.expiresAt
-            if !status.active {
-                shareURL = nil
-            }
-        }
-    }
-
-    private func runSharingOperation(_ title: String, _ operation: @escaping @MainActor () async throws -> Void) async {
-        guard !isLoading else { return }
-        progressTitle = title
-        isLoading = true
-        errorMessage = nil
-        message = nil
-        defer { isLoading = false }
-        do {
-            try await operation()
-        } catch {
-            errorMessage = userMessage(for: error)
+        .task(id: [recording.id.uuidString, syncSettings.endpoint, String(syncSettings.token.hashValue)]) {
+            await state.refresh(sourceID: recording.id, client: client)
         }
     }
 
     private func client() throws -> WebShareClient {
         WebShareClient(configuration: try syncSettings.connectionTestConfiguration())
     }
+}
 
-    private func copy(_ url: URL) {
+/// Only transient presentation state lives here. Every newly opened sheet reads
+/// its URL from the authenticated server, including after an app restart.
+@MainActor
+@Observable
+final class WebShareSheetState {
+    private(set) var isLoading = false
+    private(set) var progressTitle = String(localized: "Checking web sharing...")
+    private(set) var shareURL: URL?
+    private(set) var expiresAt: Date?
+    private(set) var isActive = false
+    private(set) var statusIsKnown = false
+    private(set) var message: String?
+    private(set) var errorMessage: String?
+    private(set) var copied = false
+    private var operationID = UUID()
+
+    func publish(sourceID: UUID, title: String, markdown: String, client: @escaping @MainActor () throws -> WebShareClient) async {
+        guard statusIsKnown, !isActive, !isLoading else { return }
+        await runSharingOperation(String(localized: "Creating web link...")) { id in
+            let publication = try await client().publish(sourceID: sourceID, title: title, markdown: markdown)
+            guard self.canApply(id) else { return }
+            self.shareURL = publication.url
+            self.expiresAt = publication.expiresAt
+            self.isActive = true
+            self.copied = false
+            self.message = String(localized: "Web link created.")
+        }
+    }
+
+    func revoke(sourceID: UUID, client: @escaping @MainActor () throws -> WebShareClient) async {
+        guard isActive, !isLoading else { return }
+        await runSharingOperation(String(localized: "Revoking web link...")) { id in
+            try await client().revoke(sourceID: sourceID)
+            guard self.canApply(id) else { return }
+            self.shareURL = nil
+            self.expiresAt = nil
+            self.isActive = false
+            self.statusIsKnown = true
+            self.copied = false
+            self.message = String(localized: "Web link revoked.")
+        }
+    }
+
+    func refresh(sourceID: UUID, client: @escaping @MainActor () throws -> WebShareClient) async {
+        await runSharingOperation(String(localized: "Checking web sharing..."), replacingCurrent: true) { id in
+            self.shareURL = nil
+            self.expiresAt = nil
+            self.isActive = false
+            self.statusIsKnown = false
+            self.copied = false
+            let status = try await client().status(sourceID: sourceID)
+            guard self.canApply(id) else { return }
+            self.shareURL = status.url
+            self.expiresAt = status.expiresAt
+            self.isActive = status.active
+            self.statusIsKnown = true
+        }
+    }
+
+    func copy(_ url: URL) {
         copied = WebShareClipboard.copy(url)
     }
 
-    private func userMessage(for error: Error) -> String {
-        if let localized = (error as? LocalizedError)?.errorDescription, !localized.isEmpty {
-            return localized
+    private func canApply(_ id: UUID) -> Bool {
+        operationID == id && !Task.isCancelled
+    }
+
+    private func runSharingOperation(_ title: String, replacingCurrent: Bool = false,
+        _ operation: @escaping @MainActor (UUID) async throws -> Void) async {
+        guard !isLoading || replacingCurrent else { return }
+        let id = UUID()
+        operationID = id
+        progressTitle = title
+        isLoading = true
+        errorMessage = nil
+        message = nil
+        defer { if operationID == id { isLoading = false } }
+        do {
+            try await operation(id)
+        } catch {
+            guard canApply(id) else { return }
+            if error as? WebShareError == .activeLinkURLUnavailable {
+                // Older servers confirm an active link but cannot return its URL.
+                // Keep cancellation available without creating a replacement.
+                isActive = true
+                statusIsKnown = true
+            }
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
-        return error.localizedDescription
     }
 }
 
@@ -158,14 +177,17 @@ struct WebShareSheetContent: View {
                             Text(expiresAt, format: .dateTime.month().day().hour().minute())
                         }
                     }
-                } else {
+                } else if statusIsKnown {
                     Label(String(localized: "No active web link."), systemImage: "link.badge.plus")
+                } else {
+                    Label(String(localized: "Sharing status could not be checked."), systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
                 }
 
                 if let shareURL {
                     copyableLink(shareURL)
                 } else if isActive {
-                    Text(String(localized: "The link address is shown only when it is created. You can still cancel sharing here."))
+                    Text(String(localized: "The active link address could not be restored. Update the sharing server, then reopen this window."))
                         .foregroundStyle(.secondary)
                 }
             }

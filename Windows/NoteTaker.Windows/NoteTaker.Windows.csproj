@@ -4,7 +4,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>AI-NoteTaker</AssemblyName>
     <RootNamespace>NoteTaker.Windows</RootNamespace>
-    <Version>0.3.1</Version>
+    <Version>0.3.2</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
