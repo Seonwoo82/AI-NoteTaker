@@ -13,13 +13,13 @@
 | 녹음 폴더 | 구현·저장·WPF 검증, 동기화 대기 | 생성/이름/삭제/이동/정렬/접기·펼치기, 삭제 시 오디오 보존, 선택·재생 유지, 재시작 후 지속. 폴더 내 녹음은 파일 입력을 사용한 WPF 캡처 흐름으로 검증. 드래그 실제 포인터 검증과 폴더 내 가져오기 UI 추가 검증 필요 |
 | 트레이·전역 단축키·자동 AI | 구현·Windows API·실제 AI 검증 | Shell 트레이 등록, 창 숨김/복원, 3개 키 등록/해제, HWND 단축키 메시지, 명시적 종료 확인. 파일 입력의 녹음 중 트레이 유지·pause/resume·폴더 유지, 자동 생성 off/키 실패/종료 제외, 실제 Whisper/Ollama 완료 확인. 실제 장치 장시간 트레이 녹음·물리 키 입력은 별도 |
 | 모델 선택·긴 회의 예산 | 일부 | 모델 목록 검색, 별도 보완 모델, 제공자 출력/문맥 상한과 분할 종합, 키 제거 시 선택 설정 보존 |
-| F-001 참여자 구분 | 미구현 | 실제 로컬 화자 모델, 첫 등장 순서의 안정적 라벨, 시간·근거 재생, 긴 목록 가상화, 실패 시 원문/회의록 유지 |
-| F-002 목소리 프로필·라이브 본인 표시 | 미구현 | 명시적 10–30초 등록, VAD/음량 품질·실패 시 기존 프로필 유지·재등록/삭제, 기기 로컬 저장, held-out 음성 비교 |
-| F-003 내 발화와 연속 재생 | 미구현 | 원본 구간 연속 재생, 녹음/등록 중 오디오 충돌 방지 |
-| F-004–006 약속/요청·질문/답변·결정 흐름 | 미구현 | 구조화 분석, 실재 발화 ID 검증, 상태와 근거 이동/재생, 잘못된 모델 응답 및 재분석 테스트 |
+| F-001 참여자 구분 | 부분 구현·실제 모델/WPF 검증 | Sherpa/3D-Speaker, 참여자 목록/미지정/인원 지정/수정 구현. 실제 ASR·모델·문서 보존 검증. 상세 단어 시각 조합, 한국어 실제 회의·장시간 정확도/성능, 화자 그룹 변경 후 재연결 필요 |
+| F-002 목소리 프로필·라이브 본인 표시 | 런타임 비교 검증, UI 미구현 | 512차원 3D-Speaker의 held-out 같은/다른 음성 및 무음·잡음 거부 검증. 명시적 10–30초 등록 UI, 기존 프로필 보존·재등록/삭제, 라이브 표시·재적용 필요 |
+| F-003 내 발화와 연속 재생 | 구현·PCM 단위 검증, 실제 청취 필요 | 내 발화 필터와 선택/전체 내 발화 이어듣기. 선택 프레임만 연결하는 제공자 테스트. 실제 출력 장치 청취와 등록 UI 오디오 충돌 연동 필요 |
+| F-004–006 약속/요청·질문/답변·결정 흐름 | 데이터 계약·근거 검증 구현, 분석/화면 미구현 | 구조화 모델 호출과 UI, 상태와 근거 이동/재생, 실제/잘못된 모델 응답 및 재분석 테스트 |
 | F-007 프로젝트 브리핑 | 미구현 | 이전 회의 결정/미완료 업무/미해결 질문 집계, 한 프로젝트 자동 선택, 원본 회의 이동 |
 | F-008 이름·별칭·역할·용어 | 미구현 | 편집 UI/저장/프롬프트 반영/원문 보존 주석 |
-| F-009 수동 수정 | 미구현 | 화자명·본인 표시·개별 발화·업무 상태·프로젝트 이력, 재분석 후 보존 |
+| F-009 수동 수정 | 화자 관련 UI/이력·재분석 보존 구현 | 화자명·본인 표시·개별 발화 수정. 업무 상태·프로젝트 이력의 데이터 계약 구현. 해당 UI와 전체 sync, 모델/화자 그룹 변화 시 재연결 검증 필요 |
 | 회의록 AI 보완·전사 정리 | 미구현 | 지시→미리보기→적용/버리기, 취소·동시 변경 보호, 번호/시간/숫자/발화 ID 보존, 원본 비교·자동 정리 실패 시 원문 사용 |
 | 회의록 목차 | 미구현 | 긴 문서의 제목 탐색 및 본문 위치 이동 |
 | 전체 Cloudflare 동기화 및 F-010 | 공유만 구현 | Apple wire schema 호환: M4A/metadata/folders/tombstones/notes/intelligence/edits/profile/AI preferences; hash·size·revision·atomic publication; offline outbox/retry/auto/manual/status |
@@ -35,9 +35,10 @@ Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은
 
 - 2026-09-16: 원격 main과 현재 HEAD가 일치함을 확인. 이전 질의 응답에서 API 구조와 서비스 한도를 검증했으며 구현 완료로 계산하지 않음. 전체 이식은 진행 중이다.
 - 2026-09-16: 집중 파형, 폴더 관리, 트레이·단축키·자동 생성 구현. [첫 이식 단계 검증](docs/implementation/FULL-PORT-STEP1.md). 화자/프로필/회의 분석/정리·보완/전체 동기화/최종 배포는 계속 미완료다.
+- 2026-09-16: 로컬 참여자 분석, 수동 수정 이력, 내 발화/정확한 PCM 이어듣기, 구조화 회의 계약 추가. 테스트 98 통과/5 하드웨어 건너뜀, 실제 Whisper+Sherpa WPF 및 포터블 EXE 검증. [두 번째 이식 단계 검증](docs/implementation/FULL-PORT-STEP2.md). 전체 범위는 아직 미완료다.
 
 ## 다음 단계 조사 메모
 
-- Apple 화자 런타임은 `Shared/MeetingIntelligence/LocalSpeakerBackend.swift`의 FluidAudio/Core ML이므로 Windows용 실행 엔진이 필요하다. Sherpa-ONNX의 공식 C# 오프라인 화자 구분과 speaker embedding API를 확인 중이다. NuGet `org.k2fsa.sherpa.onnx`의 현재 최신 인덱스는 1.13.8이며 패키지 repository commit은 `dc5583f49917e4c95f6e7d862bb378e4ed5e9076`이다. 아직 의존성을 추가하거나 화자 모델을 설치하지 않았다.
+- Windows 런타임은 NuGet `org.k2fsa.sherpa.onnx` 1.13.8, ONNX Runtime 1.28.2, Pyannote segmentation-3.0과 3D-Speaker ERes2Net-Base다. 512차원 모델 ID를 명시하며 Apple의 기기 로컬 음성 벡터와 상호 교환하지 않는다. 취소는 소유 worker 프로세스 종료로 처리한다.
 - 공식 예제: https://github.com/k2-fsa/sherpa-onnx/blob/master/dotnet-examples/offline-speaker-diarization/Program.cs . 바인딩 소스는 `scripts/dotnet/OfflineSpeakerDiarization.cs`, `OfflineSpeakerDiarizationConfig.cs`, `SpeakerEmbeddingExtractor.cs`에 있다. 모델·공개 다중 화자 WAV는 공식 `speaker-segmentation-models`, 임베딩은 `speaker-recongition-models` release에 있다.
-- 데이터 호환은 `Shared/MeetingIntelligence/MeetingContracts.swift`, `MeetingWorkspace.swift`, `MeetingProfile.swift`, `MeetingStorage.swift`를 기준으로 한다. transcript의 발화 ID/시작·끝/화자 ID, insights 근거 검증, append-only edits와 재분석 후 적용, 텍스트 프로필과 로컬 음성 프로필 분리를 함께 구현해야 한다. Windows JSON에 그대로 저장하는 것과 Apple/Worker wire 호환은 별도 검증 대상이다.
+- 다음은 상세 전사 시간 조합, 목소리 등록/라이브 본인 표시와 텍스트 프로필, 구조화 분석·프로젝트 UI다. `Shared/MeetingIntelligence/MeetingProfile.swift`, `OwnerVoiceManager.swift`, `OwnerAttribution.swift`, `TranscriptAssembler.swift`를 기준으로 한다. 이후 정리/보완·모델 선택·전체 동기화·최종 배포까지 이어간다. 현재 JSON 필드/검증 테스트는 실제 Apple/Worker 상호운용 증거와 별개다.

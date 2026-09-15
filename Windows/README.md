@@ -1,6 +1,8 @@
 # AI-NoteTaker for Windows · Preview 0.3
 
-현재 `codex/windows-complete-port` 소스에서는 최신 Apple 앱의 전체 기능을 이식하고 있습니다. **5분 집중 파형, 녹음 폴더, Windows 트레이·전역 단축키, 녹음 후 자동 회의록 생성**을 추가했습니다. 아래 기존 0.3 ZIP에는 이 개발 변경이 포함되지 않습니다. [전체 이식 상태](FULL-PORT-PLAN.md), [추가 기능 검증](docs/implementation/FULL-PORT-STEP1.md).
+현재 `codex/windows-complete-port` 소스에서는 최신 Apple 앱의 전체 기능을 이식하고 있습니다. **5분 집중 파형, 녹음 폴더, Windows 트레이·전역 단축키, 녹음 후 자동 회의록 생성, 로컬 참여자 분석과 수동 수정, 내 발화 이어듣기**를 추가했습니다. 아래 기존 0.3 ZIP에는 이 개발 변경이 포함되지 않습니다. [전체 이식 상태](FULL-PORT-PLAN.md), [기본 기능 검증](docs/implementation/FULL-PORT-STEP1.md), [참여자 기능 검증과 한계](docs/implementation/FULL-PORT-STEP2.md).
+
+API 키와 상품화 구조는 [현재 AI 처리 방식](docs/implementation/PRODUCT-AI-ARCHITECTURE.md)에 정리했습니다. 기본 로컬 처리에는 API 키가 필요 없으며, OpenRouter를 선택한 경우 현재는 사용자 키를 입력합니다. 일반 고객용 로그인·결제 서버는 별도 구현 영역입니다.
 
 Apple 앱의 컴포넌트 구성을 유지한 Windows 데스크톱 앱입니다. WPF 화면과 WASAPI 녹음 엔진을 사용합니다. 0.3에서는 **무료 로컬 전사·회의록**과 **클로바노트 파일 연동**을 추가했습니다. 원래 Swift 프로젝트는 그대로 유지됩니다.
 

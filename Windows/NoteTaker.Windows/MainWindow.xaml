@@ -99,6 +99,30 @@
        </TabControl>
       </Grid>
      </TabItem>
+     <TabItem Header="참여자">
+      <Grid Margin="24,16,24,20">
+       <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+       <StackPanel><TextBlock Text="참여자와 발화" FontSize="20" FontWeight="SemiBold" /><TextBlock Text="같은 목소리를 묶고, 발화 내용을 원본 녹음과 함께 확인합니다." Foreground="{DynamicResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap" /></StackPanel>
+       <WrapPanel Grid.Row="1" Margin="0,16,0,0">
+        <Button x:Name="AnalyzeParticipantsButton" Content="참여자 분석" Style="{StaticResource PrimaryButton}" Click="AnalyzeParticipants_Click" Margin="0,0,10,8" />
+        <ComboBox x:Name="ParticipantCount" SelectedIndex="0" Width="116" Margin="0,0,10,8" AutomationProperties.Name="참여자 수" ToolTip="자동 구분이 맞지 않으면 실제 참여자 수를 지정해 다시 분석하세요."><ComboBoxItem Content="인원 자동" /><ComboBoxItem Content="1명" /><ComboBoxItem Content="2명" /><ComboBoxItem Content="3명" /><ComboBoxItem Content="4명" /><ComboBoxItem Content="5명" /><ComboBoxItem Content="6명" /><ComboBoxItem Content="7명" /><ComboBoxItem Content="8명" /><ComboBoxItem Content="9명" /><ComboBoxItem Content="10명" /><ComboBoxItem Content="11명" /><ComboBoxItem Content="12명" /></ComboBox>
+        <Button x:Name="CancelParticipantAnalysisButton" Content="취소" Click="Cancel_Click" Visibility="Collapsed" Margin="0,0,0,8" />
+       </WrapPanel>
+       <TextBlock Grid.Row="2" x:Name="ParticipantsStatus" Foreground="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
+       <Grid Grid.Row="3" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <ComboBox x:Name="ParticipantFilter" DisplayMemberPath="Name" SelectionChanged="ParticipantFilter_Changed" MaxWidth="220" HorizontalAlignment="Left" MinWidth="140" AutomationProperties.Name="발화 필터" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal"><Button x:Name="PlayOwnTurnsButton" Content="내 발화 이어듣기" Click="PlayOwnTurns_Click" Margin="8,0,0,0" /><Button x:Name="StopTurnsButton" Content="듣기 종료" Click="StopTurns_Click" Margin="8,0,0,0" /></StackPanel>
+       </Grid>
+       <ListBox Grid.Row="4" x:Name="ParticipantTurns" BorderThickness="1" BorderBrush="{DynamicResource Separator}" Background="{DynamicResource CardSurface}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" SelectionChanged="ParticipantSelection_Changed" MouseDoubleClick="ParticipantTurn_DoubleClick" AutomationProperties.Name="참여자 발화 목록">
+        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource SidebarRow}"><Setter Property="Padding" Value="12" /></Style></ListBox.ItemContainerStyle>
+        <ListBox.ItemTemplate><DataTemplate><StackPanel><StackPanel Orientation="Horizontal"><TextBlock Text="{Binding Speaker}" FontWeight="SemiBold" /><TextBlock Text="{Binding Time}" FontFamily="Consolas" Opacity=".7" FontSize="11" Margin="12,1,0,0" /></StackPanel><TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,6,0,0" FontSize="13" /></StackPanel></DataTemplate></ListBox.ItemTemplate>
+       </ListBox>
+       <StackPanel Grid.Row="5" Margin="0,12,0,0"><WrapPanel><Button x:Name="PlayTurnButton" Content="선택 발화 듣기" Click="PlayTurn_Click" Margin="0,0,8,8" /><Button x:Name="AssignTurnButton" Content="발화의 참여자 변경…" Click="AssignTurn_Click" Margin="0,0,8,8" /></WrapPanel>
+        <WrapPanel><ComboBox x:Name="ParticipantPeople" DisplayMemberPath="Name" Width="165" Margin="0,0,8,8" SelectionChanged="ParticipantSelection_Changed" AutomationProperties.Name="수정할 참여자" /><Button x:Name="RenameParticipantButton" Content="이름 변경…" Click="RenameParticipant_Click" Margin="0,0,8,8" /><Button x:Name="MarkOwnerButton" Content="나로 표시 / 해제" Click="MarkOwner_Click" Margin="0,0,0,8" /></WrapPanel>
+        <TextBlock Text="여러 사람이 섞인 발화는 미지정으로 남습니다. 자동 구분 결과를 확인하고 수정해 주세요." TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="11" />
+       </StackPanel>
+      </Grid>
+     </TabItem>
     </TabControl>
     <Grid x:Name="RecordingPanel" Visibility="Collapsed" Margin="24,30,24,28">
      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>

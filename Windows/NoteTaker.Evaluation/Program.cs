@@ -3,6 +3,8 @@ using System.Text.Json;
 using NoteTaker.Core;
 
 if (args.Length == 3 && args[0] == "boundary") return await BoundaryChecks.RunAsync(args[1], args[2]);
+if (args.Length == 4 && args[0] == "speakers") return await SpeakerChecks.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]));
+if (args.Length == 4 && args[0] == "voice-check") return await SpeakerChecks.VoiceAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]));
 if (args.Length < 3)
 {
     Console.Error.WriteLine("Usage: NoteTaker.Evaluation <audio> <output-directory> <model-root> [whisper|qwen] [cpu] [no-summary]");

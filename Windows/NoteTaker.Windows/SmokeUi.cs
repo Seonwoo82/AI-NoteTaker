@@ -299,7 +299,7 @@ internal static class SmokeUi
             writer.WriteSamples(samples, 0, samples.Length);
         }
     }
-    private static async Task CaptureAsync(Window window, string path)
+    internal static async Task CaptureAsync(Window window, string path)
     {
         await window.Dispatcher.InvokeAsync(() => window.UpdateLayout(), DispatcherPriority.ContextIdle);
         var content = (FrameworkElement)window.Content;
@@ -310,7 +310,8 @@ internal static class SmokeUi
         if (content.ActualWidth <= 0 || content.ActualHeight <= 0) throw new InvalidOperationException("Window content was not laid out.");
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth), (int)Math.Ceiling(content.ActualHeight), 96, 96, PixelFormats.Pbgra32);
         var visual = new DrawingVisual();
-        using (var dc = visual.RenderOpen()) dc.DrawRectangle(new VisualBrush(content), null, new Rect(0, 0, content.ActualWidth, content.ActualHeight));
+        var bounds = new Rect(0, 0, content.ActualWidth, content.ActualHeight);
+        using (var dc = visual.RenderOpen()) dc.DrawRectangle(new VisualBrush(content) { ViewboxUnits = BrushMappingMode.Absolute, Viewbox = bounds }, null, bounds);
         bitmap.Render(visual);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var file = File.Create(path); encoder.Save(file);

@@ -158,7 +158,7 @@ public partial class MainWindow : Window
     private void SelectRecording(Recording? recording)
     {
         bool sameAudio = recording is not null && selected?.Id == recording.Id && selected.DurationSeconds == recording.DurationSeconds;
-        if (!sameAudio) { waveformCancellation?.Cancel(); player.Dispose(); playbackLoaded = false; }
+        if (!sameAudio) { StopTurnPlayback(); waveformCancellation?.Cancel(); player.Dispose(); playbackLoaded = false; }
         selected = recording; notes = null;
         if (!sameAudio) { PlaybackSlider.Peaks = []; PlaybackSlider.Position = 0; }
         if (recording is not null)
@@ -207,6 +207,7 @@ public partial class MainWindow : Window
             NotesPlaceholder.Visibility = Visibility.Visible;
             SetStatus(FriendlyError(ex), true);
         }
+        LoadParticipants(recording);
     }
 
     private void RefreshDevices()
@@ -318,7 +319,7 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException("마이크를 연결하고 장치 새로고침을 눌러 주세요.");
             if ((Mode is RecordingMode.SystemAudio or RecordingMode.Mixed) && outputId is null)
                 throw new InvalidOperationException("출력 장치를 연결하고 장치 새로고침을 눌러 주세요.");
-            player.Dispose(); playbackLoaded = false;
+            StopTurnPlayback(); player.Dispose(); playbackLoaded = false;
             activeRecording = new Recording { Title = $"회의 {DateTime.Now:MM월 dd일 HH:mm}", Mode = Mode, IsRecording = true, FolderId = folderStore.IsActive(selectedFolder) ? selectedFolder : null };
             library.Save(activeRecording);
             recorder = recordingFactory();
@@ -517,6 +518,7 @@ public partial class MainWindow : Window
     private void SeekTo(double position)
     {
         if (selected is null || recorder is not null) return;
+        StopTurnPlayback();
         try
         {
             EnsurePlaybackLoaded();
@@ -595,6 +597,7 @@ public partial class MainWindow : Window
         RecordingList.IsEnabled = SearchBox.IsEnabled = FilterBox.IsEnabled = runningWork is null && !transitioning;
         FolderTree.IsEnabled = CreateFolderButton.IsEnabled = idle && folderStore.LoadError is null;
         CancelButton.Visibility = runningWork is null ? Visibility.Collapsed : Visibility.Visible;
+        UpdateParticipantControls();
         UpdatePlayIcon();
     }
 
@@ -606,6 +609,7 @@ public partial class MainWindow : Window
 
     private async void Timer_Tick(object? sender, EventArgs e)
     {
+        AdvanceTurnPlayback();
         desktop?.Update(recorder is not null, recorder?.IsPaused == true, transitioning || runningWork is not null,
             recorder is null ? "" : Recording.FormatTime(recorder.DurationSeconds));
         if (recorder is not null)

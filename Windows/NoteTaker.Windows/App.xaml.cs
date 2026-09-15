@@ -19,6 +19,12 @@ public partial class App : Application
         SessionEnding += (_, _) => { if (MainWindow is NoteTaker.Windows.MainWindow window) window.RequestExit(); };
         try
         {
+            if (e.Args.Length == 4 && e.Args[0] == "--smoke-participants")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                await SmokeParticipants.RunAsync(Path.GetFullPath(e.Args[1]), Path.GetFullPath(e.Args[2]), Path.GetFullPath(e.Args[3]));
+                Shutdown(0); return;
+            }
             if (e.Args.Length is 4 or 5 && e.Args[0] == "--smoke-ai")
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;

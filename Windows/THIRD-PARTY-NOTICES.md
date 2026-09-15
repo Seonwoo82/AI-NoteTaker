@@ -47,3 +47,12 @@ The app ZIP does not include model weights, Ollama, or llama-server. The model-p
 - NVIDIA CUDA/cuBLAS/cuDNN redistributable libraries have NVIDIA terms, not the MIT license. These are downloaded with the official runtime archives when needed; retained vendor notices include `CUDNN_LICENSE.txt` in the Ollama distribution. See https://docs.nvidia.com/cuda/eula/ for CUDA terms.
 
 Downloaded third-party tools and weights are stored separately from recordings. Do not remove or relicense their publisher notices when redistributing them.
+
+## Windows speaker analysis
+
+- Sherpa-ONNX 1.13.8, copyright Xiaomi Corporation and contributors: Apache-2.0. Source: https://github.com/k2-fsa/sherpa-onnx/tree/dc5583f49917e4c95f6e7d862bb378e4ed5e9076 . Full license: `licenses/SHERPA-ONNX-LICENSE.txt`.
+- ONNX Runtime, copyright Microsoft Corporation: MIT. Full license and upstream third-party notices: `licenses/ONNXRUNTIME-LICENSE.txt` and `licenses/ONNXRUNTIME-ThirdPartyNotices.txt`. Source: https://github.com/microsoft/onnxruntime .
+- Pyannote segmentation-3.0, copyright CNRS (2022): MIT. The ONNX conversion distributed by Sherpa is downloaded separately with a pinned SHA-256. The release's license is reproduced in `licenses/PYANNOTE-SEGMENTATION-LICENSE.txt`. Original model: https://huggingface.co/pyannote/segmentation-3.0 . Conversion: https://github.com/k2-fsa/sherpa-onnx/tree/master/scripts/pyannote/segmentation .
+- 3D-Speaker ERes2Net-Base, Alibaba DAMO Academy / ModelScope: the publisher's model card specifies Apache License 2.0. Model: https://modelscope.cn/models/iic/speech_eres2net_base_sv_zh-cn_3dspeaker_16k . Code: https://github.com/modelscope/3D-Speaker . Full Apache-2.0 terms are reproduced in `licenses/SHERPA-ONNX-LICENSE.txt`. Sherpa's ONNX conversion is downloaded separately; this application does not modify the weights.
+
+Evaluation WAV files from the Sherpa releases are development fixtures and are not included in the app package. Speaker embeddings and enrollment material remain device-local and are not part of the shared meeting JSON.

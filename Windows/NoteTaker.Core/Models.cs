@@ -8,6 +8,7 @@ public sealed record Recording
 {
     public int SchemaVersion { get; init; } = 1;
     public Guid Id { get; init; } = Guid.NewGuid();
+    public int AudioVersion { get; init; } = 1;
     public string Title { get; init; } = "새 녹음";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
     public double DurationSeconds { get; init; }
