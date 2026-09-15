@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Focused waveform": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "확대 파형"
+          }
+        }
+      }
+    },
     "Cached speaker models are incomplete. Prepare voice models again.": {
       "extractionState": "manual",
       "localizations": {

@@ -5,6 +5,52 @@ import AVFAudio
 
 @Suite
 struct WaveformSamplerTests {
+    @Test("adaptive resolution rounds up seconds and bounds short or very long recordings")
+    func adaptiveResolutionIsBounded() {
+        #expect(WaveformSampler.defaultBucketCount(frameCount: 1, sampleRate: 48_000) == 96)
+        #expect(WaveformSampler.defaultBucketCount(frameCount: 96_001, sampleRate: 1_000) == 97)
+        #expect(WaveformSampler.defaultBucketCount(frameCount: 3_240_000, sampleRate: 1_000) == 3_240)
+        #expect(WaveformSampler.defaultBucketCount(frameCount: 86_400_001, sampleRate: 1_000) == 86_400)
+        #expect(WaveformSampler.defaultBucketCount(frameCount: .max, sampleRate: .leastNonzeroMagnitude) == 86_400)
+    }
+
+    @Test("invalid audio metadata cannot allocate a waveform")
+    func invalidAdaptiveMetadataIsRejected() {
+        for frameCount: Int64 in [0, -1] {
+            #expect(WaveformSampler.defaultBucketCount(frameCount: frameCount, sampleRate: 48_000) == 0)
+        }
+        for sampleRate: Double in [0, -1, .nan, .infinity] {
+            #expect(WaveformSampler.defaultBucketCount(frameCount: 48_000, sampleRate: sampleRate) == 0)
+        }
+    }
+
+    @Test("default sampling preserves adjacent seconds throughout a long recording")
+    func defaultSamplingPreservesLongRecordingDetail() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "long-waveform-\(UUID()).caf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1))
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8_000))
+        buffer.frameLength = 8_000
+        let channel = try #require(buffer.floatChannelData?[0])
+        for second in 0..<3_240 {
+            let amplitude: Float = second == 1_620 ? 0.8 : (second == 1_621 ? 0.2 : 0.1)
+            channel.update(repeating: amplitude, count: 8_000)
+            try file.write(from: buffer)
+        }
+        file.close()
+
+        let explicit = WaveformSampler.peaks(from: url, bucketCount: 96)
+        try #require(explicit.count == 96)
+        #expect(abs(explicit[48] - 0.8) < 0.001)
+        let adaptive = WaveformSampler.peaks(from: url)
+        try #require(adaptive.count == 3_240)
+        #expect(abs(adaptive[1_619] - 0.1) < 0.001)
+        #expect(abs(adaptive[1_620] - 0.8) < 0.001)
+        #expect(abs(adaptive[1_621] - 0.2) < 0.001)
+        #expect(abs(adaptive[1_622] - 0.1) < 0.001)
+    }
+
     @Test("waveform includes audio after the first two minutes")
     func waveformIncludesAudioAfterFirstTwoMinutes() throws {
         let url = FileManager.default.temporaryDirectory.appending(path: "waveform-\(UUID()).caf")

@@ -67,7 +67,8 @@ struct WaveformView: View {
                             guard let onSeek, duration > 0 else { return }
                             let ratio = min(1, max(0, value.location.x / max(1, proxy.size.width)))
                             onSeek(duration * ratio)
-                        }
+                        },
+                    including: onSeek == nil ? .none : .all
                 )
 
                 if prominence == .primary {
@@ -97,7 +98,7 @@ struct WaveformView: View {
     }
 
     private func drawWaveform(in size: CGSize, context: inout GraphicsContext) {
-        let drawingPeaks = peaks
+        let drawingPeaks = WaveformViewport.overviewPeaks(peaks)
         let barCount = drawingPeaks.count
         guard barCount > 0 else { return }
 
@@ -159,5 +160,66 @@ struct WaveformView: View {
 
     private var timelineMarks: WaveformTimelineMarks {
         WaveformTimelineMarks(duration: duration, currentTime: currentTime)
+    }
+}
+
+/// The upper waveform keeps the complete timeline; this strip follows a small
+/// neighborhood. GestureState resets even when a drag is cancelled.
+struct FocusedWaveformView: View {
+    let peaks: [Double]
+    let currentTime: TimeInterval
+    let duration: TimeInterval
+    let onSeek: (TimeInterval) -> Void
+    @GestureState private var dragViewport: WaveformViewport?
+
+    private var viewport: WaveformViewport {
+        dragViewport ?? WaveformViewport(duration: duration, currentTime: currentTime)
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            GeometryReader { proxy in
+                WaveformView(peaks: viewport.peaks(from: peaks),
+                    currentTime: viewport.position(of: currentTime) * viewport.duration,
+                    duration: viewport.duration, prominence: .overview)
+                    .contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: 0)
+                        .updating($dragViewport) { _, state, _ in
+                            if state == nil {
+                                state = WaveformViewport(duration: duration, currentTime: currentTime)
+                            }
+                        }
+                        .onChanged { value in
+                            guard duration.isFinite, duration > 0 else { return }
+                            onSeek(viewport.time(at: value.location.x / max(1, proxy.size.width)))
+                        })
+                    .accessibilityLabel(String(localized: "Focused waveform"))
+                    .accessibilityValue(DurationFormat.timer(currentTime, total: duration))
+                    .accessibilityAdjustableAction { direction in
+                        guard duration.isFinite, duration > 0 else { return }
+                        let current = currentTime.isFinite ? currentTime : 0
+                        switch direction {
+                        case .increment: onSeek(min(duration, max(0, current + 1)))
+                        case .decrement: onSeek(min(duration, max(0, current - 1)))
+                        @unknown default: break
+                        }
+                    }
+                    .accessibilityIdentifier("overview-waveform")
+            }
+            .frame(height: 30)
+
+            HStack {
+                Text(DurationFormat.list(viewport.start))
+                Spacer()
+                Text(DurationFormat.list(currentTime))
+                    .foregroundStyle(.blue)
+                Spacer()
+                Text(DurationFormat.list(viewport.end))
+            }
+            .font(.system(.caption, design: .monospaced))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(DurationFormat.list(currentTime)) / \(DurationFormat.list(duration))")
+            .accessibilityIdentifier("playback-time-label")
+        }
     }
 }
