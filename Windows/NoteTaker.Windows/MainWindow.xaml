@@ -23,6 +23,7 @@
    <Grid Background="{DynamicResource SidebarSurface}"><c:WindowControls HorizontalAlignment="Left" WindowChrome.IsHitTestVisibleInChrome="True" /><TextBlock Text="AI-NoteTaker" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" Margin="90,0,10,0" /></Grid>
    <TextBlock Grid.Column="1" x:Name="WindowSubtitle" Text="모든 녹음 항목" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="20,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0" WindowChrome.IsHitTestVisibleInChrome="True">
+    <Button x:Name="SyncButton" Click="Sync_Click" ToolTip="동기화 상태" AutomationProperties.Name="동기화 상태" Margin="0,0,8,0"><TextBlock x:Name="SyncIndicator" Text="동기화" /></Button>
     <Button x:Name="ProfileButton" Content="프로필" Click="Profile_Click" ToolTip="나의 이름·용어·목소리" Margin="0,0,8,0" />
     <Button x:Name="ImportButton" Style="{StaticResource ToolbarButton}" Click="Import_Click" ToolTip="오디오 가져오기 (Ctrl+O)" AutomationProperties.Name="오디오 가져오기"><c:AppleIcon Kind="import" Width="18" Height="18" /></Button>
     <Button Style="{StaticResource ToolbarButton}" Click="OpenFolder_Click" ToolTip="저장 폴더 보기" AutomationProperties.Name="저장 폴더 보기"><c:AppleIcon Kind="folder" Width="18" Height="18" /></Button>
@@ -160,6 +161,19 @@
    </Grid>
   </Grid>
   <Border Grid.Row="2" Background="{DynamicResource ToolbarSurface}" BorderBrush="{DynamicResource Separator}" BorderThickness="0,1,0,0" Padding="12,5"><TextBlock x:Name="StatusText" Text="준비됨" Foreground="{DynamicResource Muted}" FontSize="10" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" /></Border>
+  <Popup x:Name="SyncPopup" PlacementTarget="{Binding ElementName=SyncButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True">
+   <Border Style="{StaticResource SettingsCard}" Width="370" Padding="20"><StackPanel>
+    <TextBlock Text="기기 간 동기화" FontSize="17" FontWeight="SemiBold" />
+    <TextBlock x:Name="SyncServerText" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,14" />
+    <TextBlock x:Name="SyncStatusText" FontWeight="SemiBold" TextWrapping="Wrap" />
+    <TextBlock x:Name="SyncModeText" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,8,0,0" />
+    <TextBlock x:Name="SyncLastText" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,6,0,0" />
+    <TextBlock x:Name="SyncPendingText" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,6,0,0" />
+    <TextBlock x:Name="SyncIssuesText" FontSize="11" Foreground="{DynamicResource RecordRed}" TextWrapping="Wrap" MaxHeight="150" Margin="0,12,0,0" />
+    <TextBlock x:Name="SyncKeyText" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,14,0,0" />
+    <WrapPanel Margin="0,18,0,0"><Button x:Name="SyncNowButton" Content="지금 동기화" Click="SyncNow_Click" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" /><Button x:Name="CancelSyncButton" Content="중단" Click="CancelSync_Click" Margin="0,0,8,0" Visibility="Collapsed" /><Button x:Name="SyncSettingsButton" Content="설정…" Click="SyncSettings_Click" /></WrapPanel>
+   </StackPanel></Border>
+  </Popup>
   <Popup x:Name="CapturePopup" PlacementTarget="{Binding ElementName=RecordOptionsButton}" Placement="Right" AllowsTransparency="True" StaysOpen="False" Opened="CapturePopup_Opened">
    <Border Style="{StaticResource SettingsCard}" Width="300" Margin="8" Padding="18"><StackPanel x:Name="CaptureOptions">
     <TextBlock Text="녹음 설정" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,15" />

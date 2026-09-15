@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Shell;
+using System.Net.Http;
 using NoteTaker.Windows.Components;
 using NoteTaker.Core;
 
@@ -9,11 +10,13 @@ namespace NoteTaker.Windows;
 public partial class SettingsWindow : Window
 {
     private readonly string libraryRoot;
+    private readonly Func<SyncConfiguration, HttpMessageHandler>? syncHandlerFactory;
     private CancellationTokenSource? preparation;
     private bool initialized, closeAfterPreparation;
     public AppSettings Result { get; private set; }
-    public SettingsWindow(AppSettings settings, string? root = null)
+    public SettingsWindow(AppSettings settings, string? root = null, Func<SyncConfiguration, HttpMessageHandler>? syncHandlerFactory = null)
     {
+        this.syncHandlerFactory = syncHandlerFactory;
         libraryRoot = root ?? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AI-NoteTaker");
         Result = settings;
         InitializeComponent();
@@ -24,6 +27,7 @@ public partial class SettingsWindow : Window
         KeyHint.Text = settings.ProtectedApiKey is null ? "키는 현재 Windows 계정으로 암호화해 저장합니다." : "저장된 키가 있습니다. 빈칸으로 두면 기존 키를 유지합니다.";
         KeyStatus.Text = settings.ProtectedApiKey is null ? "미설정" : "저장됨";
         SharingUrlBox.Text = settings.SharingServerUrl;
+        AutomaticSyncBox.IsChecked = settings.AutomaticSyncEnabled;
         SharingTokenHint.Text = settings.ProtectedSharingSyncToken is null ? "토큰은 현재 Windows 계정으로 암호화해 저장합니다." : "저장된 토큰이 있습니다. 빈칸으로 두면 기존 토큰을 유지합니다.";
         SharingTokenStatus.Text = settings.ProtectedSharingSyncToken is null ? "미설정" : "저장됨";
         TranscriptionProviderBox.SelectedIndex = settings.TranscriptionProvider == "openrouter" ? 1 : settings.TranscriptionProvider == "qwen" ? 2 : 0;
@@ -80,6 +84,7 @@ public partial class SettingsWindow : Window
         if (preparation is not null) return;
         var settings = ReadSelection();
         preparation = new(); PrepareLocalButton.IsEnabled = SaveSettingsButton.IsEnabled = false;
+        TestSyncButton.IsEnabled = false;
         TranscriptionProviderBox.IsEnabled = SummaryProviderBox.IsEnabled = false;
         QwenAsrModelBox.IsEnabled = SpeechLanguageBox.IsEnabled = UseGpuBox.IsEnabled = LocalSummaryBox.IsEnabled = LocalEnhancementBox.IsEnabled = OllamaAddressBox.IsEnabled = false;
         CancelPreparationButton.Visibility = Visibility.Visible;
@@ -100,12 +105,47 @@ public partial class SettingsWindow : Window
         {
             preparation.Dispose(); preparation = null;
             PrepareLocalButton.IsEnabled = SaveSettingsButton.IsEnabled = TranscriptionProviderBox.IsEnabled = SummaryProviderBox.IsEnabled = true;
+            TestSyncButton.IsEnabled = true;
             CancelPreparationButton.Visibility = Visibility.Collapsed;
             QwenAsrModelBox.IsEnabled = true; UpdateProviders();
             if (closeAfterPreparation) Close();
         }
     }
     private void CancelPreparation_Click(object sender, RoutedEventArgs e) => preparation?.Cancel();
+    internal void ShowSyncSettings()
+    {
+        SettingsScroll.UpdateLayout(); SharingUrlBox.Focus();
+        double top = SyncSettingsHeading.TranslatePoint(new Point(0, 0), (UIElement)SettingsScroll.Content).Y;
+        SettingsScroll.ScrollToVerticalOffset(Math.Max(0, top - 18));
+    }
+    internal Task LastConnectionTest { get; private set; } = Task.CompletedTask;
+    private async void TestSync_Click(object sender, RoutedEventArgs e) { LastConnectionTest = TestSyncAsync(); await LastConnectionTest; }
+    private async Task TestSyncAsync()
+    {
+        if (preparation is not null) return;
+        preparation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        TestSyncButton.IsEnabled = PrepareLocalButton.IsEnabled = SaveSettingsButton.IsEnabled = false;
+        SyncConnectionStatus.Text = "서버 연결을 확인하는 중…";
+        CancelSyncTestButton.Visibility = Visibility.Visible;
+        try
+        {
+            string token = DeleteSharingTokenBox.IsChecked == true ? "" : string.IsNullOrWhiteSpace(SharingTokenBox.Password) ? SettingsStore.ReadSharingToken(Result) : SharingTokenBox.Password;
+            var configuration = new SyncConfiguration(SharingUrlBox.Text, token);
+            using var transport = new SyncTransport(configuration, syncHandlerFactory?.Invoke(configuration));
+            await transport.HealthAsync(preparation.Token);
+            SyncConnectionStatus.Text = "연결 확인 완료. 설정을 저장한 뒤 동기화를 실행하세요.";
+        }
+        catch (OperationCanceledException) { SyncConnectionStatus.Text = "연결 확인을 중단했거나 30초 제한을 넘었습니다."; }
+        catch (SyncHttpException ex) { SyncConnectionStatus.Text = ex.Message; }
+        catch (Exception) { SyncConnectionStatus.Text = "연결하지 못했습니다. HTTPS 서버 주소와 토큰을 확인해 주세요."; }
+        finally
+        {
+            preparation.Dispose(); preparation = null;
+            TestSyncButton.IsEnabled = PrepareLocalButton.IsEnabled = SaveSettingsButton.IsEnabled = true;
+            CancelSyncTestButton.Visibility = Visibility.Collapsed;
+            if (closeAfterPreparation) Close();
+        }
+    }
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         string model = SummaryModelBox.Text.Trim(), transcription = TranscriptionModelBox.Text.Trim(), enhancement = EnhancementModelBox.Text.Trim();
@@ -116,9 +156,10 @@ public partial class SettingsWindow : Window
             var selected = ReadSelection();
             if (selected.SummaryProvider == "ollama") _ = OllamaSummarizer.LocalAddress(selected.OllamaAddress);
             string sharingUrl = SharingUrlBox.Text.Trim();
-            if (sharingUrl.Length > 0 && (!Uri.TryCreate(sharingUrl, UriKind.Absolute, out var shareUri) || shareUri.Scheme != Uri.UriSchemeHttps ||
-                !string.IsNullOrEmpty(shareUri.UserInfo) || !string.IsNullOrEmpty(shareUri.Query) || !string.IsNullOrEmpty(shareUri.Fragment)))
-            { ErrorText.Text = "웹 공유 서버 주소는 https:// 호스트만 입력해 주세요."; return; }
+            if (sharingUrl.Length > 0) sharingUrl = new SyncConfiguration(sharingUrl, "validation-only").Endpoint.GetLeftPart(UriPartial.Authority);
+            string? protectedToken = DeleteSharingTokenBox.IsChecked == true ? null : string.IsNullOrWhiteSpace(SharingTokenBox.Password)
+                ? Result.ProtectedSharingSyncToken : SettingsStore.ProtectKey(SharingTokenBox.Password);
+            if (AutomaticSyncBox.IsChecked == true) _ = new SyncConfiguration(sharingUrl, SettingsStore.ReadSharingToken(Result with { ProtectedSharingSyncToken = protectedToken }));
             Result = selected with
             {
                 SummaryModel = model, TranscriptionModel = transcription, EnhancementModel = enhancement,
@@ -127,8 +168,8 @@ public partial class SettingsWindow : Window
                 ProtectedApiKey = DeleteKeyBox.IsChecked == true ? null : string.IsNullOrWhiteSpace(ApiKeyBox.Password)
                     ? Result.ProtectedApiKey : SettingsStore.ProtectKey(ApiKeyBox.Password),
                 SharingServerUrl = sharingUrl,
-                ProtectedSharingSyncToken = DeleteSharingTokenBox.IsChecked == true ? null : string.IsNullOrWhiteSpace(SharingTokenBox.Password)
-                    ? Result.ProtectedSharingSyncToken : SettingsStore.ProtectKey(SharingTokenBox.Password)
+                ProtectedSharingSyncToken = protectedToken,
+                AutomaticSyncEnabled = AutomaticSyncBox.IsChecked == true
             };
             ApiKeyBox.Clear(); SharingTokenBox.Clear(); DialogResult = true;
         }

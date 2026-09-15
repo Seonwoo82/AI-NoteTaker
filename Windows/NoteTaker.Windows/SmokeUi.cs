@@ -305,7 +305,7 @@ internal static class SmokeUi
         var content = (FrameworkElement)window.Content;
         SaveImage(content, path);
     }
-    private static void SaveImage(FrameworkElement content, string path)
+    internal static void SaveImage(FrameworkElement content, string path)
     {
         if (content.ActualWidth <= 0 || content.ActualHeight <= 0) throw new InvalidOperationException("Window content was not laid out.");
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth), (int)Math.Ceiling(content.ActualHeight), 96, 96, PixelFormats.Pbgra32);

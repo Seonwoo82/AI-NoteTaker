@@ -7,7 +7,7 @@
  <Border Background="{DynamicResource WindowSurface}" BorderBrush="{DynamicResource Separator}" BorderThickness="1" CornerRadius="10">
  <Grid><Grid.RowDefinitions><RowDefinition Height="44" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
   <Grid Background="{DynamicResource ToolbarSurface}"><c:WindowControls HorizontalAlignment="Left" WindowChrome.IsHitTestVisibleInChrome="True" /><TextBlock Text="AI 회의록" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid>
-  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+  <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
    <StackPanel Margin="24" MaxWidth="560">
     <StackPanel Orientation="Horizontal"><c:AppleIcon Kind="sparkles" Width="24" Height="24" Margin="0,0,8,0" /><TextBlock Text="AI 회의록" FontSize="22" FontWeight="SemiBold" /></StackPanel>
     <TextBlock Text="음성을 글로 바꾸는 전사와 회의록 정리를 각각 선택합니다." Foreground="{DynamicResource Muted}" Margin="0,6,0,20" />
@@ -52,12 +52,16 @@
      <TextBlock Text="전사 모델은 audio/transcriptions를 지원해야 합니다." Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,8,0,0" />
     </StackPanel></Border>
     <Border Style="{StaticResource SettingsCard}" Margin="0,0,0,16"><StackPanel>
-     <Grid><StackPanel Orientation="Horizontal"><c:AppleIcon Kind="link" Width="16" Height="16" Margin="0,0,7,0" /><TextBlock Text="웹 공유" FontWeight="SemiBold" FontSize="13" /></StackPanel><Border Background="{DynamicResource SegmentSurface}" CornerRadius="9" Padding="7,2" HorizontalAlignment="Right"><TextBlock x:Name="SharingTokenStatus" Text="미설정" FontSize="10" Foreground="{DynamicResource Muted}" /></Border></Grid>
-     <TextBlock Text="개인 Cloudflare 배포의 HTTPS 주소와 SYNC_TOKEN을 입력합니다. OpenRouter 키와 별도로 저장하며, 회의록 공유에만 사용합니다." Foreground="{DynamicResource Muted}" LineHeight="19" FontSize="11" Margin="0,9,0,12" />
+     <Grid x:Name="SyncSettingsHeading"><StackPanel Orientation="Horizontal"><c:AppleIcon Kind="link" Width="16" Height="16" Margin="0,0,7,0" /><TextBlock Text="동기화와 웹 공유" FontWeight="SemiBold" FontSize="13" /></StackPanel><Border Background="{DynamicResource SegmentSurface}" CornerRadius="9" Padding="7,2" HorizontalAlignment="Right"><TextBlock x:Name="SharingTokenStatus" Text="미설정" FontSize="10" Foreground="{DynamicResource Muted}" /></Border></Grid>
+     <TextBlock Text="같은 라이브러리를 사용할 기기에 서버 주소와 접속 토큰을 입력합니다. 동기화를 실행하면 녹음·회의록·프로필·AI 설정이 이 서버로 전송됩니다. 웹 공유는 회의록에서 별도로 실행합니다." Foreground="{DynamicResource Muted}" LineHeight="19" FontSize="11" Margin="0,9,0,12" />
      <TextBlock Text="공유 서버 주소" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,0,0,5" /><TextBox x:Name="SharingUrlBox" AutomationProperties.Name="웹 공유 서버 주소" />
      <TextBlock Text="SYNC_TOKEN" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,13,0,5" /><PasswordBox x:Name="SharingTokenBox" AutomationProperties.Name="웹 공유 동기화 토큰" />
      <TextBlock x:Name="SharingTokenHint" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,8,0,12" />
      <CheckBox x:Name="DeleteSharingTokenBox" Content="저장된 웹 공유 토큰 삭제" />
+     <CheckBox x:Name="AutomaticSyncBox" Content="기기 간 자동 동기화" Margin="0,14,0,8" AutomationProperties.Name="기기 간 자동 동기화" />
+     <TextBlock Text="앱이 실행 중일 때 약 30초마다 확인합니다. 녹음·재생·AI 처리·설정 편집이 끝난 뒤 실행하고 연결 실패 시 재시도 간격을 늘립니다." FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" />
+     <WrapPanel Margin="0,12,0,0"><Button x:Name="TestSyncButton" Content="연결 확인" Click="TestSync_Click" /><Button x:Name="CancelSyncTestButton" Content="중단" Click="CancelPreparation_Click" Margin="8,0,0,0" Visibility="Collapsed" /></WrapPanel>
+     <TextBlock x:Name="SyncConnectionStatus" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0" />
     </StackPanel></Border>
     <Border Style="{StaticResource SettingsCard}" Margin="0,0,0,16"><StackPanel>
      <TextBlock Text="녹음과 백그라운드 실행" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />

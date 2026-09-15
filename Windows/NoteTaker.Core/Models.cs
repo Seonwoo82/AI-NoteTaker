@@ -53,6 +53,7 @@ public sealed record AppSettings
     public string? ProtectedApiKey { get; init; }
     public string SharingServerUrl { get; init; } = "";
     public string? ProtectedSharingSyncToken { get; init; }
+    public bool AutomaticSyncEnabled { get; init; }
     public bool KeepRunningInTray { get; init; } = true;
     public bool EnableGlobalShortcuts { get; init; }
     public bool AutoGenerate { get; init; }

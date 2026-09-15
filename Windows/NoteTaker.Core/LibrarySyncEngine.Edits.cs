@@ -6,9 +6,11 @@ public sealed partial class LibrarySyncEngine
 {
     private string EditInbox => Path.Combine(Path.GetDirectoryName(state.Path)!, "edits-inbox.json");
     private List<SyncEditEntry> ReadInbox()
+        => ReadInbox(EditInbox);
+    private static List<SyncEditEntry> ReadInbox(string editInbox)
     {
-        if (File.Exists(EditInbox) && new FileInfo(EditInbox).Length > 32 * 1024 * 1024) throw new InvalidDataException("수정 이력 수신함이 너무 큽니다.");
-        var entries = JsonDisk.Read<List<SyncEditEntry>>(EditInbox) ?? [];
+        if (File.Exists(editInbox) && new FileInfo(editInbox).Length > 32 * 1024 * 1024) throw new InvalidDataException("수정 이력 수신함이 너무 큽니다.");
+        var entries = JsonDisk.Read<List<SyncEditEntry>>(editInbox) ?? [];
         if (entries.Any(e => e?.Edit is null || e.Sequence is <= 0 or > 9007199254740991) || entries.Select(e => e.Edit.Id).Distinct().Count() != entries.Count)
             throw new InvalidDataException("저장된 수정 이력 수신함이 올바르지 않습니다.");
         foreach (var entry in entries) entry.Edit.Validate(); return entries;

@@ -119,6 +119,7 @@ public partial class MainWindow
     }
     private void SaveMeetingEdit(string kind, string target, string value, Recording? sourceRecording = null)
     {
+        if (runningWork is not null || recorder is not null || transitioning || closePending || exitRequested) return;
         var recording = sourceRecording ?? selected; if (recording is null) return;
         try { new MeetingWorkspaceStore(library).Append(recording, kind, target, value); if (selected?.Id == recording.Id) LoadParticipants(recording); else RefreshBriefing(); SetStatus("수정했습니다. 다시 분석해도 수정 이력은 보존됩니다."); }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }

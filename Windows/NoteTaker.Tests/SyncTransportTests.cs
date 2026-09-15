@@ -102,6 +102,22 @@ public sealed class SyncTransportTests
         Assert.Equal(before, File.ReadAllBytes(source));
     }
 }
+public sealed class SyncSpeechAudioTests
+{
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SpeechRateMonoAudioCanBeExchangedWithoutChangingTheOriginal(bool longPath)
+    {
+        using var test = new TestFolder(); string folder = longPath ? Path.Combine(test.Root, new string('a', 100), new string('b', 100), "한글 녹음 폴더") : test.Root; Directory.CreateDirectory(folder);
+        string source = Path.Combine(folder, "speech.wav"), target = Path.Combine(folder, "speech.m4a"), decoded = Path.Combine(folder, "decoded.wav");
+        using (var writer = new NAudio.Wave.WaveFileWriter(source, new NAudio.Wave.WaveFormat(16000, 16, 1))) writer.Write(new byte[32000]);
+        var original = File.ReadAllBytes(source);
+        await SyncAudio.EncodeAsync(source, target, default);
+        double duration = await SyncAudio.DecodeAsync(target, decoded, default);
+        Assert.InRange(duration, .9, 1.2); Assert.Equal(original, File.ReadAllBytes(source));
+    }
+}
 internal sealed class LocalSyncServer(Process process, int port) : IDisposable
 {
     public static async Task<LocalSyncServer> StartAsync(string root)

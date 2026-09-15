@@ -11,6 +11,10 @@ public static class AudioFiles
     public static double ConvertToWave(string source, string destination, CancellationToken token)
     {
         using var reader = new AudioFileReader(source);
+        return ConvertToWave(reader, destination, token);
+    }
+    internal static double ConvertToWave(IWaveProvider reader, string destination, CancellationToken token)
+    {
         using var converter = new MediaFoundationResampler(reader, RecordingFormat) { ResamplerQuality = 60 };
         using var writer = new WaveFileWriter(destination, RecordingFormat);
         var buffer = new byte[RecordingFormat.AverageBytesPerSecond];

@@ -5,6 +5,7 @@ namespace NoteTaker.Core;
 
 public sealed record SyncIssue(string Item, string Message);
 public sealed record LibrarySyncResult(int Uploaded, int Downloaded, int Pending, IReadOnlyList<SyncIssue> Issues, bool OtherDevicesHaveApiKey = false);
+public sealed record LibrarySyncStatus(DateTimeOffset? LastCompletedAt, int Pending, bool OtherDevicesHaveApiKey, IReadOnlyList<SyncIssue> Issues);
 internal sealed record SyncAudioIdentity(int AudioVersion, string WavHash, string M4aHash, string M4aPath);
 
 /// <summary>Library metadata/audio/folder reconciliation. Document and settings phases attach to the same durable state.</summary>
@@ -20,6 +21,16 @@ public sealed partial class LibrarySyncEngine : IDisposable
     public LibrarySyncEngine(LibraryStore library, SyncConfiguration configuration, HttpMessageHandler? handler = null)
     {
         this.library = library; this.configuration = configuration; transport = new(configuration, handler);
+    }
+    public static LibrarySyncStatus ReadStatus(string root, Uri endpoint)
+    {
+        lock (JsonDisk.Gate)
+        {
+            var store = new SyncStateStore(root, endpoint);
+            int inbox = ReadInbox(Path.Combine(Path.GetDirectoryName(store.Path)!, "edits-inbox.json")).Count;
+            return new(store.State.LastCompletedAt, store.State.Pending.Count + inbox, store.State.OtherDevicesHaveApiKey,
+                store.State.Pending.Where(p => p.Value.Error is not null).Select(p => new SyncIssue(p.Key, p.Value.Error!)).ToArray());
+        }
     }
     public async Task<LibrarySyncResult> RunAsync(IProgress<string>? progress = null, CancellationToken token = default, bool force = true)
     {

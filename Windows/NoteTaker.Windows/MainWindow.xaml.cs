@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -43,9 +44,10 @@ public partial class MainWindow : Window
     private bool exitRequested;
     internal DesktopIntegration? Desktop => desktop;
 
-    public MainWindow(LibraryStore library, bool discoverDevices = true, string? aiModelRoot = null, bool enableDesktopIntegration = true, Func<IRecordingSession>? recordingFactory = null)
+    public MainWindow(LibraryStore library, bool discoverDevices = true, string? aiModelRoot = null, bool enableDesktopIntegration = true, Func<IRecordingSession>? recordingFactory = null, Func<SyncConfiguration, HttpMessageHandler>? syncHandlerFactory = null)
     {
         this.library = library;
+        this.syncHandlerFactory = syncHandlerFactory;
         this.recordingFactory = recordingFactory ?? (() => new AudioRecorder());
         this.aiModelRoot = aiModelRoot ?? library.Root;
         settingsStore = new SettingsStore(library.Root);
@@ -58,6 +60,7 @@ public partial class MainWindow : Window
         loaded = true;
         if (discoverDevices) RefreshDevices();
         ReloadLibrary();
+        ReadSyncStatus();
         timer.Tick += Timer_Tick;
         timer.Start();
         UpdateControls();
@@ -97,7 +100,7 @@ public partial class MainWindow : Window
 
     private async Task RunWorkAsync(Func<CancellationToken, Task> action)
     {
-        if (runningWork is not null || recorder is not null || transitioning) return;
+        if (runningWork is not null || recorder is not null || transitioning || closePending || exitRequested) return;
         workCancellation = new CancellationTokenSource();
         LastWorkError = null;
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -110,6 +113,7 @@ public partial class MainWindow : Window
         {
             workCancellation.Dispose(); workCancellation = null;
             runningWork = null;
+            if (!syncing) RequestAutomaticSync();
             UpdateControls(); completion.SetResult();
         }
     }
@@ -158,7 +162,7 @@ public partial class MainWindow : Window
 
     private void SelectRecording(Recording? recording)
     {
-        bool sameAudio = recording is not null && selected?.Id == recording.Id && selected.DurationSeconds == recording.DurationSeconds;
+        bool sameAudio = recording is not null && selected?.Id == recording.Id && selected.AudioVersion == recording.AudioVersion && selected.DurationSeconds == recording.DurationSeconds;
         if (!sameAudio) { StopTurnPlayback(); waveformCancellation?.Cancel(); player.Dispose(); playbackLoaded = false; }
         selected = recording; notes = null;
         if (!sameAudio) { PlaybackSlider.Peaks = []; PlaybackSlider.Position = 0; }
@@ -310,6 +314,7 @@ public partial class MainWindow : Window
 
     private async void Record_Click(object sender, RoutedEventArgs e)
     {
+        if (!await StopSyncForForegroundAsync()) return;
         if (recorder is not null || transitioning || runningWork is not null || ModalOperationOpen) return;
         transitioning = true; UpdateControls();
         CapturePopup.IsOpen = false;
@@ -494,14 +499,19 @@ public partial class MainWindow : Window
         });
     }
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
+    private void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings(false);
+    private async void OpenSettings(bool showSync)
     {
+        if (!await StopSyncForForegroundAsync() || recorder is not null || transitioning || runningWork is not null || ModalOperationOpen) return;
         try
         {
-            var dialog = new SettingsWindow(settings, aiModelRoot) { Owner = this };
+            settings = settingsStore.Load();
+            var dialog = new SettingsWindow(settings, aiModelRoot, syncHandlerFactory) { Owner = this };
+            if (showSync) dialog.Loaded += (_, _) => dialog.ShowSyncSettings();
             if (dialog.ShowDialog() != true) return;
             settingsStore.Save(dialog.Result);
-            settings = dialog.Result;
+            settings = settingsStore.Load();
+            LastSyncResult = null; syncSchedule.Reset(); ReadSyncStatus();
             desktop?.ConfigureShortcuts(settings.EnableGlobalShortcuts);
             SetStatus("AI 설정을 이 Windows 계정에 저장했습니다.");
             if (desktop?.ShortcutWarning is not null) SetStatus(desktop.ShortcutWarning, true);
@@ -548,7 +558,7 @@ public partial class MainWindow : Window
 
     private bool SaveEdit(Recording changed)
     {
-        try { library.Save(changed); ReloadLibrary(changed.Id); return true; }
+        try { library.Save(changed); ReloadLibrary(changed.Id); RequestAutomaticSync(); return true; }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); return false; }
     }
     private void Favorite_Click(object sender, RoutedEventArgs e) { if (selected is not null) SaveEdit(selected with { IsFavorite = !selected.IsFavorite }); }
@@ -594,6 +604,7 @@ public partial class MainWindow : Window
         bool idle = recorder is null && !transitioning && runningWork is null && !ModalOperationOpen;
         ProfileButton.IsEnabled = idle;
         RecordButton.IsEnabled = RecordOptionsButton.IsEnabled = CaptureOptions.IsEnabled = RefreshDevicesButton.IsEnabled = ImportButton.IsEnabled = SettingsButton.IsEnabled = idle;
+        if (syncing && !syncForegroundPending && !closePending && !exitRequested) RecordButton.IsEnabled = SettingsButton.IsEnabled = true;
         CaptureModeLabel.Text = RecordingModeLabel.Text = Mode switch { RecordingMode.Microphone => "마이크만", RecordingMode.SystemAudio => "시스템 오디오만", _ => "마이크 + 시스템" };
         MicRail.Visibility = Mode == RecordingMode.SystemAudio ? Visibility.Collapsed : Visibility.Visible;
         SystemRail.Visibility = Mode == RecordingMode.Microphone ? Visibility.Collapsed : Visibility.Visible;
@@ -619,6 +630,7 @@ public partial class MainWindow : Window
         CancelButton.Visibility = runningWork is null ? Visibility.Collapsed : Visibility.Visible;
         UpdateParticipantControls();
         UpdatePlayIcon();
+        UpdateSyncControls();
     }
 
     private void UpdatePlayIcon()
@@ -630,7 +642,7 @@ public partial class MainWindow : Window
     private async void Timer_Tick(object? sender, EventArgs e)
     {
         AdvanceTurnPlayback();
-        desktop?.Update(recorder is not null, recorder?.IsPaused == true, transitioning || runningWork is not null,
+        desktop?.Update(recorder is not null, recorder?.IsPaused == true, transitioning || runningWork is not null && !syncing,
             recorder is null ? "" : Recording.FormatTime(recorder.DurationSeconds));
         if (recorder is not null)
         {
@@ -649,6 +661,8 @@ public partial class MainWindow : Window
             PlaybackTime.Text = $"{Recording.FormatTime(player.Position)} / {Recording.FormatTime(player.Duration)}";
             ElapsedLabel.Text = Recording.FormatTime(player.Position); TotalLabel.Text = Recording.FormatTime(player.Duration);
         }
+        if (SyncPopup.IsOpen) UpdateSyncControls();
+        TickAutomaticSync();
     }
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
