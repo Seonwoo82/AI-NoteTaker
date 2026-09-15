@@ -1,6 +1,6 @@
-# AI-NoteTaker for Windows · Preview 0.3
+# AI-NoteTaker for Windows · Preview 0.4.0
 
-현재 `codex/windows-complete-port` 소스에서는 최신 Apple 앱의 전체 기능을 이식하고 있습니다. **5분 집중 파형, 녹음 폴더, Windows 트레이·전역 단축키, 녹음 후 자동 회의록 생성, 로컬 참여자 분석과 수동 수정, 내 발화 이어듣기, 이름/용어/목소리 프로필과 라이브 본인 표시, 단어별 시간과 화자 ID 유지, 약속·질문·결정 분석과 프로젝트 브리핑**을 추가했습니다. 아래 기존 0.3 ZIP에는 이 개발 변경이 포함되지 않습니다. [전체 이식 상태](FULL-PORT-PLAN.md), [기본 기능 검증](docs/implementation/FULL-PORT-STEP1.md), [참여자 검증](docs/implementation/FULL-PORT-STEP2.md), [프로필 검증](docs/implementation/FULL-PORT-STEP3.md), [상세 시간 검증](docs/implementation/FULL-PORT-STEP4.md), [회의 분석 검증과 모델 오분류](docs/implementation/FULL-PORT-STEP5.md).
+최신 Apple 앱의 녹음·회의록 기능을 Windows WPF로 이식한 버전입니다. **집중 파형, 녹음 폴더, 트레이·전역 단축키, 자동 회의록, 참여자 분석과 수동 수정, 내 발화 이어듣기, 프로필과 라이브 본인 표시, 약속·질문·결정 분석, 프로젝트 브리핑, 전사 정리·회의록 보완, 자동/수동 동기화와 지속 웹 공유**를 제공합니다. Apple 소스와 Windows 앱·빌드·버전은 분리되어 있습니다. [전체 이식 상태와 검증 범위](FULL-PORT-PLAN.md)
 
 API 키와 상품화 구조는 [현재 AI 처리 방식](docs/implementation/PRODUCT-AI-ARCHITECTURE.md)에 정리했습니다. 기본 로컬 처리에는 API 키가 필요 없으며, OpenRouter를 선택한 경우 현재는 사용자 키를 입력합니다. 일반 고객용 로그인·결제 서버는 별도 구현 영역입니다.
 
@@ -17,8 +17,8 @@ Windows 소스·프로젝트 설정·의존성·테스트·문서·배포 스크
 이 PC의 배포 폴더:
 
 ```text
-Windows/artifacts/0.3.0/portable-win-x64/AI-NoteTaker.exe
-Windows/artifacts/AI-NoteTaker-0.3.0-win-x64.zip
+Windows/artifacts/0.4.0/portable-win-x64/AI-NoteTaker.exe
+Windows/artifacts/AI-NoteTaker-0.4.0-win-x64.zip
 ```
 
 ZIP을 **폴더째 풀고** `AI-NoteTaker.exe`를 실행하세요. 옆의 DLL·runtimes 폴더도 필요합니다. .NET 런타임이 포함되어 별도 SDK 설치는 필요 없습니다. 이전 버전이 열려 있다면 닫고 새 버전을 실행합니다. 서명된 설치 프로그램과 자동 업데이트는 아직 없습니다.
@@ -96,7 +96,7 @@ Qwen3-ASR은 설정의 전사 엔진에서 선택할 수 있습니다. 언어를
 
 OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에서만 오디오 또는 전사문이 선택한 외부 제공자에게 전송되며 유료일 수 있습니다. 기존 키는 Windows DPAPI CurrentUser로 보호하며 빈칸 저장은 키를 유지합니다. 유료 API 실제 호출은 이번 검증에서 수행하지 않았습니다.
 
-오디오·전사·회의록은 로컬 일반 파일이며 앱 암호화는 하지 않습니다. 백업하려면 앱 종료 후 위 폴더를 복사하세요. **Windows 저장 형식은 Apple meta.json/audio.m4a 및 동기화 형식과 호환되지 않습니다.**
+오디오·전사·회의록은 로컬 일반 파일이며 앱 암호화는 하지 않습니다. 백업하려면 앱 종료 후 위 폴더를 복사하세요. Windows와 Apple의 로컬 저장 폴더를 직접 섞지 마세요. **기기 간 이동은 공용 Worker 동기화 계약을 통해** 처리하며 Windows WAV는 원본을 보존하고 M4A로 변환해 전송합니다. 텍스트 프로필·분석·수정 이력·AI 설정도 동기화하고, API 키·목소리·화자 임베딩·생성 도중 캐시는 기기에만 보관합니다.
 
 ## 개발·검증
 
@@ -111,6 +111,9 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 
 # 실행 중인 배포 폴더와 분리해서 패키지 검증
 .\Windows\build.ps1 publish -ArtifactRoot .\Windows\artifacts\pr-validation
+
+# 준비된 합성/공개 음성 파일과 모델로 새 ZIP 검증. 사용자 마이크는 열지 않음
+.\Windows\verify-package.ps1 -AllFeatures
 
 # 실제 장치를 여는 별도 검증 (짧은 테스트음/테스트 녹음)
 .\Windows\build.ps1 audio-smoke

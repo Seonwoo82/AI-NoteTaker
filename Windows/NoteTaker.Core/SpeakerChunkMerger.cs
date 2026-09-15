@@ -61,19 +61,32 @@ public sealed class SpeakerChunkMerger(double duration)
         SpeakerAudioWindows.ValidateDuration(duration);
         if (finished || nextStart != duration || knownCount is < 0 or > 64) throw new InvalidDataException("화자 분석의 전체 구간이 완료되지 않았습니다.");
         finished = true;
-        if (knownCount > 0 && clusters.Count > knownCount)
+        if (clusters.Count > Math.Max(knownCount, 1))
         {
+            // The strict online match protects identities while reading. A final complete-link
+            // pass also joins weaker recurring voices in automatic mode, without centroid chaining.
+            // Window-level embeddings summarize many frames, so use a separate conservative
+            // cosine floor instead of the native frame-level distance cutoff.
+            const double automaticSimilarityFloor = .5;
+            var indices = clusters.Select((cluster, index) => (cluster, index)).ToDictionary(p => p.cluster, p => p.index);
+            var similarities = new double[clusters.Count, clusters.Count];
+            for (int i = 0; i < clusters.Count; i++) for (int j = i + 1; j < clusters.Count; j++)
+                similarities[i, j] = similarities[j, i] = SpeakerWorkerClient.Cosine(clusters[i].Embedding, clusters[j].Embedding);
             var queue = new PriorityQueue<(Cluster A, Cluster B, int ARevision, int BRevision), double>();
-            void Pair(Cluster a, Cluster b) { if (!Conflicts(a.Id, b.Id)) queue.Enqueue((a, b, a.Revision, b.Revision), -SpeakerWorkerClient.Cosine(a.Embedding, b.Embedding)); }
+            void Pair(Cluster a, Cluster b) { if (!Conflicts(a.Id, b.Id)) queue.Enqueue((a, b, a.Revision, b.Revision), -similarities[indices[a], indices[b]]); }
             for (int i = 0; i < clusters.Count; i++) for (int j = i + 1; j < clusters.Count; j++) Pair(clusters[i], clusters[j]);
             int remaining = clusters.Count;
-            while (remaining > knownCount && queue.TryDequeue(out var pair, out _))
+            while (remaining > Math.Max(knownCount, 1) && queue.TryDequeue(out var pair, out var priority))
             {
                 if (!pair.A.Active || !pair.B.Active || pair.A.Revision != pair.ARevision || pair.B.Revision != pair.BRevision || Conflicts(pair.A.Id, pair.B.Id)) continue;
+                if (knownCount == 0 && -priority < automaticSimilarityFloor) break;
+                int first = indices[pair.A], second = indices[pair.B];
+                for (int i = 0; i < clusters.Count; i++)
+                    similarities[first, i] = similarities[i, first] = Math.Min(similarities[first, i], similarities[second, i]);
                 Update(pair.A, pair.B.Embedding, pair.B.Weight); pair.A.Revision++; pair.B.Active = false; aliases[pair.B.Id] = pair.A.Id; remaining--;
                 foreach (var other in clusters.Where(c => c.Active && c != pair.A)) Pair(pair.A, other);
             }
-            if (remaining > knownCount) throw new InvalidDataException("동시에 말한 화자를 지정한 인원으로 합칠 수 없습니다. 참여자 수를 늘리거나 자동으로 분석해 주세요.");
+            if (knownCount > 0 && remaining > knownCount) throw new InvalidDataException("동시에 말한 화자를 지정한 인원으로 합칠 수 없습니다. 참여자 수를 늘리거나 자동으로 분석해 주세요.");
         }
         var active = clusters.Where(c => c.Active).ToArray();
         if (active.Length > 64) throw new InvalidDataException("화자 후보가 64명을 넘습니다. 참여자 수를 지정해 다시 분석해 주세요.");

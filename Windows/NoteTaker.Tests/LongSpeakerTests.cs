@@ -70,4 +70,31 @@ public sealed class LongSpeakerTests
         Assert.Throws<InvalidDataException>(() => merger.Add(Window(0, 0, 300), Chunk(302, [new(10, 400, "0")], new AcousticSpeaker("0", Vector(0)))));
         Assert.Throws<InvalidDataException>(() => merger.Finish());
     }
+    [Fact] public void AutomaticCountReconcilesRecurringVoiceBelowStrictOnlineMatch()
+    {
+        var changedVoice = Vector(0); changedVoice[0] = .6f; changedVoice[1] = .8f;
+        var merger = new SpeakerChunkMerger(600);
+        merger.Add(Window(0, 0, 300), Chunk(302, [new(10, 20, "0")], new AcousticSpeaker("0", Vector(0))));
+        merger.Add(Window(298, 300, 600), Chunk(302, [new(10, 20, "0")], new AcousticSpeaker("0", changedVoice)));
+        var result = merger.Finish(); Assert.Single(result.Speakers);
+        Assert.Equal(result.Segments[0].SpeakerId, result.Segments[1].SpeakerId);
+    }
+    [Fact] public void CompleteLinkDoesNotCollapseDifferentVoicesThroughIntermediateSimilarity()
+    {
+        var middle = Vector(0); middle[0] = .6f; middle[1] = .8f;
+        var other = Vector(0); other[0] = -.28f; other[1] = .96f;
+        var merger = new SpeakerChunkMerger(900);
+        merger.Add(Window(0, 0, 300), Chunk(302, [new(10, 20, "0")], new AcousticSpeaker("0", Vector(0))));
+        merger.Add(Window(298, 300, 600), Chunk(304, [new(10, 20, "0")], new AcousticSpeaker("0", middle)));
+        merger.Add(Window(598, 600, 900), Chunk(302, [new(10, 20, "0")], new AcousticSpeaker("0", other)));
+        var result = merger.Finish(); Assert.Equal(2, result.Speakers.Count);
+        Assert.NotEqual(result.Segments[0].SpeakerId, result.Segments[2].SpeakerId);
+    }
+    [Fact] public void AutomaticCountKeepsOverlappingVoicesDespiteHighEmbeddingSimilarity()
+    {
+        var similar = Vector(0); similar[1] = .1f;
+        var merger = new SpeakerChunkMerger(300);
+        merger.Add(Window(0, 0, 300), Chunk(300, [new(10, 20, "0"), new(15, 25, "1")], new("0", Vector(0)), new("1", similar)));
+        Assert.Equal(2, merger.Finish().Speakers.Count);
+    }
 }
