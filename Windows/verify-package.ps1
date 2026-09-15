@@ -31,7 +31,14 @@ function Invoke-PackageCheck([string]$Name, [string]$Mode, [string[]]$Parameters
     $checks[$Name] = $true
 }
 try {
+if ($AllFeatures) {
+    $script:activeCheck = 'worker-prerequisites'
+    Get-Command node -ErrorAction Stop | Out-Null
+    $pythonCommand = if ($env:PYTHON) { $env:PYTHON } else { 'python' }
+    Get-Command $pythonCommand -ErrorAction Stop | Out-Null
+}
 Invoke-PackageCheck 'ui' '--smoke-ui'
+if ($AllFeatures) { Invoke-PackageCheck 'playback-guards' '--smoke-playback-guards' }
 foreach ($engine in @('whisper','qwen')) {
     Invoke-PackageCheck $engine '--smoke-ai' @($Audio, $ModelRoot, $engine)
 }
@@ -42,6 +49,8 @@ if ($AllFeatures) {
     Invoke-PackageCheck 'profile' '--smoke-profile' @($SpeakerAudio, $ModelRoot)
     Invoke-PackageCheck 'meeting' '--smoke-meeting' @($ModelRoot)
     Invoke-PackageCheck 'notes' '--smoke-notes' @($ModelRoot)
+    Invoke-PackageCheck 'sync' '--smoke-sync'
+    Invoke-PackageCheck 'sharing' '--smoke-sharing'
     Invoke-PackageCheck 'audio-share' '--smoke-audio-share'
 }
 }
@@ -55,7 +64,7 @@ $result = [pscustomobject]@{
     Extracted=$verifyRoot; Version=(Get-Item -LiteralPath $verifyExe).VersionInfo.ProductVersion
     Checks=$checks; ModelRoot=$ModelRoot; Audio=$Audio; AllFeatures=[bool]$AllFeatures
     Failure=if ($checkFailure) { [string]$checkFailure } else { $null }
-    Scope='Fresh extraction and native WPF/model flows using provided files; no microphone capture. Native audio sharing supplies a generated silent WAV to Windows without selecting a target or sending. Models are outside ZIP. Sync/web-share server round trips are verified separately.'
+    Scope='Fresh extraction and native WPF/model flows using provided files; no microphone capture. AllFeatures includes playback guards and local Worker/SQLite sync/web-sharing with a filesystem R2 stand-in, requiring Node and Python. Native audio sharing supplies a generated silent WAV to Windows without selecting a target or sending. Models are outside ZIP. Physical folder drag and production Apple/Cloudflare verification are separate.'
 }
 $reportPath = Join-Path (Split-Path -Parent $Archive) ([IO.Path]::GetFileNameWithoutExtension($Archive) + '.verification.json')
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $reportPath

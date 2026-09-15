@@ -23,4 +23,18 @@
 - 실제 WPF 목소리 등록·취소·닫기·삭제·실패 보존, 공개 음성의 Sherpa 등록/실시간 추론과 Whisper/Ollama 자동 생성 경로 통과. 입력 감지 6.3초가 표시되는 것을 확인했다. `profile-step17/result.json`. 같은 화자 cosine 0.67235, 다른 화자 0.14427이며 공개 중국어 샘플 한 번 측정이다.
 - 설정 팝오버의 밝은/어두운 테마와 등록 화면을 WPF로 렌더링해 확인했다. `ui-step17-final/capture-gains.png`, `capture-gains-dark.png`, `profile-step17/enrollment-light.png`. 렌더 결과이며 화면을 가리는 다른 앱과의 실제 입력 전달 검증은 아니다.
 
-새 배포 ZIP 검사 결과는 실행 후 추가한다. 단계 16 ZIP의 10개 검사 통과는 이 변경 이전 결과다. 사용자 마이크 녹음, 주변 소리 캡처, 유료 AI, 외부 파일 전송은 실행하지 않았다.
+## 최신 후보 ZIP
+
+- 파일: `Windows/artifacts/step17/AI-NoteTaker-0.4.0-win-x64.zip`
+- ProductVersion: `0.4.0+4922af1217ad6e855585a6aa5d0ae3e4dd5d2408`
+- 크기: 657,313,199 bytes
+- SHA-256: `F27149770A18364FB6D40BE36F6F8C0A13FB378A9FAECC660709C08A318DD9D9`
+- 새 압축 해제 경로: `Windows/artifacts/verify-step17-6ced6b62`
+
+이 EXE에서 UI·재생 보호·Whisper·Qwen·트레이·파일 입력 녹음·참여자·프로필·회의 분석·회의록 보완 **10개 검사**가 통과했다. 단계 16 이후의 녹음 설정과 입력 감지 변경을 포함한 결과다. `step17-core-package.json`과 ZIP 옆 `.verification.json`에 결과를 남겼다.
+
+같은 EXE의 `--smoke-sync`와 `--smoke-sharing`도 통과했다. `sync-step17-portable/result.json`은 독립 WPF 라이브러리, opt-in 자동/수동, 모달 지연, 완료 재진입 거부, 오프라인 재시작·재시도, 오디오 버전 갱신과 녹음/설정/종료의 취소 대기를 확인한다. `sharing-step17-portable/result.json`은 공유 창 재개·서버 재시작 복구·같은 링크 복사·명시적 교체·해제·만료·응답 유실·오프라인 복구를 확인한다. 실제 Worker HTTP/SQLite를 사용하며 R2는 파일 시스템 대체 구현이다. 배포된 서버나 실제 Apple 기기 검증은 아니다.
+
+일반 배포 검사 스크립트의 `-AllFeatures`도 재생 보호·동기화·웹 공유를 포함하는 **13개 경로**로 보완했다. Node와 Python을 확인한 뒤 실행하며 Windows 시스템 오디오 공유가 마지막 게이트다. 수정한 전체 스크립트는 아직 끝까지 실행하지 않았다. 현재 후보의 완료 증거는 개별 실행 12개이며 **전체 보고서는 Passed=false**다. 시스템 공유의 DataRequested와 실제 공유 창, 물리 폴더 드래그는 미확인으로 남긴다.
+
+사용자 마이크 녹음, 주변 소리 캡처, 유료 AI, 외부 파일 전송은 실행하지 않았다. 이 문서와 감사 문서의 최신 검증 기록은 ZIP 생성 후 갱신했으므로 ZIP 내부 문서는 생성 당시 버전이며 최종 배포 때 다시 묶어야 한다.

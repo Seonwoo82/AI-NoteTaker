@@ -14,11 +14,11 @@ Windows 소스·프로젝트 설정·의존성·테스트·문서·배포 스크
 
 ## 실행
 
-이 PC의 배포 폴더:
+이 PC의 최신 검증 후보입니다. Windows 시스템 공유 검증은 아직 통과하지 않았습니다.
 
 ```text
-Windows/artifacts/0.4.0/portable-win-x64/AI-NoteTaker.exe
-Windows/artifacts/AI-NoteTaker-0.4.0-win-x64.zip
+Windows/artifacts/step17/0.4.0/portable-win-x64/AI-NoteTaker.exe
+Windows/artifacts/step17/AI-NoteTaker-0.4.0-win-x64.zip
 ```
 
 ZIP을 **폴더째 풀고** `AI-NoteTaker.exe`를 실행하세요. 옆의 DLL·runtimes 폴더도 필요합니다. .NET 런타임이 포함되어 별도 SDK 설치는 필요 없습니다. 이전 버전이 열려 있다면 닫고 새 버전을 실행합니다. 서명된 설치 프로그램과 자동 업데이트는 아직 없습니다.
@@ -85,6 +85,7 @@ Qwen3-ASR은 설정의 전사 엔진에서 선택할 수 있습니다. 언어를
 ```text
 %LOCALAPPDATA%/AI-NoteTaker/
   settings.json                       # 공급자·모델·DPAPI 암호화 키
+  capture-settings-local.json         # 이 PC의 녹음 모드·장치·개별 음량
   Models/                             # 검증된 모델·다운로드 중간 파일
   Models/Ollama/                      # 앱이 설치한 요약 모델
   Tools/                              # 로컬 추론 실행 환경
@@ -117,7 +118,8 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 .\Windows\build.ps1 publish -ArtifactRoot .\Windows\artifacts\pr-validation
 
 # 준비된 합성/공개 음성 파일과 모델로 새 ZIP 검증. 사용자 마이크는 열지 않음
-.\Windows\verify-package.ps1 -AllFeatures
+# 전체 검사에는 Node와 Python이 필요하며 로컬 Worker/SQLite를 사용
+.\Windows\verify-package.ps1 -AllFeatures -Archive .\Windows\artifacts\step17\AI-NoteTaker-0.4.0-win-x64.zip
 
 # 실제 장치를 여는 별도 검증 (짧은 테스트음/테스트 녹음)
 .\Windows\build.ps1 audio-smoke

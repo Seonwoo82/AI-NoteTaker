@@ -8,7 +8,7 @@
 
 | 영역 | 현재 상태 | 완료에 필요한 구현 및 증거 |
 | --- | --- | --- |
-| 녹음·가져오기·재생·삭제/복원·무료 AI·Clova 파일 연동 | 기존 구현, 회귀 검증 필요 | Windows 빌드/단위/실행/패키지 검증. 원본과 이전 성공 문서 보존 |
+| 녹음·가져오기·재생·삭제/복원·무료 AI·Clova 파일 연동 | 구현·230개 회귀·새 ZIP 핵심 10개 검사 통과 | 원본과 이전 성공 문서 보존, 개별 소스 음량·모드/장치 재시작 보존. 생성 PCM/공개 음성 fixture와 실제 사용자 장치를 구분. [단계 17](docs/implementation/FULL-PORT-STEP17.md) |
 | 영구 삭제·30일 삭제 보관·오디오 내보내기 | 구현·221개 전체 테스트·WPF/Worker·후보 패키지 검증 | 기기 로컬 purge 표식과 삭제 메타데이터 보존, 원격 오디오/회의록/참여자 수정 이력 복원, 확인/취소/오래된 확인 거부, 저장된 WAV 바이트 복사. [단계 14](docs/implementation/FULL-PORT-STEP14.md) |
 | 오디오 파일 시스템 공유 | 구현·개발 API 검사 통과, 배포 재검증 중 | 제목 있는 WAV 사본·원본 보존·24시간 정리·영구 삭제 연결. 첫 개발 실행은 DataRequested 통과. ZIP에서 긴 경로 오류를 발견해 짧은 임시 캐시로 수정했고, 이후 네이티브 이벤트 timeout은 조사 중. 보안 안내창을 치운 뒤 재확인 필요. 받는 앱 선택/전송은 하지 않음. [단계 15](docs/implementation/FULL-PORT-STEP15.md) |
 | 앱 명령과 배포 아이콘 | 구현·WPF 명령/실제 EXE 아이콘 검증 | LibraryCommands의 완료·내보내기·탐색기·동기화·즐겨찾기·이름 변경·15초 이동에 대응. 편집 중 보호와 휴지통 명령 보호. 원본 AppIcon 자산을 WPF/EXE에 포함. 물리 키 입력은 별도. [단계 15](docs/implementation/FULL-PORT-STEP15.md) |
@@ -31,7 +31,7 @@
 | 6시간 화자 분석 | 구간 처리·실제 모델 fixture 검증 | 5분 구간+2초 문맥, 음성 특징에 의한 전체 참여자 연결, 원본 시간·해시 보존. 자동/4명 지정으로 6시간 파일·구간 경계·4시간 이후·취소 확인, 최대 약 815MiB. 대부분 무음인 검증 파일이며 자연 회의 속도/정확도 증거와 구분 |
 | 배포·문서·PR | 미완료 | 독립 Windows 버전/폴더형 self-contained ZIP, 새 폴더에서 실행 검증, 기능별 증거/제약 문서와 GitHub PR |
 
-현재 `7f7e4f5` 후보 ZIP의 새 압축 해제 폴더에서 9개 기능 검사와 별도 WPF/Worker 동기화 검사가 통과했다. 새 네이티브 공유 검사는 진행 중이므로 전체 배포 보고서의 `Passed`는 false다. 해시·버전·증거는 [단계 15](docs/implementation/FULL-PORT-STEP15.md)에 기록했다.
+현재 `4922af1` 후보 ZIP의 새 압축 해제 폴더에서 핵심 10개 검사와 같은 EXE의 WPF/Worker 동기화·웹 공유 2개 검사가 통과했다. Windows 시스템 공유 게이트가 남아 전체 배포 보고서의 `Passed`는 false다. 해시·버전·증거는 [단계 17](docs/implementation/FULL-PORT-STEP17.md), 원본 요구사항별 구현과 검증 범위는 [전체 이식 감사](docs/implementation/FULL-PORT-AUDIT.md)에 기록했다. `verify-package.ps1 -AllFeatures`에도 재생 보호·동기화·웹 공유를 포함했으며 보안 안내창이 치워진 뒤 네이티브 공유까지 전체 실행해야 한다.
 
 근거: 루트 README.md, docs/FEATURE-BACKLOG.md (F-001–010과 후속 릴리스), NoteTaker/Playback, Shared/MeetingIntelligence, NoteTaker/Sync, Shared/WebSharing, Cloudflare/README.md.
 
