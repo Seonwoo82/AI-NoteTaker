@@ -42,7 +42,7 @@ public static class JsonDisk
     }
 }
 
-public sealed class LibraryStore
+public sealed partial class LibraryStore
 {
     public string Root { get; }
     public List<string> LoadWarnings { get; } = [];
@@ -61,17 +61,20 @@ public sealed class LibraryStore
         {
             string path = Path.Combine(DirectoryFor(recording.Id), "meta.json");
             var previous = JsonDisk.Read<Recording>(path);
+            if (previous?.DeletedAt is not null && recording.DeletedAt is null && File.Exists(PurgePendingPath(recording.Id)))
+                throw new InvalidOperationException("파일 삭제를 완료하지 못한 녹음입니다. 영구 삭제를 다시 시도해 주세요.");
             var wire = SyncRecordings.FromLocal(recording, previous?.SyncMetadata ?? recording.SyncMetadata,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), stamp: true);
             JsonDisk.Write(path, recording with { SyncMetadata = wire });
+            if (recording.DeletedAt is null) ClearPurgeMarkers(recording.Id);
         }
     }
 
-    public IReadOnlyList<Recording> Load()
+    public IReadOnlyList<Recording> Load(DateTimeOffset? now = null)
     {
-        lock (JsonDisk.Gate) return LoadLocked();
+        lock (JsonDisk.Gate) return LoadLocked(now ?? DateTimeOffset.UtcNow);
     }
-    private IReadOnlyList<Recording> LoadLocked()
+    private IReadOnlyList<Recording> LoadLocked(DateTimeOffset now)
     {
         SyncFileTransaction.Recover(Root);
         LoadWarnings.Clear();
@@ -81,7 +84,7 @@ public sealed class LibraryStore
             if (!Guid.TryParse(Path.GetFileName(directory), out var id)) continue;
             try
             {
-                var recording = JsonDisk.Read<Recording>(Path.Combine(directory, "meta.json"));
+                var recording = JsonDisk.Read<Recording>(SafePath(SyncRecordings.MetadataPath(id)));
                 if (recording is null) continue;
                 if (recording.Id != id || recording.SchemaVersion != 1 || recording.Title is null || !Enum.IsDefined(recording.Mode) || !double.IsFinite(recording.DurationSeconds) || recording.DurationSeconds < 0)
                     throw new InvalidDataException("지원하지 않는 메타데이터입니다.");
@@ -95,8 +98,18 @@ public sealed class LibraryStore
                     }
                     else recording = recording with { IsRecording = false, Warning = "녹음이 중단되어 오디오 파일을 찾을 수 없습니다." };
                     Save(recording);
+                    recording = JsonDisk.Read<Recording>(SafePath(SyncRecordings.MetadataPath(id)))!;
                 }
-                result.Add(recording);
+                try
+                {
+                    if (recording.DeletedAt is null) ClearPurgeMarkers(id);
+                    if (recording.DeletedAt is { } deleted && !recording.IsRecording &&
+                        (now - deleted >= TrashRetention || File.Exists(PurgePendingPath(id))))
+                        DeletePermanently(recording);
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+                { LoadWarnings.Add($"{recording.Title}: 삭제 파일 정리를 완료하지 못했습니다. 다음에 다시 시도합니다."); }
+                result.Add(recording with { IsLocallyPurged = recording.DeletedAt is not null && File.Exists(PurgeMarkerPath(id)) });
             }
             catch (Exception ex) when (ex is IOException or JsonException or InvalidDataException or UnauthorizedAccessException)
             {

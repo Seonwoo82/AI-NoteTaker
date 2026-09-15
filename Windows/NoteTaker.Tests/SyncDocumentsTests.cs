@@ -36,6 +36,34 @@ public sealed class SyncDocumentsTests
         return SyncRecordings.Read(library, recording.Id)!;
     }
 
+    [Fact] public async Task RemoteRestoreDownloadsPurgedAudioNotesAndMeetingEditsAgain()
+    {
+        using var test = new TestFolder(); using var server = await LocalSyncServer.StartAsync(test.Root);
+        var a = new LibraryStore(Path.Combine(test.Root, "a")); var b = new LibraryStore(Path.Combine(test.Root, "b")); var recording = await Fixture(a);
+        using var first = new LibrarySyncEngine(a, Config, server.Handler()); using var second = new LibrarySyncEngine(b, Config, server.Handler());
+        Success(await first.RunAsync()); Success(await second.RunAsync());
+        a.Save(a.Load().Single() with { DeletedAt = DateTimeOffset.UtcNow }); Success(await first.RunAsync()); Success(await second.RunAsync());
+        var deleted = b.Load().Single(); string tombstone = File.ReadAllText(Path.Combine(b.DirectoryFor(recording.Id), "meta.json"));
+        b.DeletePermanently(deleted); Success(await second.RunAsync());
+        Assert.Equal(tombstone, File.ReadAllText(Path.Combine(b.DirectoryFor(recording.Id), "meta.json")));
+        Assert.True(b.Load().Single().IsLocallyPurged); Assert.False(File.Exists(b.AudioPath(recording.Id)));
+        Assert.False(File.Exists(b.NotesPath(recording.Id))); Assert.False(File.Exists(b.TranscriptPath(recording.Id)));
+        using var transport = new SyncTransport(Config, server.Handler());
+        await transport.PutEditAsync(new(Guid.NewGuid(), recording.Id, 1, 5000, "projectName", "", "복원 프로젝트"), default);
+        Success(await second.RunAsync());
+        Assert.Equal(2, Directory.GetFileSystemEntries(b.DirectoryFor(recording.Id)).Length); // Tombstone and marker only, even after receiving another edit.
+        a.Save(a.Load().Single() with { DeletedAt = null }); Success(await first.RunAsync()); Success(await second.RunAsync());
+        var restored = b.Load().Single(); Assert.Null(restored.DeletedAt); Assert.False(restored.IsLocallyPurged);
+        Assert.False(File.Exists(b.PurgeMarkerPath(recording.Id))); Assert.True(File.Exists(b.AudioPath(recording.Id)));
+        var notes = JsonDisk.Read<MeetingNotes>(b.NotesPath(recording.Id))!;
+        Assert.Equal("fixture/summary", notes.Model); Assert.Contains("금요일", notes.Markdown);
+        Assert.Equal(await MeetingNotesService.AudioHashAsync(b.AudioPath(recording.Id), default), notes.Original!.AudioHash);
+        var meeting = new MeetingWorkspaceStore(b).Resolve(restored)!;
+        Assert.Equal("김민수", meeting.Transcript.Speakers.Single().Name); Assert.Single(meeting.Source.Insights!.Actions);
+        Assert.Equal("복원 프로젝트", meeting.ProjectName);
+        Success(await second.RunAsync()); Assert.True(File.Exists(b.AudioPath(recording.Id)));
+    }
+
     [Fact] public async Task ActualWorkerRoundTripPreservesDocumentsEditsProfileSettingsAndLocalSecrets()
     {
         using var test = new TestFolder(); using var server = await LocalSyncServer.StartAsync(test.Root);

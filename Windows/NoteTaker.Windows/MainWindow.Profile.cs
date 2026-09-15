@@ -7,7 +7,7 @@ namespace NoteTaker.Windows;
 public partial class MainWindow
 {
     private ProfileWindow? profileWindow;
-    private bool ModalOperationOpen => profileWindow is not null || notesEditingWindow is not null || OwnedWindows.Cast<Window>().Any(w => w.IsVisible);
+    private bool ModalOperationOpen => libraryDialogOpen || profileWindow is not null || notesEditingWindow is not null || OwnedWindows.Cast<Window>().Any(w => w.IsVisible);
     private LiveOwnerMonitor? liveOwner;
     private void StartLiveOwner()
     {

@@ -19,6 +19,7 @@ public sealed record Recording
     public bool IsRecording { get; init; }
     public string? Warning { get; init; }
     public SyncRecording? SyncMetadata { get; init; }
+    [JsonIgnore] public bool IsLocallyPurged { get; init; }
     [JsonIgnore] public string DisplayTitle => (IsFavorite ? "★  " : "") + (string.IsNullOrWhiteSpace(Title) ? "새 녹음" : Title);
     [JsonIgnore] public string Subtitle => $"{CreatedAt.LocalDateTime:MM.dd HH:mm}  ·  {FormatTime(DurationSeconds)}  ·  {ModeLabel}";
     [JsonIgnore] public string ModeLabel => Mode switch

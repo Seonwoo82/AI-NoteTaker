@@ -118,4 +118,38 @@ public static class SyncFileTransaction
         using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         input.CopyTo(output); output.Flush(true);
     }
+
+    internal static IReadOnlyList<string> RecordingHistoryFiles(string root, Guid id, ISet<string> sharedInboxes)
+    {
+        var files = new List<string>();
+        string parent = PathIn(root, ".sync/transactions"), prefix = $"Recordings/{id:D}/";
+        if (!Directory.Exists(parent)) return files;
+        foreach (string directory in Directory.EnumerateDirectories(parent))
+        {
+            if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out _)) continue;
+            string relative = Path.GetRelativePath(root, directory);
+            string manifest = PathIn(root, relative + "/manifest.json");
+            if (!File.Exists(manifest)) continue;
+            if (new FileInfo(manifest).Length > 64 * 1024) throw new InvalidDataException("동기화 복구 기록이 너무 큽니다.");
+            var journal = JsonDisk.Read<Journal>(manifest);
+            if (journal is not { SchemaVersion: 1, Complete: true, Entries.Count: > 0 and <= 64 })
+                throw new InvalidDataException("동기화 복구를 완료한 후 삭제해 주세요.");
+            for (int i = 0; i < journal.Entries.Count; i++)
+            {
+                var entry = journal.Entries[i];
+                _ = PathIn(root, entry.Path);
+                if (entry.Index != i) throw new InvalidDataException("동기화 복구 순서가 올바르지 않습니다.");
+                if (entry.Path.Replace('\\', '/').StartsWith(".sync/workspaces/", StringComparison.OrdinalIgnoreCase) &&
+                    entry.Path.Replace('\\', '/').EndsWith("/edits-inbox.json", StringComparison.OrdinalIgnoreCase))
+                {
+                    sharedInboxes.Add(PathIn(root, relative + $"/old-{i}"));
+                    sharedInboxes.Add(PathIn(root, relative + $"/new-{i}"));
+                }
+                if (!entry.Path.Replace('\\', '/').StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                files.Add(PathIn(root, relative + $"/old-{i}"));
+                files.Add(PathIn(root, relative + $"/new-{i}"));
+            }
+        }
+        return files;
+    }
 }

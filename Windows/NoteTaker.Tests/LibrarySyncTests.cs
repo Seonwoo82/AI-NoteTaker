@@ -16,6 +16,19 @@ public sealed class LibrarySyncTests
     }
     private static void Success(LibrarySyncResult result) { Assert.Empty(result.Issues); Assert.Equal(0, result.Pending); }
 
+    [Fact] public async Task OfflinePurgeBeforeFirstSyncStillPublishesTheDeletionWithoutAudio()
+    {
+        using var test = new TestFolder(); using var server = await LocalSyncServer.StartAsync(test.Root);
+        var a = new LibraryStore(Path.Combine(test.Root, "a")); var b = new LibraryStore(Path.Combine(test.Root, "b")); var record = Add(a);
+        a.Save(record with { DeletedAt = DateTimeOffset.UtcNow }); a.DeletePermanently(a.Load().Single());
+        using var first = new LibrarySyncEngine(a, Configuration(), server.Handler()); Success(await first.RunAsync());
+        using var transport = new SyncTransport(Configuration(), server.Handler());
+        var remote = (await transport.RecordingsAsync(null, default)).Recordings.Single(); Assert.Equal(record.Id, remote.Id); Assert.NotNull(remote.DeletedAt);
+        using var second = new LibrarySyncEngine(b, Configuration(), server.Handler()); Success(await second.RunAsync());
+        Assert.NotNull(b.Load().Single().DeletedAt); Assert.False(File.Exists(b.AudioPath(record.Id)));
+        Assert.True(a.Load().Single().IsLocallyPurged); Success(await first.RunAsync());
+    }
+
     [Fact] public async Task TwoWindowsLibrariesExchangeAudioFoldersMetadataAndTombstonesWithoutReencodingRemoteAudio()
     {
         using var test = new TestFolder(); using var server = await LocalSyncServer.StartAsync(test.Root);

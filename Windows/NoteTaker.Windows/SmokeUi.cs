@@ -11,7 +11,7 @@ using NAudio.Wave;
 
 namespace NoteTaker.Windows;
 
-internal static class SmokeUi
+internal static partial class SmokeUi
 {
     public static async Task RunAiAsync(string output, string sample, string modelRoot, string provider)
     {
@@ -176,6 +176,7 @@ internal static class SmokeUi
         window.Closed += (_, _) => closed.TrySetResult();
         window.Close();
         await closed.Task;
+        await VerifyLibraryFilesAsync(output);
         if (Environment.GetEnvironmentVariable("NOTETAKER_UI_AUDIO_SMOKE") == "1") await RunRecordingControlsAsync(output);
         File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: Apple-style empty, playback, notes, recording, compact, capture popover and light/dark settings rendered. Favorite, delete, restore, search, actual audio waveform, focused 5-minute timeline and stable drag mapping, folder create/move/order/delete preserving audio and playhead, submenu, input mode gating, transcript tab and graceful close passed. Generated audio fixture only; no recording or network used.");
     }

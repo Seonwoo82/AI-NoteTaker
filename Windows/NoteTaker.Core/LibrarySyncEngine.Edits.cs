@@ -36,6 +36,7 @@ public sealed partial class LibrarySyncEngine
                     var inbox = ReadInbox(); var seen = inbox.ToDictionary(e => e.Edit.Id);
                     foreach (var entry in page.Entries)
                     {
+                        if (File.Exists(library.PurgeMarkerPath(entry.Edit.RecordingId))) continue;
                         if (seen.TryGetValue(entry.Edit.Id, out var existing) && existing != entry) throw new InvalidDataException("같은 수정 ID의 이력이 충돌합니다.");
                         if (!seen.ContainsKey(entry.Edit.Id)) { inbox.Add(entry); seen.Add(entry.Edit.Id, entry); }
                     }
@@ -78,7 +79,9 @@ public sealed partial class LibrarySyncEngine
             {
                 lock (JsonDisk.Gate)
                 {
-                    token.ThrowIfCancellationRequested(); var recording = SyncRecordings.Read(library, group.Key); if (recording is null || recording.IsRecording) continue;
+                    token.ThrowIfCancellationRequested(); var recording = SyncRecordings.Read(library, group.Key);
+                    if (recording is null || recording.IsRecording || File.Exists(library.PurgeMarkerPath(group.Key)) ||
+                        File.Exists(Path.Combine(library.DirectoryFor(group.Key), ".purge-pending"))) continue;
                     var entries = group.Where(e => e.Edit.AudioVersion == recording.AudioVersion).ToArray(); if (entries.Length == 0) continue;
                     string editPath = $"Recordings/{recording.Id:D}/meeting-edits-local.json", inboxPath = Path.GetRelativePath(library.Root, EditInbox), statePath = Path.GetRelativePath(library.Root, state.Path);
                     var expected = SyncFileTransaction.Snapshot(library.Root, [editPath, inboxPath, statePath, SyncRecordings.MetadataPath(recording.Id)]);

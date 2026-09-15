@@ -122,7 +122,7 @@ public partial class MainWindow : Window
     internal void ReloadLibrary(Guid? selectId = null)
     {
         var id = selectId ?? selected?.Id;
-        recordings = library.Load();
+        recordings = library.Load().Where(r => !r.IsLocallyPurged).ToList();
         AllCount.Text = recordings.Count(r => r.DeletedAt is null).ToString();
         FavoriteCount.Text = recordings.Count(r => r.DeletedAt is null && r.IsFavorite).ToString();
         DeletedCount.Text = recordings.Count(r => r.DeletedAt is not null).ToString();
@@ -289,6 +289,9 @@ public partial class MainWindow : Window
         DeleteMenuItem.IsEnabled = DeleteButton.IsEnabled;
         FavoriteMenuItem.Header = FavoriteButton.Content;
         DeleteMenuItem.Header = DeleteButton.Content;
+        PermanentDeleteMenuItem.Visibility = PermanentDeleteButton.Visibility;
+        PermanentDeleteMenuItem.IsEnabled = PermanentDeleteButton.IsEnabled;
+        ExportAudioMenuItem.IsEnabled = ExportAudioButton.IsEnabled;
         PopulateMoveMenu(MoveFolderMenuItem);
     }
     private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -565,10 +568,10 @@ public partial class MainWindow : Window
     private void Favorite_Click(object sender, RoutedEventArgs e) { if (selected is not null) SaveEdit(selected with { IsFavorite = !selected.IsFavorite }); }
     private void Delete_Click(object sender, RoutedEventArgs e)
     {
-        if (selected is null) return;
+        if (selected is null || runningWork is not null || recorder is not null || transitioning || ModalOperationOpen) return;
         bool restore = selected.DeletedAt is not null;
         if (SaveEdit(selected with { DeletedAt = restore ? null : DateTimeOffset.Now }))
-            SetStatus(restore ? "녹음을 복원했습니다." : "최근 삭제로 이동했습니다. 필터에서 언제든 복원할 수 있습니다.");
+            SetStatus(restore ? "녹음을 복원했습니다." : "최근 삭제로 이동했습니다. 30일 안에 복원할 수 있습니다.");
     }
     private void Rename_Click(object sender, RoutedEventArgs e)
     {
@@ -626,6 +629,9 @@ public partial class MainWindow : Window
         EmptyState.Visibility = recorder is null && !transitioning && selected is null ? Visibility.Visible : Visibility.Collapsed;
         bool editable = idle && selected is not null;
         FavoriteButton.IsEnabled = RenameButton.IsEnabled = DeleteButton.IsEnabled = editable;
+        PermanentDeleteButton.Visibility = selected?.DeletedAt is not null ? Visibility.Visible : Visibility.Collapsed;
+        PermanentDeleteButton.IsEnabled = editable && selected?.DeletedAt is not null;
+        ExportAudioButton.IsEnabled = editable && File.Exists(library.AudioPath(selected!.Id));
         GenerateButton.IsEnabled = TranscribeOnlyButton.IsEnabled = SummarizeOnlyButton.IsEnabled = ImportTranscriptButton.IsEnabled = ClovaExportButton.IsEnabled = editable && selected?.DeletedAt is null;
         ShareWebButton.IsEnabled = editable && selected?.DeletedAt is null && notes is not null;
         EnhanceNotesButton.IsEnabled = CleanTranscriptButton.IsEnabled = ShareWebButton.IsEnabled;

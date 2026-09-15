@@ -201,17 +201,23 @@ public sealed partial class LibrarySyncEngine : IDisposable
     private async Task AdoptRecordingAsync(SyncRecording remote, Recording? previous, CancellationToken token)
     {
         bool audioChanged = previous?.AudioVersion != remote.AudioVersion;
-        bool download = remote.DeletedAt is null && (audioChanged || !File.Exists(library.AudioPath(remote.Id)));
+        bool download;
         string prefix = $"Recordings/{remote.Id:D}/";
+        bool restorePurged;
+        string statePath = Path.GetRelativePath(library.Root, state.Path);
         string[] caches = ["transcript.json", "notes.json", "meeting-intelligence.json", "meeting-edits-local.json", "participant-transcript-local.json", "speaker-acoustic-local.json", "sync-notes-local.json", "sync-intelligence-local.json"];
         var paths = new List<string> { prefix + "meta.json" };
-        if (download || audioChanged) paths.AddRange([prefix + "audio.wav", prefix + "sync-audio.m4a", prefix + "sync-audio-local.json"]);
+        if (remote.DeletedAt is null) paths.AddRange([prefix + ".purged", prefix + ".purge-pending"]);
         if (audioChanged) paths.AddRange(caches.Select(c => prefix + c));
         Dictionary<string, string?> expected;
         lock (JsonDisk.Gate)
         {
             var current = SyncRecordings.Read(library, remote.Id);
             if (current?.IsRecording == true || !JsonSerializer.SerializeToUtf8Bytes(current, JsonDisk.Options).SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(previous, JsonDisk.Options))) throw new SyncLocalConflictException();
+            download = remote.DeletedAt is null && (audioChanged || !File.Exists(library.AudioPath(remote.Id)));
+            restorePurged = remote.DeletedAt is null && (File.Exists(library.PurgeMarkerPath(remote.Id)) || File.Exists(Path.Combine(library.DirectoryFor(remote.Id), ".purge-pending")));
+            if (restorePurged) paths.Add(statePath);
+            if (download || audioChanged) paths.AddRange([prefix + "audio.wav", prefix + "sync-audio.m4a", prefix + "sync-audio-local.json"]);
             expected = SyncFileTransaction.Snapshot(library.Root, paths);
         }
         string incoming = SyncFileTransaction.PathIn(library.Root, ".sync/incoming/" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(incoming);
@@ -233,9 +239,21 @@ public sealed partial class LibrarySyncEngine : IDisposable
                 foreach (string old in new[] { "audio.wav", "sync-audio.m4a", "sync-audio-local.json" }) if (expected[prefix + old] is not null) changes.Add(new(prefix + old, null));
             }
             if (audioChanged) foreach (var cache in caches) if (expected[prefix + cache] is not null) changes.Add(new(prefix + cache, null));
+            if (remote.DeletedAt is null)
+                foreach (string marker in new[] { ".purged", ".purge-pending" })
+                    if (expected[prefix + marker] is not null) changes.Add(new(prefix + marker, null));
+            SyncState? restoredState = null;
+            if (restorePurged)
+            {
+                // Purging removed applied edits. Replay the server log idempotently after restoring files.
+                restoredState = state.State with { EditCursor = 0 };
+                string stagedState = Path.Combine(incoming, "state.json"); temporary.Add(stagedState); JsonDisk.Write(stagedState, restoredState);
+                changes.Add(new(statePath, stagedState));
+            }
             string metadata = Path.Combine(incoming, "meta.json"); temporary.Add(metadata); JsonDisk.Write(metadata, SyncRecordings.ToLocal(remote, previous));
             changes.Add(new(prefix + "meta.json", metadata)); // Publish metadata last; startup recovery completes an interrupted application first.
             SyncFileTransaction.Commit(library.Root, expected, changes, token);
+            if (restoredState is not null) state.AcceptCommitted(restoredState);
         }
         finally { foreach (string file in temporary) if (File.Exists(file)) File.Delete(file); if (!Directory.EnumerateFileSystemEntries(incoming).Any()) Directory.Delete(incoming); }
     }
