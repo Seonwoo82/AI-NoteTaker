@@ -44,7 +44,7 @@ The app settings should use the deployed Worker HTTPS origin and the same token.
 
 ### Updating an existing server for web sharing
 
-Updating the desktop or mobile app does not deploy the Worker. Apply `0006_web_shares.sql` with the migration command above, then deploy the current Worker and its `web-sharing.mjs` module using the existing DB, R2, and sync-token bindings.
+Updating the desktop or mobile app does not deploy the Worker. Apply migrations through `0007_persistent_share_urls.sql` with the migration command above, then deploy the current Worker and its `web-sharing.mjs` module using the existing DB, R2, and sync-token bindings.
 
 After deployment, verify both `/v1/health` and an authenticated `GET /v1/shares/<new-UUID>`. The latter must return `200 { "active": false }`. An older Worker can pass its own health check while returning `404 not_found: Endpoint was not found.` for sharing. Verify a synthetic share through creation, unauthenticated public reading, replacement, and revocation before distributing clients that depend on the endpoint.
 
@@ -71,12 +71,14 @@ All `/v1/*` routes require `Authorization: Bearer <SYNC_TOKEN>`. Public web-shar
 - `GET /v1/recordings/<UUID>/intelligence/<audioVersion>/<revision>` returns the exact completed JSON bytes from `recordings/<UUID>/intelligence/<audioVersion>/<revision>.json` in private R2.
 - `GET /v1/meeting-edits?after=<sequence>` lists append-only manual edit entries as `{ "entries": [{ "sequence": number, "edit": document }], "nextCursor": number|null }`, ordered by sequence.
 - `PUT /v1/meeting-edits/<UUID>` accepts one immutable manual edit document. Repeating the same ID with the same payload succeeds and returns the existing entry; repeating the same ID with a different payload returns `409 edit_conflict`.
-- `PUT /v1/shares/<UUID>` accepts `{ "title": string, "markdown": string }` and returns `{ "url": "https://.../s/<token>", "expiresAt": unixMilliseconds }`. The source UUID is accepted case-insensitively and normalized. The token is 32 random bytes encoded as base64url; D1 stores only its SHA-256 hash. Creating a new share for the same source immediately disables the previous public token.
-- `GET /v1/shares/<UUID>` returns `{ "active": true, "expiresAt": unixMilliseconds }` while a non-expired share exists, otherwise `{ "active": false }`. It never returns the token, object key, markdown, or private content.
+- `PUT /v1/shares/<UUID>` accepts `{ "title": string, "markdown": string }` and returns `{ "url": "https://.../s/<token>", "expiresAt": unixMilliseconds }`. The source UUID is accepted case-insensitively and normalized. The token is 32 random bytes encoded as base64url; private D1 stores its hash and a retrievable token so authorized clients can recover the address. Creating a new share for the same source immediately disables the previous public token.
+- `GET /v1/shares/<UUID>` returns `{ "active": true, "url": "https://.../s/<token>", "expiresAt": unixMilliseconds }` while a non-expired share exists, otherwise `{ "active": false }`. This management route requires the existing sync token; the object key, markdown, and other private content remain excluded. Repeated reads and fresh client sessions recover the same address.
 - `DELETE /v1/shares/<UUID>` is idempotent and returns `204`, immediately revoking the public page.
 - `GET /s/<token>` returns escaped, responsive HTML for active, unexpired snapshots. Missing, malformed, expired, and revoked tokens return the same generic 404 page.
 
 Responses include `Cache-Control: no-store` so private metadata, audio, documents, and public share pages are not cached by intermediary clients. Public share pages also send a strict CSP, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, and `X-Robots-Tag: noindex, nofollow, noarchive`. The health route reads core D1 tables, including `web_shares`, and performs an R2 metadata lookup; a missing migration or broken bucket binding fails health. Apply all migrations before deploying the Worker.
+
+Apply `0007_persistent_share_urls.sql` before deploying persistent address recovery. Existing hash-only links remain valid. When the original token is encountered on a successful public read it can be retained; otherwise an authenticated status read atomically allocates a stable additional address without changing the old hash, snapshot, or expiry. Both addresses are revoked together. Known original addresses can be backfilled after verifying their SHA-256 against the existing row. Treat retrievable tokens as private capability credentials and avoid logging them.
 
 ## Limits And Conflicts
 

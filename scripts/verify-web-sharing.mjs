@@ -59,7 +59,8 @@ try {
   const state = await (await checkStatus(await admin("GET"), 200)).json();
   assert.equal(state.active, true);
   assert.equal(state.expiresAt, created.expiresAt);
-  assert.equal(state.url, undefined);
+  assert.equal(state.url, created.url);
+  assert.deepEqual(await (await checkStatus(await admin("GET"), 200)).json(), state);
 
   // An invalid publication must preserve the existing valid snapshot.
   await checkStatus(await admin("PUT", { title: "bad", markdown: "bad", transcript: "PRIVATE" }), 400);

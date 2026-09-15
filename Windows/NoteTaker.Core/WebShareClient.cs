@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 namespace NoteTaker.Core;
 
 public sealed record WebSharePublication(string Url, DateTimeOffset ExpiresAt);
-public sealed record WebShareStatus(bool Active, DateTimeOffset? ExpiresAt);
+public sealed record WebShareStatus(bool Active, DateTimeOffset? ExpiresAt, string? Url = null);
 
 public sealed class WebShareClient : IDisposable
 {
@@ -68,7 +68,10 @@ public sealed class WebShareClient : IDisposable
         if (!active) return new WebShareStatus(false, null);
         if (!body.RootElement.TryGetProperty("expiresAt", out var expiresElement) || !expiresElement.TryGetInt64(out var expiresAt) || expiresAt <= 0)
             throw new InvalidDataException("웹 공유 상태 응답 형식이 올바르지 않습니다.");
-        return new WebShareStatus(true, DateTimeOffset.FromUnixTimeMilliseconds(expiresAt));
+        if (!body.RootElement.TryGetProperty("url", out var urlElement) || urlElement.ValueKind != JsonValueKind.String
+            || urlElement.GetString() is not { } url || !IsExpectedShareUrl(url))
+            throw new InvalidDataException("공유 링크 주소를 불러올 수 없습니다. 공유 서버를 업데이트한 뒤 다시 시도해 주세요.");
+        return new WebShareStatus(true, DateTimeOffset.FromUnixTimeMilliseconds(expiresAt), url);
     }
 
     public async Task RevokeAsync(Guid sourceId, CancellationToken token)

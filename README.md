@@ -11,7 +11,7 @@ AI-NoteTaker는 SwiftUI로 만든 macOS·iOS 개인용 음성 노트 앱입니�
 > **macOS 26+ · iOS 17+ · Apple Silicon Mac · Swift 6**
 > App Store 배포 없이 Xcode로 개인 Mac과 iPhone/iPad에 설치하는 구성을 기준으로 합니다.
 
-현재 버전은 **Mac 1.7.2 (빌드 21), iOS 1.7.1 (빌드 24)**입니다. Mac의 작은 파형은 재생 위치 주변 5분을 확대해 보여주며, 전체 파형과 함께 정밀 탐색할 수 있습니다. [확대 파형 설명](docs/implementation/FOCUSED-WAVEFORM.md) · [공유·클릭 영역 수정 기록](docs/implementation/SHARING-UI-AND-SIDEBAR.md)
+현재 버전은 **Mac 1.7.3 (빌드 22), iOS 1.7.2 (빌드 25)**입니다. 공유 링크는 창을 다시 열거나 앱을 재시작해도 주소와 복사 버튼이 유지됩니다. [공유 주소 복원](docs/implementation/PERSISTENT-WEB-SHARING.md) · [확대 파형 설명](docs/implementation/FOCUSED-WAVEFORM.md)
 
 - [작업 예정 기능 목록](docs/FEATURE-BACKLOG.md)
 - [Cloudflare 배포 및 API 가이드](Cloudflare/README.md)
