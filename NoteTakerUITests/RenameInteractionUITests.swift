@@ -2,6 +2,59 @@ import XCTest
 
 final class RenameInteractionUITests: XCTestCase {
     @MainActor
+    func testSidebarBlankPaddingSelectsAndKeepsRenameAndContextMenuUsable() async throws {
+        let fixture = try await launchAppWithOneRecording()
+        let app = fixture.app
+        defer { app.terminate() }
+        let row = app.descendants(matching: .any)["recording-row-\(fixture.recordingID)"]
+        _ = try XCTUnwrap(row.waitForExistence(timeout: 5) ? row : nil)
+
+        app.buttons.matching(NSPredicate(format: "label == %@", "Rename")).firstMatch.click()
+        let detailEditor = app.textFields.matching(titleFieldPredicate(identifier: "recording-title-field")).firstMatch
+        _ = try XCTUnwrap(detailEditor.waitForExistence(timeout: 5) ? detailEditor : nil)
+        try await replaceText(in: detailEditor, with: "Hit target", app: app)
+        app.typeKey(.return, modifierFlags: [])
+        try waitForTitle("Hit target", in: app, row: row)
+
+        app.buttons.matching(NSPredicate(format: "label == %@", "New Recording")).firstMatch.click()
+        let done = app.buttons.matching(NSPredicate(format: "label == %@", "Done")).firstMatch
+        _ = try XCTUnwrap(done.waitForExistence(timeout: 5) ? done : nil)
+        done.click()
+        let otherRow = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND identifier != %@", "recording-row-", row.identifier
+        )).firstMatch
+        _ = try XCTUnwrap(otherRow.waitForExistence(timeout: 5) ? otherRow : nil)
+        let detailTitle = app.staticTexts["recording-title-label"]
+        _ = try XCTUnwrap(detailTitle.waitForExistence(timeout: 5) ? detailTitle : nil)
+        let targetIsSelected = NSPredicate(format: "label == %@ OR value == %@", "Hit target", "Hit target")
+
+        // These points contain no text: trailing whitespace, left padding, and
+        // the padded top-right corner of an initially unselected recording.
+        for point in [CGVector(dx: 0.97, dy: 0.5), CGVector(dx: 0.006, dy: 0.5), CGVector(dx: 0.99, dy: 0.05)] {
+            otherRow.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.3)).click()
+            await fulfillment(of: [XCTNSPredicateExpectation(
+                predicate: NSCompoundPredicate(notPredicateWithSubpredicate: targetIsSelected), object: detailTitle
+            )], timeout: 3)
+            row.coordinate(withNormalizedOffset: point).click()
+            await fulfillment(of: [XCTNSPredicateExpectation(
+                predicate: targetIsSelected, object: detailTitle
+            )], timeout: 3)
+        }
+
+        let blankArea = row.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5))
+        blankArea.rightClick()
+        XCTAssertTrue(app.menuItems["Move to Folder"].firstMatch.waitForExistence(timeout: 3))
+        app.typeKey(.escape, modifierFlags: [])
+
+        blankArea.doubleClick()
+        let sidebarEditor = app.textFields.matching(titleFieldPredicate(identifier: "sidebar-recording-title-field")).firstMatch
+        _ = try XCTUnwrap(sidebarEditor.waitForExistence(timeout: 5) ? sidebarEditor : nil)
+        try await replaceText(in: sidebarEditor, with: "Edited through row", app: app)
+        app.typeKey(.return, modifierFlags: [])
+        try waitForTitle("Edited through row", in: app, row: row)
+    }
+
+    @MainActor
     func testSidebarDoubleClickEditsInsideRowAndCanSaveOrCancel() async throws {
         let fixture = try await launchAppWithOneRecording()
         let app = fixture.app

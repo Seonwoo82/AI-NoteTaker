@@ -1,10 +1,117 @@
 import Foundation
 import Testing
+import SwiftUI
+import XCTest
 #if os(iOS)
+import UIKit
 @testable import NoteTakerIOS
 #else
+import AppKit
 @testable import NoteTaker
 #endif
+
+@MainActor
+final class WebShareSheetPresentationTests: XCTestCase {
+    func testCopyCanRestoreTheLinkAfterOtherClipboardContent() throws {
+        let url = try XCTUnwrap(URL(string: "https://notes.example/s/synthetic-share-address"))
+        #if os(macOS)
+        let pasteboard = NSPasteboard.general
+        let saved = (pasteboard.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        }
+        defer { pasteboard.clearContents(); pasteboard.writeObjects(saved) }
+        XCTAssertTrue(WebShareClipboard.copy(url))
+        XCTAssertEqual(pasteboard.string(forType: .string), url.absoluteString)
+        pasteboard.clearContents()
+        pasteboard.setString("Other clipboard content", forType: .string)
+        XCTAssertTrue(WebShareClipboard.copy(url))
+        XCTAssertEqual(pasteboard.string(forType: .string), url.absoluteString)
+        #else
+        let pasteboard = UIPasteboard.general
+        let saved = pasteboard.items
+        defer { pasteboard.items = saved }
+        XCTAssertTrue(WebShareClipboard.copy(url))
+        XCTAssertEqual(pasteboard.string, url.absoluteString)
+        pasteboard.string = "Other clipboard content"
+        XCTAssertTrue(WebShareClipboard.copy(url))
+        XCTAssertEqual(pasteboard.string, url.absoluteString)
+        #endif
+    }
+
+    func testActiveSharingLayoutsRenderWithoutPublishing() async throws {
+        let address = try XCTUnwrap(URL(string: "https://notes.example/s/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"))
+        let states: [(String, URL?, ColorScheme)] = [
+            ("active", address, .light),
+            ("active-no-address", nil, .light),
+            ("active-dark", address, .dark)
+        ]
+        for (name, url, colorScheme) in states {
+            let view = NavigationStack {
+                WebShareSheetContent(isLoading: false, progressTitle: "", shareURL: url,
+                    expiresAt: Date(timeIntervalSince1970: 1_790_000_000), isActive: true, statusIsKnown: true,
+                    copied: false, message: nil, errorMessage: nil,
+                    publish: { XCTFail("Rendering an active link must not publish another link.") },
+                    revoke: { XCTFail("Rendering must not cancel sharing.") },
+                    copy: { _ in XCTFail("Rendering must not replace the clipboard.") }, openSyncSettings: {})
+                    .navigationTitle(String(localized: "Share to Web"))
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(String(localized: "Done")) {}
+                        }
+                    }
+            }
+            .environment(\.locale, Locale(identifier: "ko"))
+            .preferredColorScheme(colorScheme)
+            #if os(macOS)
+            let host = NSHostingView(rootView: view)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
+                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
+            window.contentView = host
+            host.frame = window.contentView!.bounds
+            defer { window.close() }
+            let platform = "mac"
+            #else
+            let host = UIHostingController(rootView: view)
+            host.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
+            let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+            let window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+            window.rootViewController = host
+            host.loadViewIfNeeded()
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true }
+            let platform = "iphone"
+            #endif
+            try await Task.sleep(for: .milliseconds(200))
+            #if os(macOS)
+            host.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            #else
+            host.view.layoutIfNeeded()
+            let png = UIGraphicsImageRenderer(bounds: host.view.bounds).pngData { _ in
+                host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+            }
+            #endif
+            XCTAssertGreaterThan(png.count, 10_000, "The sharing form must contain rendered content.")
+            let filename = "web-share-\(name)-\(platform).png"
+            let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
+            attachment.name = filename
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let output = FileManager.default.temporaryDirectory.appending(path: filename)
+            try png.write(to: output)
+            print("WEB_SHARE_RENDER: \(output.path)")
+        }
+    }
+}
 
 @Suite("Web share client")
 @MainActor

@@ -84,14 +84,14 @@ struct TranscriptAssemblerTests {
         #expect(transcript.turns.map(\.speakerID) == ["speaker-a", "speaker-b"])
     }
 
-    @Test("manual owner target exists without inventing owner speech")
+    @Test("manual owner assignment works without an unused owner speaker")
     func manualOwnerTargetWithoutEnrollment() throws {
         let chunk = TimedTranscriptChunk(startTime: 0, result: DetailedTranscriptionResult(text: "Hello", words: [],
             segments: [TimedTranscriptionSegment(text: "Hello", start: 0, end: 1, speakerID: nil)]))
         let transcript = try TranscriptAssembler.assemble(recordingID: recordingID, audioVersion: 1,
             transcriptionModelID: "fixture", chunks: [chunk], diarization: AcousticDiarization(speakers: [], spans: []),
             ownerVoice: nil, embeddingModelID: "fixture", duration: 1)
-        #expect(transcript.speakers.contains { $0.id == "owner" && $0.isOwner })
+        #expect(transcript.speakers.isEmpty)
         #expect(transcript.turns.first?.speakerID == nil)
         let document = MeetingIntelligenceDocument(recordingID: recordingID, audioVersion: 1, modifiedAt: 1,
             mutationID: UUID(), projectName: "", transcript: transcript, insights: nil, analysisModelID: "fixture")
@@ -100,6 +100,37 @@ struct TranscriptAssemblerTests {
         let resolved = try document.resolved(edits: [edit])
         #expect(resolved.ownerTurns.count == 1)
         #expect(resolved.unresolvedEditCount == 0)
+        #expect(resolved.transcript.speakers.contains { $0.id == "owner" && $0.isOwner })
+        #expect(resolved.source.transcript.speakers.isEmpty)
+    }
+
+    @Test("owner enrollment changes preserve acoustic speaker IDs turn boundaries and manual corrections")
+    func ownerEnrollmentPreservesAcousticIdentity() throws {
+        let chunks = [TimedTranscriptChunk(startTime: 0, result: DetailedTranscriptionResult(text: "One two", words: [
+            TimedTranscriptionWord(text: "One", start: 0, end: 1, speakerID: nil),
+            TimedTranscriptionWord(text: "two", start: 1, end: 2, speakerID: nil)
+        ], segments: []))]
+        let diarization = AcousticDiarization(speakers: [
+            AcousticSpeaker(id: "a", embedding: [1, 0]), AcousticSpeaker(id: "b", embedding: [1, 0])
+        ], spans: [AcousticSpeakerSpan(start: 0, end: 1, speakerID: "a"),
+                   AcousticSpeakerSpan(start: 1, end: 2, speakerID: "b")])
+        let before = try TranscriptAssembler.assemble(recordingID: recordingID, audioVersion: 1,
+            transcriptionModelID: "fixture", chunks: chunks, diarization: diarization, ownerVoice: nil,
+            embeddingModelID: "fixture", duration: 2)
+        let voice = LocalVoiceProfile(modelID: "fixture", embedding: [1, 0], enrolledAt: .now, sampleDuration: 12)
+        let after = try TranscriptAssembler.assemble(recordingID: recordingID, audioVersion: 1,
+            transcriptionModelID: "fixture", chunks: chunks, diarization: diarization, ownerVoice: voice,
+            embeddingModelID: "fixture", duration: 2)
+        #expect(before.speakers.map(\.id) == ["speaker-a", "speaker-b"])
+        #expect(after.speakers.map(\.id) == ["speaker-a", "speaker-b"])
+        #expect(after.turns == before.turns)
+        #expect(after.speakers.allSatisfy { $0.isOwner })
+        let document = MeetingIntelligenceDocument(recordingID: recordingID, audioVersion: 1, modifiedAt: 1,
+            mutationID: UUID(), projectName: "", transcript: after, insights: nil, analysisModelID: "fixture")
+        let resolved = try document.resolved(edits: [MeetingEdit(id: UUID(), recordingID: recordingID,
+            audioVersion: 1, modifiedAt: 2, kind: .speakerOwner, targetID: "speaker-a", value: "false")])
+        #expect(resolved.unresolvedEditCount == 0)
+        #expect(resolved.transcript.speakers.first?.isOwner == false)
     }
 
     @Test("diarization overlap assigns speakers and leaves ambiguous words unknown")
@@ -144,9 +175,9 @@ struct TranscriptAssemblerTests {
             duration: 3
         )
 
-        #expect(transcript.speakers.contains(MeetingSpeaker(id: "owner", name: "Me", isOwner: true)))
+        #expect(transcript.speakers.contains(MeetingSpeaker(id: "speaker-cluster-a", name: "Me", isOwner: true)))
         #expect(transcript.speakers.contains(MeetingSpeaker(id: "speaker-cluster-b", name: "Speaker 2", isOwner: false)))
-        #expect(transcript.turns.map(\.speakerID) == ["owner", "speaker-cluster-b", nil])
+        #expect(transcript.turns.map(\.speakerID) == ["speaker-cluster-a", "speaker-cluster-b", nil])
         #expect(transcript.turns.map(\.text) == ["I can", "own this", "yes"])
     }
 

@@ -220,6 +220,7 @@ final class MeetingProfileStore {
     private(set) var lastError: String?
 
     @ObservationIgnored var onProfileChanged: (() -> Void)?
+    @ObservationIgnored var onLocalVoiceChanged: (() -> Void)?
     @ObservationIgnored private let root: URL
     @ObservationIgnored private let fileStore: MeetingProfileFileStore
     @ObservationIgnored private var syncState: MeetingProfileSyncState
@@ -349,12 +350,14 @@ final class MeetingProfileStore {
         try fileStore.saveLocalVoiceProfile(voice)
         localVoice = voice
         lastError = nil
+        onLocalVoiceChanged?()
     }
 
     func deleteVoiceProfile() throws {
         try fileStore.deleteLocalVoiceProfile()
         localVoice = nil
         lastError = nil
+        onLocalVoiceChanged?()
     }
 
     private static func message(for error: any Error) -> String {

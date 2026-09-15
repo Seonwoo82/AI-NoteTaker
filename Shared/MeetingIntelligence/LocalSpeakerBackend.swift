@@ -20,39 +20,53 @@ actor LocalSpeakerBackend: SpeakerAnalysisServing {
             .appendingPathComponent("VoiceModels", isDirectory: true)
             .appendingPathComponent(diarizerRepoFolderName, isDirectory: true)
     }
+    nonisolated static var defaultOfflineModelDirectory: URL {
+        defaultModelDirectory.deletingLastPathComponent().appending(path: "offline-diarizer")
+    }
 
     private let modelDirectory: URL?
     private let localSegmentationModel: URL?
     private let localEmbeddingModel: URL?
+    private let offlineModelDirectory: URL
     private var cachedModels: DiarizerModels?
+    private var cachedOfflineModels: OfflineDiarizerModels?
     private var prepareTask: Task<DiarizerModels, Error>?
+    private var offlinePrepareTask: Task<OfflineDiarizerModels, Error>?
 
     init(
         modelDirectory: URL? = nil,
         localSegmentationModel: URL? = nil,
-        localEmbeddingModel: URL? = nil
+        localEmbeddingModel: URL? = nil,
+        offlineModelDirectory: URL? = nil
     ) {
         let modelDirectory = modelDirectory ?? Self.defaultModelDirectory
         self.modelDirectory = modelDirectory
         self.localSegmentationModel = localSegmentationModel ?? modelDirectory.appendingPathComponent(Self.segmentationModelFileName, isDirectory: true)
         self.localEmbeddingModel = localEmbeddingModel ?? modelDirectory.appendingPathComponent(Self.embeddingModelFileName, isDirectory: true)
+        self.offlineModelDirectory = offlineModelDirectory
+            ?? modelDirectory.deletingLastPathComponent().appending(path: "offline-diarizer")
     }
 
     func prepare() async throws {
         _ = try await loadModels()
+        _ = try await loadOfflineModels()
     }
 
     func prepareCachedIfAvailable() async throws -> Bool {
-        guard cachedModels == nil else { return true }
-        if let prepareTask {
-            cachedModels = try await prepareTask.value
-            return true
+        if cachedModels == nil {
+            if let prepareTask {
+                cachedModels = try await prepareTask.value
+            } else {
+                guard cachedModelFilesExist(), let localSegmentationModel, let localEmbeddingModel else { return false }
+                cachedModels = try DiarizerModels.load(localSegmentationModel: localSegmentationModel,
+                    localEmbeddingModel: localEmbeddingModel)
+            }
         }
-        guard cachedModelFilesExist(), let localSegmentationModel, let localEmbeddingModel else { return false }
-        // No suspension or network: an explicit prepare cannot inherit a failing
-        // restore-only task, and a broken cache remains repairable by prepare().
-        cachedModels = try DiarizerModels.load(localSegmentationModel: localSegmentationModel,
-            localEmbeddingModel: localEmbeddingModel)
+        // Live recognition and enrollment only require the existing WeSpeaker
+        // stack. Offline cache failures must not disable those features on upgrade.
+        if cachedOfflineModels == nil, offlinePrepareTask == nil {
+            cachedOfflineModels = try? OfflineSpeakerModelCache(directory: offlineModelDirectory).loadCached()
+        }
         return true
     }
 
@@ -119,20 +133,47 @@ actor LocalSpeakerBackend: SpeakerAnalysisServing {
     }
 
     func diarize(audioURL: URL) async throws -> AcousticDiarization {
-        guard let models = cachedModels else { throw notPreparedError() }
-        let manager = makeManager(models: models)
-        var segments: [TimedSpeakerSegment] = []
-
-        try LocalSpeakerAudioFileWindows.readMonoWindows(from: audioURL, targetSampleRate: 16_000) { window in
-            let result = try manager.performCompleteDiarization(
-                window.samples,
-                sampleRate: Int(window.sampleRate),
-                atTime: window.startTime
-            )
-            segments.append(contentsOf: result.segments)
+        guard cachedModels != nil, let offlineModels = cachedOfflineModels else { throw notPreparedError() }
+        var config = OfflineDiarizerConfig.default
+        config.postProcessing.exclusiveSegments = false
+        let manager = OfflineDiarizerManager(config: config)
+        manager.initialize(models: offlineModels)
+        let result: DiarizationResult
+        do {
+            result = try await manager.process(audioURL)
+        } catch OfflineDiarizationError.noSpeechDetected {
+            return AcousticDiarization(speakers: [], spans: [])
         }
+        try Task.checkCancellation()
+        let timeline = OfflineSpeakerTimeline(segments: result.segments)
+        let embeddings = try await representativeEmbeddings(audioURL: audioURL, timeline: timeline)
+        return AcousticDiarization(speakers: timeline.speakerIDs.map {
+            AcousticSpeaker(id: $0, embedding: embeddings[$0] ?? [])
+        }, spans: timeline.spans)
+    }
 
-        return Self.acousticDiarization(from: segments, speakers: manager.speakerManager.getAllSpeakers())
+    private func representativeEmbeddings(audioURL: URL, timeline: OfflineSpeakerTimeline) async throws -> [String: [Float]] {
+        let clips = timeline.representativeClips()
+        guard !clips.isEmpty else { return [:] }
+        var audio = [[Float]](repeating: [], count: clips.count)
+        try LocalSpeakerAudioFileWindows.readMonoWindows(from: audioURL, targetSampleRate: 16_000) { window in
+            for index in clips.indices { audio[index].append(contentsOf: clips[index].samples(in: window)) }
+        }
+        var embeddings: [String: [[Float]]] = [:]
+        for index in clips.indices {
+            try Task.checkCancellation()
+            do {
+                // Match enrollment's signal preparation and clean-speech mask with
+                // the original WeSpeaker model, preserving stored profile compatibility.
+                let embedding = try await enrollmentEmbedding(samples: audio[index], sampleRate: 16_000)
+                embeddings[clips[index].speakerID, default: []].append(embedding)
+            } catch is AIError {
+                // A short or unclear clip supplies no owner evidence. Keep its
+                // offline speaker spans even when all representative clips fail.
+                continue
+            }
+        }
+        return embeddings.mapValues { OfflineSpeakerTimeline.averageEmbeddings($0) }
     }
 
     private func loadModels() async throws -> DiarizerModels {
@@ -163,18 +204,34 @@ actor LocalSpeakerBackend: SpeakerAnalysisServing {
     }
 
     private func makeManager(models: DiarizerModels) -> DiarizerManager {
-        var config = DiarizerConfig.default
-        config.chunkDuration = 10
-        config.chunkOverlap = 0
-        config.debugMode = false
-        let manager = DiarizerManager(config: config)
-        // Use the SDK's documented streaming thresholds (0.65/0.45 distance).
-        // DiarizerConfig's derived 0.84 assignment distance merges distinct voices
-        // across our independently processed ten-second windows.
-        manager.speakerManager = SpeakerManager()
+        let manager = DiarizerManager()
         let modelCopy = models
         manager.initialize(models: modelCopy)
         return manager
+    }
+
+    private func loadOfflineModels() async throws -> OfflineDiarizerModels {
+        if let cachedOfflineModels { return cachedOfflineModels }
+        if let offlinePrepareTask {
+            let models = try await offlinePrepareTask.value
+            cachedOfflineModels = models
+            self.offlinePrepareTask = nil
+            return models
+        }
+        let directory = offlineModelDirectory
+        let task = Task.detached(priority: .userInitiated) {
+            try await OfflineDiarizerModels.load(from: directory)
+        }
+        offlinePrepareTask = task
+        do {
+            let models = try await task.value
+            cachedOfflineModels = models
+            offlinePrepareTask = nil
+            return models
+        } catch {
+            offlinePrepareTask = nil
+            throw error
+        }
     }
 
     private func cachedModelFilesExist() -> Bool {
@@ -187,82 +244,4 @@ actor LocalSpeakerBackend: SpeakerAnalysisServing {
         AIError(message: String(localized: "화자 인식 모델이 아직 준비되지 않았어요. 프로필 설정에서 먼저 목소리 모델을 준비해 주세요."))
     }
 
-    nonisolated private static func acousticDiarization(from segments: [TimedSpeakerSegment], speakers: [String: Speaker]) -> AcousticDiarization {
-        var speakerEmbeddings = speakers.map { id, speaker in
-            AcousticSpeaker(id: id, embedding: speaker.currentEmbedding)
-        }
-        let knownIDs = Set(speakerEmbeddings.map(\.id))
-        let missingSpeakers = Dictionary(grouping: segments.filter { !$0.speakerId.isEmpty && !knownIDs.contains($0.speakerId) }, by: \.speakerId)
-            .compactMap { id, grouped -> AcousticSpeaker? in
-                guard let embedding = grouped.first?.embedding, embedding.count == SpeakerManager.embeddingSize else { return nil }
-                return AcousticSpeaker(id: id, embedding: embedding)
-            }
-        speakerEmbeddings.append(contentsOf: missingSpeakers)
-        speakerEmbeddings.sort { $0.id < $1.id }
-
-        return AcousticDiarization(speakers: speakerEmbeddings, spans: overlapAwareSpans(from: segments))
-    }
-
-    nonisolated private static func overlapAwareSpans(from segments: [TimedSpeakerSegment]) -> [AcousticSpeakerSpan] {
-        nonisolated struct Event {
-            let time: Double
-            let speakerID: String
-            let delta: Int
-        }
-
-        let events = segments.flatMap { segment in
-            let speakerID = segment.speakerId
-            return [
-                Event(time: Double(segment.startTimeSeconds), speakerID: speakerID, delta: 1),
-                Event(time: Double(segment.endTimeSeconds), speakerID: speakerID, delta: -1),
-            ]
-        }.sorted { lhs, rhs in
-            if lhs.time != rhs.time { return lhs.time < rhs.time }
-            return lhs.delta < rhs.delta
-        }
-
-        var activeSpeakerCounts: [String: Int] = [:]
-        var overlappingIntervals: [(start: Double, end: Double)] = []
-        var index = events.startIndex
-        var previousTime: Double?
-
-        while index < events.endIndex {
-            let time = events[index].time
-            if let previousTime, previousTime < time, activeSpeakerCounts.keys.count > 1 {
-                overlappingIntervals.append((previousTime, time))
-            }
-            while index < events.endIndex, events[index].time == time {
-                let event = events[index]
-                if !event.speakerID.isEmpty {
-                    let nextCount = (activeSpeakerCounts[event.speakerID] ?? 0) + event.delta
-                    if nextCount > 0 {
-                        activeSpeakerCounts[event.speakerID] = nextCount
-                    } else {
-                        activeSpeakerCounts.removeValue(forKey: event.speakerID)
-                    }
-                }
-                index = events.index(after: index)
-            }
-            previousTime = time
-        }
-
-        let baseSpans = segments.map { segment in
-            let start = Double(segment.startTimeSeconds)
-            let end = Double(segment.endTimeSeconds)
-            return AcousticSpeakerSpan(
-                start: start,
-                end: end,
-                speakerID: segment.speakerId.isEmpty ? nil : segment.speakerId,
-                isOverlap: false
-            )
-        }
-        let overlapSpans = overlappingIntervals.map {
-            AcousticSpeakerSpan(start: $0.start, end: $0.end, speakerID: nil, isOverlap: true)
-        }
-        return (baseSpans + overlapSpans).sorted {
-            if $0.start != $1.start { return $0.start < $1.start }
-            if $0.end != $1.end { return $0.end < $1.end }
-            return !$0.isOverlap && $1.isOverlap
-        }
-    }
 }

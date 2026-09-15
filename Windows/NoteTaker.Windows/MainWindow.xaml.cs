@@ -607,11 +607,13 @@ internal sealed class WebShareWindow : Window
     private readonly AppSettings settings;
     private readonly CancellationTokenSource cancellation = new();
     private readonly TextBlock statusText = new() { TextWrapping = TextWrapping.Wrap, LineHeight = 20 };
-    private readonly TextBox urlBox = new() { IsReadOnly = true, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
-    private readonly Button publishButton = new() { Content = "새 링크 만들기", MinWidth = 110 };
-    private readonly Button copyButton = new() { Content = "링크 복사", MinWidth = 90, IsEnabled = false };
-    private readonly Button openButton = new() { Content = "열기", MinWidth = 70, IsEnabled = false };
-    private readonly Button revokeButton = new() { Content = "공유 중지", MinWidth = 90, IsEnabled = false };
+    private readonly Grid linkRow = new() { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
+    private readonly TextBlock urlText = new() { TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), TextAlignment = TextAlignment.Left };
+    private readonly Button urlButton = new() { ToolTip = "클릭하여 링크 복사", Cursor = Cursors.Hand };
+    private readonly Button publishButton = new() { Content = "웹 링크 만들기", MinWidth = 110, IsEnabled = false };
+    private readonly Button copyButton = new() { Content = "복사", ToolTip = "링크 복사", MinWidth = 56, IsEnabled = false };
+    private readonly Button revokeButton = new() { Content = "공유 취소", MinWidth = 90, Visibility = Visibility.Collapsed };
+    private bool statusLoaded;
     private bool knownActive;
     private string? currentUrl;
 
@@ -646,7 +648,7 @@ internal sealed class WebShareWindow : Window
         body.Children.Add(new TextBlock { Text = recording.Title, FontSize = 18, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
         var explanation = new TextBlock
         {
-            Text = "링크를 가진 사람은 7일 동안 회의록 스냅샷을 읽을 수 있습니다. 새 링크를 만들면 이전 링크는 바로 비활성화됩니다. 업로드하는 내용은 제목과 회의록 Markdown뿐이며 오디오와 전사문은 보내지 않습니다.",
+            Text = "제목과 회의록 사본을 공유합니다. 링크를 가진 사람은 누구나 7일 동안 읽을 수 있습니다. 공유를 취소하면 링크 접근이 차단되지만, 다른 사람이 이미 저장한 사본은 되돌릴 수 없습니다.",
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 20,
             Margin = new Thickness(0, 10, 0, 16)
@@ -654,7 +656,20 @@ internal sealed class WebShareWindow : Window
         explanation.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
         body.Children.Add(explanation);
         body.Children.Add(statusText);
-        body.Children.Add(urlBox);
+        linkRow.ColumnDefinitions.Add(new ColumnDefinition());
+        linkRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        urlButton.SetResourceReference(StyleProperty, "LinkButton");
+        urlButton.Content = urlText;
+        urlButton.Click += Copy_Click;
+        System.Windows.Automation.AutomationProperties.SetName(urlButton, "링크 주소 복사");
+        copyButton.SetResourceReference(StyleProperty, "ToolbarButton");
+        copyButton.VerticalAlignment = VerticalAlignment.Center;
+        copyButton.Margin = new Thickness(8, 0, 0, 0);
+        System.Windows.Automation.AutomationProperties.SetName(copyButton, "링크 복사");
+        Grid.SetColumn(copyButton, 1);
+        linkRow.Children.Add(urlButton);
+        linkRow.Children.Add(copyButton);
+        body.Children.Add(linkRow);
         Grid.SetRow(body, 1);
         grid.Children.Add(body);
 
@@ -665,12 +680,9 @@ internal sealed class WebShareWindow : Window
         publishButton.SetResourceReference(StyleProperty, "PrimaryButton");
         publishButton.Click += Publish_Click;
         copyButton.Click += Copy_Click;
-        openButton.Click += Open_Click;
         revokeButton.Click += Revoke_Click;
         buttons.Children.Add(revokeButton);
         buttons.Children.Add(new Button { Content = "닫기", IsCancel = true, MinWidth = 70, Margin = new Thickness(8, 0, 0, 0) });
-        buttons.Children.Add(copyButton); copyButton.Margin = new Thickness(8, 0, 0, 0);
-        buttons.Children.Add(openButton); openButton.Margin = new Thickness(8, 0, 0, 0);
         buttons.Children.Add(publishButton); publishButton.Margin = new Thickness(8, 0, 0, 0);
         footer.Child = buttons;
         Grid.SetRow(footer, 2);
@@ -696,11 +708,11 @@ internal sealed class WebShareWindow : Window
         {
             var status = await client.GetStatusAsync(recording.Id, cancellation.Token);
             currentUrl = null;
-            urlBox.Visibility = Visibility.Collapsed;
-            copyButton.IsEnabled = openButton.IsEnabled = false;
+            linkRow.Visibility = Visibility.Collapsed;
+            statusLoaded = true;
             knownActive = status.Active;
             if (status.Active)
-                SetStatus("현재 웹에 공유되어 있습니다. 원본 링크는 처음 만든 기기와 세션에서만 다시 볼 수 있지만, 여기에서 공유를 중지하거나 새 링크로 교체할 수 있습니다." + ExpiryText(status.ExpiresAt));
+                SetStatus("현재 웹에 공유되어 있습니다. 링크 주소는 만든 기기의 공유 창에서 복사할 수 있습니다. 여기에서도 공유를 취소할 수 있습니다." + ExpiryText(status.ExpiresAt));
             else
                 SetStatus("현재 활성화된 웹 공유 링크가 없습니다.");
         });
@@ -708,40 +720,44 @@ internal sealed class WebShareWindow : Window
 
     private async void Publish_Click(object sender, RoutedEventArgs e)
     {
+        if (knownActive || !statusLoaded) return;
         await RunAsync("회의록 스냅샷을 업로드하는 중…", async client =>
         {
             var publication = await client.PublishAsync(recording.Id, recording.Title, notes.Markdown, cancellation.Token);
             currentUrl = publication.Url;
             knownActive = true;
-            urlBox.Text = publication.Url;
-            urlBox.Visibility = Visibility.Visible;
-            SetStatus("새 웹 공유 링크를 만들었습니다. 이전 링크는 더 이상 열리지 않습니다." + ExpiryText(publication.ExpiresAt));
+            urlText.Text = publication.Url;
+            linkRow.Visibility = Visibility.Visible;
+            copyButton.Content = "복사";
+            SetStatus("웹 링크가 활성화되어 있습니다." + ExpiryText(publication.ExpiresAt));
         });
     }
 
     private async void Revoke_Click(object sender, RoutedEventArgs e)
     {
-        await RunAsync("웹 공유를 중지하는 중…", async client =>
+        await RunAsync("공유를 취소하는 중…", async client =>
         {
             await client.RevokeAsync(recording.Id, cancellation.Token);
             currentUrl = null;
             knownActive = false;
-            urlBox.Visibility = Visibility.Collapsed;
-            SetStatus("웹 공유를 중지했습니다. 이미 저장된 복사본은 회수할 수 없습니다.");
+            linkRow.Visibility = Visibility.Collapsed;
+            SetStatus("공유를 취소했습니다.");
         });
     }
 
     private void Copy_Click(object sender, RoutedEventArgs e)
     {
         if (currentUrl is null) return;
-        Clipboard.SetText(currentUrl);
-        SetStatus("링크를 클립보드에 복사했습니다.");
-    }
-
-    private void Open_Click(object sender, RoutedEventArgs e)
-    {
-        if (currentUrl is null) return;
-        Process.Start(new ProcessStartInfo(currentUrl) { UseShellExecute = true });
+        try
+        {
+            Clipboard.SetText(currentUrl);
+            copyButton.Content = "복사됨";
+            SetStatus("링크를 클립보드에 복사했습니다.");
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            SetStatus("클립보드를 사용할 수 없습니다. 다시 눌러 복사해 주세요.", true);
+        }
     }
 
     private async Task RunAsync(string progress, Func<WebShareClient, Task> action)
@@ -760,14 +776,11 @@ internal sealed class WebShareWindow : Window
 
     private void SetBusy(bool busy)
     {
-        publishButton.IsEnabled = !busy;
-        if (busy)
-        {
-            revokeButton.IsEnabled = copyButton.IsEnabled = openButton.IsEnabled = false;
-            return;
-        }
-        copyButton.IsEnabled = openButton.IsEnabled = currentUrl is not null;
-        revokeButton.IsEnabled = knownActive;
+        publishButton.Visibility = knownActive ? Visibility.Collapsed : Visibility.Visible;
+        publishButton.IsEnabled = !busy && statusLoaded && !knownActive;
+        revokeButton.Visibility = knownActive ? Visibility.Visible : Visibility.Collapsed;
+        revokeButton.IsEnabled = !busy && knownActive;
+        copyButton.IsEnabled = urlButton.IsEnabled = !busy && currentUrl is not null;
     }
 
     private void SetStatus(string text, bool error = false)

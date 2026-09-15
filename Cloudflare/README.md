@@ -42,6 +42,14 @@ npx wrangler deploy
 
 The app settings should use the deployed Worker HTTPS origin and the same token. Cloudflare account API keys are never entered into the app.
 
+### Updating an existing server for web sharing
+
+Updating the desktop or mobile app does not deploy the Worker. Apply `0006_web_shares.sql` with the migration command above, then deploy the current Worker and its `web-sharing.mjs` module using the existing DB, R2, and sync-token bindings.
+
+After deployment, verify both `/v1/health` and an authenticated `GET /v1/shares/<new-UUID>`. The latter must return `200 { "active": false }`. An older Worker can pass its own health check while returning `404 not_found: Endpoint was not found.` for sharing. Verify a synthetic share through creation, unauthenticated public reading, replacement, and revocation before distributing clients that depend on the endpoint.
+
+[2026-09-15 deployment and verification record](../docs/implementation/WEB-SHARING-DEPLOYMENT.md)
+
 ## HTTP Contract
 
 All `/v1/*` routes require `Authorization: Bearer <SYNC_TOKEN>`. Public web-share pages under `/s/<token>` never redirect to authentication.

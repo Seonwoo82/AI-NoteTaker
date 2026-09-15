@@ -1,6 +1,28 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Cached speaker models are incomplete. Prepare voice models again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장된 화자 모델이 불완전합니다. 음성 모델을 다시 준비해 주세요."
+          }
+        }
+      }
+    },
+    "Saved meeting owner attribution could not be refreshed locally: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장된 회의에 내 목소리를 적용하지 못했습니다: %@"
+          }
+        }
+      }
+    },
     "%lld days left": {
       "extractionState": "manual",
       "localizations": {
@@ -5027,13 +5049,13 @@
         }
       }
     },
-    "This shares a copy of the title and minutes only. Anyone with the link can read it until it expires in 7 days. Creating a new link invalidates the previous one.": {
+    "This shares a copy of the title and minutes only. Anyone with the link can read it until it expires in 7 days.": {
       "extractionState": "manual",
       "localizations": {
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "제목과 회의록 사본만 공유합니다. 링크가 있는 사람은 누구나 7일 동안 읽을 수 있습니다. 새 링크를 만들면 이전 링크는 무효화됩니다."
+            "value": "제목과 회의록 사본만 공유합니다. 링크가 있는 사람은 누구나 7일 동안 읽을 수 있습니다."
           }
         }
       }
@@ -5044,7 +5066,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "해제하면 이후 링크 접근은 막을 수 있지만, 다른 사람이 이미 저장한 사본은 되돌릴 수 없습니다."
+            "value": "공유를 취소하면 이후 링크 접근은 막을 수 있지만, 다른 사람이 이미 저장한 사본은 되돌릴 수 없습니다."
           }
         }
       }
@@ -5093,13 +5115,13 @@
         }
       }
     },
-    "This device can revoke or replace the active link. The link address is shown only when a link is created here.": {
+    "The link address is shown only when it is created. You can still cancel sharing here.": {
       "extractionState": "manual",
       "localizations": {
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이 기기에서 활성 링크를 해제하거나 새로 만들 수 있습니다. 링크 주소는 이곳에서 링크를 만들 때만 표시됩니다."
+            "value": "링크 주소는 생성 직후 이 창에서만 표시됩니다. 여기에서 공유를 취소할 수 있습니다."
           }
         }
       }
@@ -5132,7 +5154,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "웹 링크 해제"
+            "value": "공유 취소"
           }
         }
       }
@@ -5203,13 +5225,13 @@
         }
       }
     },
-    "Web link created. The previous link is no longer valid.": {
+    "Web link created.": {
       "extractionState": "manual",
       "localizations": {
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "웹 링크를 만들었습니다. 이전 링크는 더 이상 유효하지 않습니다."
+            "value": "공유 링크를 만들었습니다."
           }
         }
       }
@@ -5220,7 +5242,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "웹 링크를 해제하는 중…"
+            "value": "공유를 취소하는 중…"
           }
         }
       }
@@ -5231,7 +5253,304 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "웹 링크를 해제했습니다."
+            "value": "공유를 취소했습니다."
+          }
+        }
+      }
+    },
+    "AI Provider": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 제공자"
+          }
+        }
+      }
+    },
+    "OpenRouter": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenRouter"
+          }
+        }
+      }
+    },
+    "Free on this device": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "무료·이 기기"
+          }
+        }
+      }
+    },
+    "Use Apple on-device transcription and minutes generation when this device is ready.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기가 준비되면 Apple 온디바이스 전사와 회의록 생성을 사용합니다."
+          }
+        }
+      }
+    },
+    "Local mode keeps inference on this device. OpenRouter keys and model choices are preserved for when you switch back.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로컬 모드는 추론을 이 기기에서 실행합니다. 다시 전환할 때를 위해 OpenRouter 키와 모델 선택은 유지됩니다."
+          }
+        }
+      }
+    },
+    "OpenRouter mode can use cloud transcription, minutes, cleanup, enhancement, and speaker analysis with your saved key.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenRouter 모드는 저장된 키로 클라우드 전사, 회의록, 정리, 보완, 화자 분석을 사용할 수 있습니다."
+          }
+        }
+      }
+    },
+    "Free on-device AI": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "무료 온디바이스 AI"
+          }
+        }
+      }
+    },
+    "Needs Setup": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정 필요"
+          }
+        }
+      }
+    },
+    "Requires macOS 26 on an Apple silicon Mac, Apple Intelligence enabled, the system model downloaded, and on-device speech recognition permission.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple silicon Mac의 macOS 26, 켜져 있는 Apple Intelligence, 다운로드된 시스템 모델, 온디바이스 음성 인식 권한이 필요합니다."
+          }
+        }
+      }
+    },
+    "Requires iOS 26 on iPhone 15 Pro, iPhone 15 Pro Max, or iPhone 16 and later; Apple Intelligence enabled; the system model downloaded; and on-device speech recognition permission.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone 15 Pro, iPhone 15 Pro Max 또는 iPhone 16 이후 모델의 iOS 26, 켜져 있는 Apple Intelligence, 다운로드된 시스템 모델, 온디바이스 음성 인식 권한이 필요합니다."
+          }
+        }
+      }
+    },
+    "AI processing runs on this device. Device sync and web sharing operate separately according to their settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI 처리는 기기에서 수행합니다. 기기 간 동기화와 웹 공유는 각 설정에 따라 별도로 동작합니다."
+          }
+        }
+      }
+    },
+    "Speech Language": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성 언어"
+          }
+        }
+      }
+    },
+    "Checking...": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "확인 중..."
+          }
+        }
+      }
+    },
+    "Prepare & Check": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "준비 및 확인"
+          }
+        }
+      }
+    },
+    "Setup may need internet access through Apple system settings, but generation does not fall back to the cloud in local mode.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "설정에는 Apple 시스템 설정을 통한 인터넷 연결이 필요할 수 있지만, 로컬 모드의 생성은 클라우드로 대체되지 않습니다."
+          }
+        }
+      }
+    },
+    "Prepare local AI before automatic minutes can run on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에서 자동 회의록을 실행하려면 먼저 로컬 AI를 준비하세요."
+          }
+        }
+      }
+    },
+    "Transcript cleanup uses cloud models and is unavailable while Free on this device is selected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사문 정리는 클라우드 모델을 사용하므로 '무료·이 기기'를 선택한 동안 사용할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Speaker conversation analysis uses cloud models and is unavailable while Free on this device is selected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "화자 대화 분석은 클라우드 모델을 사용하므로 '무료·이 기기'를 선택한 동안 사용할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Local AI is ready when this device reports on-device speech and Apple Intelligence availability.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에서 온디바이스 음성 인식과 Apple Intelligence를 사용할 수 있다고 표시되면 로컬 AI가 준비됩니다."
+          }
+        }
+      }
+    },
+    "Enhancement, transcript cleanup, and speaker identification require OpenRouter. Regeneration and web sharing remain available in local mode.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "회의록 보완, 전사문 정리, 화자 식별에는 OpenRouter가 필요합니다. 로컬 모드에서도 재생성과 웹 공유는 사용할 수 있습니다."
+          }
+        }
+      }
+    },
+    "Speaker identification uses cloud models and is unavailable while Free on this device is selected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "화자 식별은 클라우드 모델을 사용하므로 '무료·이 기기'를 선택한 동안 사용할 수 없습니다."
+          }
+        }
+      }
+    },
+    "Local AI setup needed": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로컬 AI 설정 필요"
+          }
+        }
+      }
+    },
+    "Open AI Settings and use Prepare & Check before generating minutes on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에서 회의록을 생성하기 전에 AI 설정을 열고 '준비 및 확인'을 사용하세요."
+          }
+        }
+      }
+    },
+    "Speaker analysis is unavailable in local mode. Select OpenRouter in AI settings to use it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로컬 모드에서는 화자 분석을 사용할 수 없습니다. 사용하려면 AI 설정에서 OpenRouter를 선택하세요."
+          }
+        }
+      }
+    },
+    "Speaker analysis uses OpenRouter. Switch to OpenRouter in AI settings to run it. Existing results remain available.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "화자 분석은 OpenRouter를 사용합니다. 실행하려면 AI 설정에서 OpenRouter로 전환하세요. 기존 결과는 계속 볼 수 있습니다."
+          }
+        }
+      }
+    },
+    "Speaker Analysis Uses OpenRouter": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "화자 분석은 OpenRouter를 사용합니다"
+          }
+        }
+      }
+    },
+    "Free local transcription and minutes are available in the AI Meeting Notes tab.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "무료 로컬 전사와 회의록은 AI 회의록 탭에서 사용할 수 있습니다."
           }
         }
       }

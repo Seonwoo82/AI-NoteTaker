@@ -66,14 +66,17 @@ nonisolated struct OwnerVoicePolicy: Equatable, Sendable {
     var minimumSpeechRMS: Float
 
     init(
-        ownerThreshold: Float = 0.82,
-        otherThreshold: Float = 0.55,
+        // Held-out microphone+system speech differs from guided enrollment:
+        // confirmed owner clips scored ~0.66 and their centroid ~0.76, while
+        // another participant stayed below0.40. Keep the middle band uncertain.
+        ownerThreshold: Float = 0.60,
+        otherThreshold: Float = 0.25,
         minimumEnrollmentDuration: Double = 10.0,
         maximumEnrollmentDuration: Double = 30.0,
         listeningWindowDuration: Double = 3.0,
         staleAfter: Double = 1.2,
         maxContinuousAudioGap: Double = 0.8,
-        minimumSpeechRMS: Float = 0.01
+        minimumSpeechRMS: Float = VoiceEnrollmentSignal.minimumInputRMS
     ) {
         self.ownerThreshold = ownerThreshold
         self.otherThreshold = otherThreshold
@@ -483,14 +486,15 @@ final class OwnerVoiceManager {
             }
             lastAudioEnd = chunk.endTime
 
-            guard rms(chunk.samples) >= policy.minimumSpeechRMS else {
-                listeningWindow.removeAll()
-                state = .silence
-                scheduleStaleSilence()
-                continue
-            }
-
+            // Preserve short pauses in the bounded waveform so ordinary phrasing
+            // does not require another three uninterrupted seconds of speech.
             listeningWindow.append(chunk, maximumDuration: policy.listeningWindowDuration)
+        }
+
+        guard let latestChunk = chunks.last, rms(latestChunk.samples) >= policy.minimumSpeechRMS else {
+            state = .silence
+            scheduleStaleSilence()
+            return
         }
 
         guard let sampleRate = listeningWindow.sampleRate,
@@ -504,13 +508,18 @@ final class OwnerVoiceManager {
         let activeLifecycleID = lifecycleID
         let profileSnapshot = voice
         let samples = listeningWindow.samples
+        let analysisStartedAt = ContinuousClock.now
         listeningAnalysisID = analysisID
+        scheduleStaleSilence()
         do {
             let embedding = try await backend.embedding(samples: samples, sampleRate: sampleRate)
             guard canPublishAnalysis(
                 lifecycleID: activeLifecycleID,
                 analysisID: analysisID,
-                profile: profileSnapshot
+                profile: profileSnapshot,
+                sampleRate: sampleRate,
+                audioEnd: latestChunk.endTime,
+                startedAt: analysisStartedAt
             ) else { return }
             state = policy.classify(
                 embedding: embedding,
@@ -522,24 +531,44 @@ final class OwnerVoiceManager {
             guard canPublishAnalysis(
                 lifecycleID: activeLifecycleID,
                 analysisID: analysisID,
-                profile: profileSnapshot
+                profile: profileSnapshot,
+                sampleRate: sampleRate,
+                audioEnd: latestChunk.endTime,
+                startedAt: analysisStartedAt
             ) else { return }
             state = .uncertain
             presentation.error = Self.message(for: error)
         }
-        scheduleStaleSilence()
     }
 
     private func canPublishAnalysis(
         lifecycleID: UUID,
         analysisID: UUID,
-        profile: LocalVoiceProfile
+        profile: LocalVoiceProfile,
+        sampleRate: Double,
+        audioEnd: Double,
+        startedAt: ContinuousClock.Instant
     ) -> Bool {
-        self.lifecycleID == lifecycleID
-            && self.listeningAnalysisID == analysisID
-            && mode == .listening
-            && self.profile.localVoice == profile
-            && !inputQueue.hasPendingChunks()
+        guard self.lifecycleID == lifecycleID,
+              self.listeningAnalysisID == analysisID,
+              mode == .listening,
+              self.profile.localVoice == profile,
+              startedAt.duration(to: .now) < .seconds(policy.staleAfter) else { return false }
+
+        // New continuous speech can arrive during inference. Publish a recent
+        // result while the next window is processed, but never across silence,
+        // a changed capture stream, or audio that has moved too far ahead.
+        var previousEnd = audioEnd
+        for chunk in inputQueue.pendingChunks() {
+            guard chunk.isUsable,
+                  chunk.sampleRate == sampleRate,
+                  chunk.startTime >= previousEnd - 1 / sampleRate,
+                  chunk.startTime - previousEnd <= policy.maxContinuousAudioGap,
+                  chunk.endTime - audioEnd <= policy.staleAfter,
+                  rms(chunk.samples) >= policy.minimumSpeechRMS else { return false }
+            previousEnd = chunk.endTime
+        }
+        return true
     }
 
     private func scheduleStaleSilence() {
@@ -628,10 +657,10 @@ nonisolated private final class BoundedLiveAudioInput: @unchecked Sendable {
         return drainScheduled
     }
 
-    func hasPendingChunks() -> Bool {
+    func pendingChunks() -> [LiveAudioSamples] {
         lock.lock()
         defer { lock.unlock() }
-        return !chunks.isEmpty
+        return chunks
     }
 
     func reset() {

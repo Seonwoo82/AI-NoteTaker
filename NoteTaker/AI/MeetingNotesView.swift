@@ -49,6 +49,12 @@ struct MeetingNotesView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     progressView
+                    if !progress.isRunning, let localNotice = localModeNotice {
+                        Label(localNotice, systemImage: "info.circle")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("ai-local-mode-notice")
+                    }
                     if !progress.isRunning, let cleanupNotice = service.cleanupNotice(for: recording.id) {
                         Label(cleanupNotice, systemImage: "info.circle")
                             .font(.caption).foregroundStyle(.secondary)
@@ -235,6 +241,7 @@ struct MeetingNotesView: View {
                 } label: {
                     Label(String(localized: "Enhance Minutes"), systemImage: "wand.and.stars")
                 }
+                .disabled(configuration.usesLocalAI)
                 .accessibilityIdentifier("ai-enhance-minutes")
                 Button {
                     showingRegenerateConfirmation = true
@@ -254,7 +261,7 @@ struct MeetingNotesView: View {
                         systemImage: "text.badge.checkmark"
                     )
                 }
-                .disabled(!configuration.isTranscriptCleanupConfigured)
+                .disabled(!configuration.isTranscriptCleanupConfigured || configuration.usesLocalAI)
                 .accessibilityIdentifier("ai-clean-transcript")
                 if syncSettings != nil {
                     Button {
@@ -390,8 +397,14 @@ struct MeetingNotesView: View {
                     Label(String(localized: "Identify Participants"), systemImage: "person.2.wave.2")
                 }
                 .buttonStyle(.bordered)
-                .disabled(progress.isRunning || !configuration.isConfigured)
+                .disabled(progress.isRunning || !configuration.isConfigured || configuration.usesLocalAI)
                 .accessibilityIdentifier("ai-identify-participants")
+                if configuration.usesLocalAI {
+                    Text(String(localized: "Speaker identification uses cloud models and is unavailable while Free on this device is selected."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             plainTranscriptText(document.transcript.isEmpty ? String(localized: "No transcript was stored.") : document.transcript)
         }
@@ -460,9 +473,14 @@ struct MeetingNotesView: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    Label(String(localized: "AI setup needed"), systemImage: "key")
+                    Label(configuration.usesLocalAI
+                          ? String(localized: "Local AI setup needed")
+                          : String(localized: "AI setup needed"),
+                          systemImage: configuration.usesLocalAI ? "iphone.and.arrow.forward" : "key")
                         .font(.headline)
-                    Text(String(localized: "Save an OpenRouter API key before generating minutes."))
+                    Text(configuration.usesLocalAI
+                         ? String(localized: "Open AI Settings and use Prepare & Check before generating minutes on this device.")
+                         : String(localized: "Save an OpenRouter API key before generating minutes."))
                         .foregroundStyle(.secondary)
                     Button {
                         configuration.settingsTab = "ai"
@@ -479,7 +497,7 @@ struct MeetingNotesView: View {
     private var metadataText: String {
         let date = DateFormat.recordingList.string(from: document?.generatedAt ?? recording.createdAt)
         let duration = DurationFormat.list(recording.duration)
-        let model = document?.modelID ?? configuration.modelID
+        let model = document?.modelID ?? configuration.effectiveModelID
         if model.isEmpty {
             return "\(date) · \(duration)"
         }
@@ -489,6 +507,11 @@ struct MeetingNotesView: View {
     private var participantPreparationTitle: String? {
         guard progress.isRunning, participantPreparationProgress != nil else { return nil }
         return String(localized: "Identifying participants")
+    }
+
+    private var localModeNotice: String? {
+        guard configuration.usesLocalAI, document != nil else { return nil }
+        return String(localized: "Enhancement, transcript cleanup, and speaker identification require OpenRouter. Regeneration and web sharing remain available in local mode.")
     }
 
     private func runningCard(title: String, detail: String? = nil, fraction: Double?) -> some View {

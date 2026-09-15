@@ -124,6 +124,24 @@ nonisolated enum MeetingActionStatus: String, Codable, Equatable, Sendable {
     case dismissed
 }
 
+/// A presentation identity can contain several acoustic groups. Raw speaker IDs
+/// remain the targets of transcript evidence and append-only manual edits.
+nonisolated struct MeetingSpeakerIdentity: Equatable, Sendable, Identifiable {
+    let id: String
+    let name: String
+    let isOwner: Bool
+    let speakerIDs: [String]
+
+    var assignmentSpeakerID: String {
+        if isOwner, speakerIDs.contains("owner") { return "owner" }
+        return speakerIDs.first ?? "owner"
+    }
+
+    func contains(speakerID: String?) -> Bool {
+        speakerID.map { speakerIDs.contains($0) } ?? false
+    }
+}
+
 nonisolated struct MeetingResolvedDocument: Equatable, Sendable {
     let source: MeetingIntelligenceDocument
     let transcript: MeetingTranscript
@@ -131,6 +149,48 @@ nonisolated struct MeetingResolvedDocument: Equatable, Sendable {
     let projectName: String
     let actionStates: [String: String]
     let unresolvedEditCount: Int
+
+    var speakerIdentities: [MeetingSpeakerIdentity] {
+        let usedIDs = Set(transcript.turns.compactMap(\.speakerID))
+        return allSpeakerIdentities.filter { identity in
+            identity.speakerIDs.contains { usedIDs.contains($0) }
+        }
+    }
+
+    var speakerAssignmentChoices: [MeetingSpeakerIdentity] {
+        var choices = speakerIdentities
+        if !choices.contains(where: \.isOwner) {
+            let owner = allSpeakerIdentities.first(where: \.isOwner)
+                ?? MeetingSpeakerIdentity(id: "owner", name: "Me", isOwner: true, speakerIDs: [])
+            choices.insert(owner, at: 0)
+        }
+        return choices
+    }
+
+    func speakerIdentity(for speakerID: String?) -> MeetingSpeakerIdentity? {
+        allSpeakerIdentities.first { $0.contains(speakerID: speakerID) }
+    }
+
+    func turns(for identity: MeetingSpeakerIdentity) -> [TranscriptTurn] {
+        transcript.turns.filter { identity.contains(speakerID: $0.speakerID) }
+    }
+
+    private var allSpeakerIdentities: [MeetingSpeakerIdentity] {
+        let owners = transcript.speakers.filter(\.isOwner)
+        var includedOwner = false
+        return transcript.speakers.compactMap { speaker in
+            if speaker.isOwner {
+                guard !includedOwner else { return nil }
+                includedOwner = true
+                let name = owners.first(where: { $0.id == "owner" })?.name ?? speaker.name
+                return MeetingSpeakerIdentity(id: "owner", name: name, isOwner: true, speakerIDs: owners.map(\.id))
+            }
+            // Separate display IDs prevent an unmarked legacy `owner` record
+            // from colliding with the current owner identity.
+            return MeetingSpeakerIdentity(id: "speaker:\(speaker.id)", name: speaker.name,
+                isOwner: false, speakerIDs: [speaker.id])
+        }
+    }
 
     var ownerTurns: [TranscriptTurn] {
         let ownerIDs = self.ownerIDs
@@ -279,6 +339,14 @@ private nonisolated enum MeetingWorkspaceResolver {
         }
 
         var speakers = document.transcript.speakers
+        let turnIDs = Set(document.transcript.turns.map(\.id))
+        if !speakers.contains(where: { $0.id == "owner" }),
+           latest.values.contains(where: { $0.kind == .turnSpeaker && $0.value == "owner" && turnIDs.contains($0.targetID) }) {
+            // A legacy/manual assignment can introduce Me without inventing an
+            // unused person in every stored transcript.
+            let name = speakers.first(where: \.isOwner)?.name ?? "Me"
+            speakers.append(MeetingSpeaker(id: "owner", name: name, isOwner: true, manuallyAssigned: true))
+        }
         let speakerIndexByID = Dictionary(uniqueKeysWithValues: speakers.enumerated().map { ($0.element.id, $0.offset) })
         var turns = document.transcript.turns
         let speakerIDs = Set(speakers.map(\.id))

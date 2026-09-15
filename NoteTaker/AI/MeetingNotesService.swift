@@ -19,6 +19,7 @@ final class MeetingNotesService {
         let inputBudget: Int
         let outputBudget: Int
         let partialOutputBudget: Int
+        let usesLocalAI: Bool
         var enhancementBase: MeetingNotesDocument? = nil
         var instructions: String? = nil
         var participantsBase: MeetingNotesDocument? = nil
@@ -136,16 +137,19 @@ final class MeetingNotesService {
             return
         }
         do {
-            let key = try configuration.apiKey()
-            let model = configuration.models.first { $0.id == configuration.modelID }
-            let budget = MeetingCompletionBudget(model: model, modelID: configuration.modelID)
-            let job = Job(token: UUID(), recording: current, key: key, modelID: configuration.modelID,
-                          transcriptionModelID: configuration.transcriptionModelID,
+            let key = try configuration.generationAPIKey()
+            let modelID = configuration.effectiveModelID
+            let transcriptionModelID = configuration.effectiveTranscriptionModelID
+            let usesLocalAI = configuration.usesLocalAI
+            let budget = MeetingCompletionBudget(model: configuration.effectiveSummaryModel, modelID: modelID)
+            let job = Job(token: UUID(), recording: current, key: key, modelID: modelID,
+                          transcriptionModelID: transcriptionModelID,
                           language: configuration.outputLanguage,
                           inputBudget: budget.inputBytes,
                           outputBudget: budget.outputTokens,
-                          partialOutputBudget: budget.partialOutputTokens,
-                          transcriptCleanupEnabled: configuration.transcriptCleanupEnabled)
+                          partialOutputBudget: usesLocalAI ? min(512, budget.partialOutputTokens) : budget.partialOutputTokens,
+                          usesLocalAI: usesLocalAI,
+                          transcriptCleanupEnabled: !usesLocalAI && configuration.transcriptCleanupEnabled)
             enhancementPreviews[recording.id] = nil
             tokens[recording.id] = job.token
             states[recording.id] = .queued
@@ -175,6 +179,7 @@ final class MeetingNotesService {
             let job = Job(token: UUID(), recording: current, key: try configuration.apiKey(), modelID: configuration.modelID,
                 transcriptionModelID: base.transcriptionModelID, language: configuration.outputLanguage,
                 inputBudget: budget.inputBytes, outputBudget: budget.outputTokens, partialOutputBudget: budget.partialOutputTokens,
+                usesLocalAI: false,
                 cleanupBase: base, transcriptCleanupEnabled: true)
             cleanupNotices[recording.id] = nil
             enhancementPreviews[recording.id] = nil
@@ -204,6 +209,11 @@ final class MeetingNotesService {
     func identifyParticipants(_ recording: Recording) {
         guard !isShuttingDown, !progress(for: recording.id).isRunning,
               let base = document(for: recording.id), speakerTranscriptProvider != nil else { return }
+        guard !configuration.usesLocalAI else {
+            transcriptNotices[recording.id] = "온디바이스 AI 모드에서는 참여자 구분을 사용할 수 없습니다. 기존 회의록은 유지됩니다."
+            states[recording.id] = .completed
+            return
+        }
         guard configuration.isConfigured else {
             transcriptNotices[recording.id] = "참여자를 구분하려면 AI 설정에서 전사 모델과 API 키를 확인해 주세요. 기존 회의록은 유지됩니다."
             states[recording.id] = .completed
@@ -223,6 +233,7 @@ final class MeetingNotesService {
                 transcriptionModelID: base.transcriptionModelID, language: configuration.outputLanguage,
                 inputBudget: budget.inputBytes, outputBudget: budget.outputTokens,
                 partialOutputBudget: budget.partialOutputTokens,
+                usesLocalAI: false,
                 enhancementBase: instructions == nil ? nil : base, instructions: instructions,
                 participantsBase: instructions == nil ? base : nil,
                 transcriptCleanupEnabled: configuration.transcriptCleanupEnabled)
@@ -409,17 +420,18 @@ final class MeetingNotesService {
                 return
             }
             cleanupNotices[job.recording.id] = nil
-            var speakerTranscript = usableSpeakerTranscript(for: job.recording,
+            var speakerTranscript = job.usesLocalAI ? nil : usableSpeakerTranscript(for: job.recording,
                 preferred: document(for: job.recording.id)?.speakerTranscript, modelID: job.transcriptionModelID)
-            if let existing = speakerTranscript,
-               !ParticipantTranscriptionPolicy.accepts(actual: existing.transcriptionModelID, requested: job.transcriptionModelID) {
-                speakerTranscript = nil
-            }
-            let timingModel = ParticipantTranscriptionPolicy.modelID(for: job.transcriptionModelID)
-            if timingModel != job.transcriptionModelID, speakerTranscript == nil {
-                transcriptNotices[job.recording.id] = "기본 전사문은 선택한 모델로 작성했습니다. 참여자 구분을 누르면 시간 정보를 지원하는 Whisper로 참여자 전사를 추가합니다."
-            }
-            if timingModel == job.transcriptionModelID, let speakerTranscriptProvider {
+            if !job.usesLocalAI {
+                if let existing = speakerTranscript,
+                   !ParticipantTranscriptionPolicy.accepts(actual: existing.transcriptionModelID, requested: job.transcriptionModelID) {
+                    speakerTranscript = nil
+                }
+                let timingModel = ParticipantTranscriptionPolicy.modelID(for: job.transcriptionModelID)
+                if timingModel != job.transcriptionModelID, speakerTranscript == nil {
+                    transcriptNotices[job.recording.id] = "기본 전사문은 선택한 모델로 작성했습니다. 참여자 구분을 누르면 시간 정보를 지원하는 Whisper로 참여자 전사를 추가합니다."
+                }
+                if timingModel == job.transcriptionModelID, let speakerTranscriptProvider {
                 do {
                     let prepared = try await speakerTranscriptProvider(job.recording, ParticipantTranscriptionPolicy.modelID(for: job.transcriptionModelID))
                     try check(job)
@@ -434,6 +446,7 @@ final class MeetingNotesService {
                     try check(job)
                     if error is CancellationError { throw error }
                     transcriptNotices[job.recording.id] = "참여자 구분을 완료하지 못해 기본 전사문을 표시합니다. 참여자 구분 버튼으로 다시 시도할 수 있어요."
+                }
                 }
             }
             let transcript: String
@@ -494,7 +507,8 @@ final class MeetingNotesService {
                 guard round < 6 else { throw AIError(message: "회의 내용이 모델의 처리 범위를 초과합니다. 더 큰 문맥을 지원하는 모델을 선택해 주세요.") }
                 round += 1
                 let parts = MeetingNotesPrompts.split(source, maximumBytes: job.inputBudget)
-                guard parts.count <= 32 else {
+                let maximumSummaryParts = job.usesLocalAI ? 160 : 32
+                guard parts.count <= maximumSummaryParts else {
                     throw AIError(message: "현재 모델로 처리할 요약 구간이 너무 많습니다. 더 큰 문맥의 모델을 선택하거나 녹음을 나누어 주세요.")
                 }
                 var condensed: [String] = []
@@ -552,7 +566,7 @@ final class MeetingNotesService {
                     states[job.recording.id] = .completed
                 } else {
                     let message = (error as? AIError)?.message ?? "회의록 처리 또는 저장에 실패했습니다. 연결과 저장 공간을 확인하고 다시 시도해 주세요."
-                    let safeMessage = message.replacingOccurrences(of: job.key, with: "[redacted]")
+                    let safeMessage = redacted(message, key: job.key)
                     states[job.recording.id] = .failed(safeMessage)
                 }
             }
@@ -690,6 +704,11 @@ final class MeetingNotesService {
     private func cleanupFailureMessage(_ error: Error, key: String) -> String {
         let detail = (error as? AIError)?.message ?? "연결과 AI 설정을 확인한 뒤 다시 시도해 주세요."
         return ("AI 전사 정리를 완료하지 못해 원문을 유지했습니다. " + detail).replacingOccurrences(of: key, with: "[redacted]")
+    }
+
+    private func redacted(_ message: String, key: String) -> String {
+        guard !key.isEmpty else { return message }
+        return message.replacingOccurrences(of: key, with: "[redacted]")
     }
 
     private func reusableCompletedTranscript(for job: Job) -> String? {

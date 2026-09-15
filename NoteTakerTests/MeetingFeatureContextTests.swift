@@ -9,6 +9,18 @@ import Testing
 @MainActor
 @Suite("Meeting feature context")
 struct MeetingFeatureContextTests {
+    @Test("local automatic notes bypass the cloud analysis preference")
+    func localAutomaticNotesDoNotQueueCloudAnalysis() async throws {
+        let h = try await FeatureHarness.make(configured: true, autoGenerate: true, automaticallyAnalyze: true)
+        h.config.processingMode = .onDevice
+        #expect(h.config.isConfigured)
+        h.context.recordingDidFinish(h.recording)
+        try await h.waitForNotes()
+        #expect(h.notes.document(for: h.recording.id)?.modelID == LocalAIModel.summaryID)
+        #expect(h.context.store.document(for: h.recording.id)?.insights == nil)
+        #expect(await h.client.detailedCallCount == 0)
+    }
+
     @Test("default profile keeps automatic meeting analysis off and preserves original AI notes")
     func defaultProfileUsesOriginalNotesPipeline() async throws {
         let h = try await FeatureHarness.make(configured: true, autoGenerate: true, automaticallyAnalyze: false)
@@ -207,7 +219,8 @@ private struct FeatureHarness {
             failsAnalysisCompletion: failsAnalysisCompletion)
         let keyStore = InMemoryAPIKeyStore()
         let defaults = UserDefaults(suiteName: "MeetingFeatureContextTests.\(UUID().uuidString)")!
-        let config = AIConfiguration(client: client, keyStore: keyStore, defaults: defaults)
+        let config = AIConfiguration(client: client, keyStore: keyStore, defaults: defaults,
+            localStatusProvider: { _ in LocalAIStatus(isAvailable: true, message: "ready") })
         config.transcriptCleanupEnabled = false // These cases exercise the original notes/enhancement path.
         if configured {
             try config.saveKey("fixture-key")
