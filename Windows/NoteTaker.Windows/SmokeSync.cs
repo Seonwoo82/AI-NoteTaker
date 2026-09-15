@@ -41,12 +41,26 @@ internal static class SmokeSync
             if (args.Exception is IOException or InvalidOperationException) File.AppendAllText(Path.Combine(output, "diagnostics.txt"), args.Exception + "\n");
         }
         AppDomain.CurrentDomain.FirstChanceException += Diagnose;
+        int completionRequests = 0; bool completionRequestStarted = false;
+        void RequestDuringCompletion(object sender, DependencyPropertyChangedEventArgs args)
+        {
+            if (args.NewValue is true && second.IsSynchronizing && second.CurrentWork.IsCompleted)
+            {
+                completionRequests++;
+                var attempt = second.SynchronizeAsync(false);
+                completionRequestStarted |= !attempt.IsCompleted;
+                JsonDisk.Write(Path.Combine(output, "completion-reentry.json"), new { Requests = completionRequests, Started = completionRequestStarted });
+            }
+        }
+        ((Button)second.FindName("RenameButton")).IsEnabledChanged += RequestDuringCompletion;
         try
         {
             first.Show(); second.Show(); await Task.Delay(300);
             Require(server.Requests == 0, "Sharing settings alone enabled automatic upload.");
             first.CreateNamedFolder("출시 준비");
             await Manual(first); await Manual(second);
+            Require(completionRequests > 0 && !completionRequestStarted, $"Completion reentry requests={completionRequests}, started={completionRequestStarted}.");
+            ((Button)second.FindName("RenameButton")).IsEnabledChanged -= RequestDuringCompletion;
             Require(b.Load().Single().Id == recording.Id && JsonDisk.Read<MeetingNotes>(b.NotesPath(recording.Id))?.Original?.Transcript == cache.Chunks[0], "WPF sync did not load notes/original.");
             Require(new MeetingProfileStore(b.Root).Load().DisplayName == "민수", "Profile did not arrive.");
             Require(new SettingsStore(b.Root).Load().SummaryModel == "fixture/summary", "Shared settings did not arrive.");
@@ -75,7 +89,9 @@ internal static class SmokeSync
             Exception? modalError = null;
             modal.Loaded += async (_, _) => { try { second.RequestAutomaticSync(); await Task.Delay(350); Require(server.Requests == beforeModal, "Automatic sync started inside a modal editor."); } catch (Exception ex) { modalError = ex; } finally { modal.Close(); } };
             modal.ShowDialog(); if (modalError is not null) throw modalError;
-            await Until(() => server.Requests > beforeModal); await Until(() => !second.IsSynchronizing); Require(second.LastSyncResult?.Issues.Count == 0, "Automatic sync failed.");
+            await Until(() => server.Requests > beforeModal); await Until(() => !second.IsSynchronizing);
+            Require(second.LastSyncResult is { Pending: 0, Issues.Count: 0 }, "Automatic sync failed: " +
+                JsonSerializer.Serialize(second.LastSyncResult, JsonDisk.Options) + " " + second.LastWorkError + " " + Text(second, "SyncStatusText"));
 
             // A failed network attempt leaves the local edit durable, and a restarted app resumes it.
             Click(second, "FavoriteButton"); server.Offline = true; await StartManual(second);
@@ -118,7 +134,8 @@ internal static class SmokeSync
             server.Block(); Click(second, "SyncButton"); Click(second, "SyncNowButton"); await server.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await Close(second); Require(!second.IsSynchronizing && second.CurrentWork.IsCompleted, "Exit retained sync work."); server.Unblock();
             JsonDisk.Write(Path.Combine(output, "result.json"), new { Passed = true, Root = root, ActualWorkerHttpSqlite = true, IndependentWpfLibraries = true,
-                OptInOnly = true, ManualAndAutomatic = true, ModalDeferral = true, OfflineRestartRetry = true, ConnectionTest = true, AudioVersionRefresh = true,
+                OptInOnly = true, ManualAndAutomatic = true, ModalDeferral = true, CompletionReentrancyBlocked = completionRequests > 0 && !completionRequestStarted,
+                OfflineRestartRetry = true, ConnectionTest = true, AudioVersionRefresh = true,
                 CaptureWaitsForCancellation = true, SettingsWaitForCancellation = true, ExitWaitsForCancellation = true, MicrophoneCapture = false,
                 Scope = "Real WPF actions, actual Worker with SQLite and filesystem object-store stand-in. Authored transcript and synthetic WAV. No real Apple device or deployed Cloudflare proof." });
         }

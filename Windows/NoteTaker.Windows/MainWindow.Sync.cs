@@ -17,7 +17,7 @@ public partial class MainWindow
     internal LibrarySyncResult? LastSyncResult { get; private set; }
     internal bool IsSynchronizing => syncing;
     private bool SyncConfigured => !string.IsNullOrWhiteSpace(settings.SharingServerUrl) && !string.IsNullOrWhiteSpace(settings.ProtectedSharingSyncToken);
-    private bool SyncBusy => !IsLoaded || closePending || exitRequested || syncForegroundPending || recorder is not null || transitioning || runningWork is not null || ModalOperationOpen ||
+    private bool SyncBusy => !IsLoaded || syncing || closePending || exitRequested || syncForegroundPending || recorder is not null || transitioning || runningWork is not null || ModalOperationOpen ||
         player.IsPlaying || ComponentDispatcher.IsThreadModal || OwnedWindows.Cast<Window>().Any(w => w.IsVisible) || CapturePopup.IsOpen ||
         Mouse.LeftButton == MouseButtonState.Pressed || Keyboard.FocusedElement is MenuItem or System.Windows.Controls.ContextMenu;
 

@@ -17,7 +17,16 @@
 - 실제 로컬 Worker HTTP/SQLite: 처음 동기화하기 전에 영구 삭제해도 tombstone 전송 성공. 삭제 후 다른 기기에서 복원하면 오디오·회의록·참여자 이름·추가 프로젝트 수정 복원 성공.
 - 이 과정에서 오디오/문서만 복원하고 기존 참여자 수정 이력을 놓치는 문제를 재현했다. 복원 시 수정 이력 cursor를 되돌려 재수신하도록 수정했다.
 - WPF 실행 `Windows/artifacts/ui-step14/library-files.json`: 실제 확인 창의 취소/확인, 확인 도중 다른 곳에서 복원한 녹음 보호, 열린 재생 리더 해제, 파일 내보내기 버튼, 영구 삭제 후 목록/숫자/앱 재시작 확인. 확인 창과 휴지통 화면을 렌더링해 직접 확인했다.
-- 전체 회귀와 최신 self-contained 패키지 결과는 아래에 확정 기록한다.
+- Release 전체 테스트 **221 통과 / 5 실제 장치 테스트 건너뜀 / 0 실패**: `Windows/artifacts/test-step14/step14-final.trx`. 잠긴 목적지의 Windows 예외가 `UnauthorizedAccessException`으로 반환되는 것도 기존 내보낸 파일 보존 검사에 포함한다.
+- `ac35007` 후보 ZIP의 새 폴더에서 UI·Whisper·Qwen·트레이·파일 입력 녹음·참여자·프로필·회의 분석·회의록 보완 9개 경로 통과. `Windows/artifacts/verify-package-526c3f24/verification`. 그 뒤 아래 동기화 완료 경합을 찾아 수정했으므로 최종 후보는 다시 빌드한다.
+
+## 동기화 완료 경합
+
+포터블 WPF 동기화 검사에서 자동 실행의 결과가 사라지는 실패를 관찰했다. 작업 완료 시 `runningWork`를 비운 뒤 외부 `SynchronizeAsync`가 종료 상태를 확정하기 전, UI 이벤트/타이머가 다음 동기화를 시작할 수 있었다. 이전 실행의 마지막 정리가 새 실행의 `syncing` 상태와 겹쳤다.
+
+완료 중 이름 변경 버튼이 다시 활성화되는 이벤트에서 동기화를 재요청해 재현했다. `sync-step14-race-evidence/completion-reentry.json`은 `requests: 1, started: true`이며 WPF 결과가 다시 준비 중으로 바뀌었다. `SyncBusy`가 `syncing`도 확인하도록 수정한 뒤 `sync-step14-race-fixed`에서는 같은 요청이 `started: false`였고 전체 WPF/Worker 동기화 검사가 통과했다. 최초 보조 검사는 녹음 버튼이 동기화 중에도 활성화되는 점 때문에 완료 시점을 관찰하지 못했으므로 이 증거에서 제외했다.
+
+이는 실제 UI 이벤트에 대한 회귀 검사이며 시간을 늘리거나 성공할 때까지 반복해 숨긴 실패가 아니다. 자동/수동 실행, 모달 대기, 오프라인 재시작, 오디오 버전 교체, 설정·녹음·종료의 취소 대기도 함께 통과했다.
 
 ## 검증의 경계
 
