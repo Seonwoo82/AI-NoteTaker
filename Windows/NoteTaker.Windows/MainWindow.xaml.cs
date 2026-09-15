@@ -569,9 +569,12 @@ public partial class MainWindow : Window
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
 
+    private bool CanControlPlayback => selected is not null && recorder is null && runningWork is null &&
+        !transitioning && !ModalOperationOpen && !closePending && !exitRequested;
+
     private void Play_Click(object sender, RoutedEventArgs e)
     {
-        if (selected is null) return;
+        if (!CanControlPlayback) return;
         try
         {
             EnsurePlaybackLoaded();
@@ -590,7 +593,7 @@ public partial class MainWindow : Window
     private void Forward_Click(object sender, RoutedEventArgs e) => SeekTo(PlaybackSlider.Position + 15);
     private void SeekTo(double position)
     {
-        if (selected is null || recorder is not null) return;
+        if (!CanControlPlayback) return;
         StopTurnPlayback();
         try
         {

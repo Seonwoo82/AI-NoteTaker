@@ -19,6 +19,12 @@ public partial class App : Application
         SessionEnding += (_, _) => { if (MainWindow is NoteTaker.Windows.MainWindow window) window.RequestExit(); };
         try
         {
+            if (e.Args.Length == 2 && e.Args[0] == "--smoke-playback-guards")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                await SmokePlaybackGuards.RunAsync(Path.GetFullPath(e.Args[1]));
+                Shutdown(0); return;
+            }
             if (e.Args.Length == 2 && e.Args[0] == "--smoke-audio-share")
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -103,7 +109,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            if (e.Args.Length >= 2 && e.Args[0] is "--smoke-audio-share" or "--smoke-sharing" or "--smoke-sync" or "--smoke-ui" or "--smoke-ai" or "--smoke-desktop" or "--smoke-capture-flow" or "--smoke-participants" or "--smoke-profile" or "--smoke-meeting" or "--smoke-notes")
+            if (e.Args.Length >= 2 && e.Args[0] is "--smoke-playback-guards" or "--smoke-audio-share" or "--smoke-sharing" or "--smoke-sync" or "--smoke-ui" or "--smoke-ai" or "--smoke-desktop" or "--smoke-capture-flow" or "--smoke-participants" or "--smoke-profile" or "--smoke-meeting" or "--smoke-notes")
             {
                 Directory.CreateDirectory(e.Args[1]);
                 File.WriteAllText(Path.Combine(e.Args[1], "error.txt"), ex.ToString());

@@ -129,7 +129,7 @@ public partial class MainWindow
     private void PlayOwnTurns_Click(object sender, RoutedEventArgs e) { if (meeting is not null) PlayTurns(meeting.OwnTurns); }
     private void PlayTurns(IEnumerable<TranscriptTurn> turns)
     {
-        if (recorder is not null || runningWork is not null) return;
+        if (!CanControlPlayback || selected?.DeletedAt is not null) return;
         StopTurnPlayback();
         try { EnsurePlaybackLoaded(); player.PlayRanges(turns.Select(t => new AudioRange(t.Start, t.End))); UpdateParticipantControls(); }
         catch (Exception ex) { StopTurnPlayback(); SetStatus(FriendlyError(ex), true); }
