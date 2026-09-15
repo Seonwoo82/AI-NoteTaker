@@ -35,3 +35,9 @@ Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은
 
 - 2026-09-16: 원격 main과 현재 HEAD가 일치함을 확인. 이전 질의 응답에서 API 구조와 서비스 한도를 검증했으며 구현 완료로 계산하지 않음. 전체 이식은 진행 중이다.
 - 2026-09-16: 집중 파형, 폴더 관리, 트레이·단축키·자동 생성 구현. [첫 이식 단계 검증](docs/implementation/FULL-PORT-STEP1.md). 화자/프로필/회의 분석/정리·보완/전체 동기화/최종 배포는 계속 미완료다.
+
+## 다음 단계 조사 메모
+
+- Apple 화자 런타임은 `Shared/MeetingIntelligence/LocalSpeakerBackend.swift`의 FluidAudio/Core ML이므로 Windows용 실행 엔진이 필요하다. Sherpa-ONNX의 공식 C# 오프라인 화자 구분과 speaker embedding API를 확인 중이다. NuGet `org.k2fsa.sherpa.onnx`의 현재 최신 인덱스는 1.13.8이며 패키지 repository commit은 `dc5583f49917e4c95f6e7d862bb378e4ed5e9076`이다. 아직 의존성을 추가하거나 화자 모델을 설치하지 않았다.
+- 공식 예제: https://github.com/k2-fsa/sherpa-onnx/blob/master/dotnet-examples/offline-speaker-diarization/Program.cs . 바인딩 소스는 `scripts/dotnet/OfflineSpeakerDiarization.cs`, `OfflineSpeakerDiarizationConfig.cs`, `SpeakerEmbeddingExtractor.cs`에 있다. 모델·공개 다중 화자 WAV는 공식 `speaker-segmentation-models`, 임베딩은 `speaker-recongition-models` release에 있다.
+- 데이터 호환은 `Shared/MeetingIntelligence/MeetingContracts.swift`, `MeetingWorkspace.swift`, `MeetingProfile.swift`, `MeetingStorage.swift`를 기준으로 한다. transcript의 발화 ID/시작·끝/화자 ID, insights 근거 검증, append-only edits와 재분석 후 적용, 텍스트 프로필과 로컬 음성 프로필 분리를 함께 구현해야 한다. Windows JSON에 그대로 저장하는 것과 Apple/Worker wire 호환은 별도 검증 대상이다.
