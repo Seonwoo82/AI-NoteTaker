@@ -21,7 +21,7 @@ internal static class SmokeUi
         new SettingsStore(library.Root).Save(new AppSettings { TranscriptionProvider = provider });
         var recording = await library.ImportAsync(sample);
         recording = recording with { Title = "무료 AI · 한국어 합성 회의 검증" }; library.Save(recording);
-        var window = new MainWindow(library, discoverDevices: false, aiModelRoot: modelRoot)
+        var window = new MainWindow(library, discoverDevices: false, aiModelRoot: modelRoot, enableDesktopIntegration: false)
         { Left = -20000, Top = -20000, WindowStartupLocation = WindowStartupLocation.Manual, ShowInTaskbar = false };
         window.Show(); window.ReloadLibrary(recording.Id);
         try
@@ -53,7 +53,7 @@ internal static class SmokeUi
         Directory.CreateDirectory(output);
         Appearance.Apply(false);
         var library = new LibraryStore(Path.Combine(output, "fixture-" + Guid.NewGuid().ToString("N")));
-        var window = new MainWindow(library, discoverDevices: false) { Left = -20000, Top = -20000, WindowStartupLocation = WindowStartupLocation.Manual, ShowInTaskbar = false };
+        var window = new MainWindow(library, discoverDevices: false, enableDesktopIntegration: false) { Left = -20000, Top = -20000, WindowStartupLocation = WindowStartupLocation.Manual, ShowInTaskbar = false };
         window.Show();
         await CaptureAsync(window, Path.Combine(output, "empty.png"));
         var recording = new Recording { Title = "주간 제품 회의", Mode = RecordingMode.Mixed, DurationSeconds = 42, IsFavorite = true };
@@ -90,6 +90,8 @@ internal static class SmokeUi
         ((WaveformControl)window.FindName("OverviewWaveform")).RequestSeek(0);
         if (waveform.Position != 0) throw new InvalidOperationException("Overview waveform seek failed.");
         await CaptureAsync(window, Path.Combine(output, "playback.png"));
+        await VerifyFoldersAsync(window, library, waveform, output);
+        await VerifyFocusedWaveformAsync(output);
         var detail = (TabControl)window.FindName("DetailPanel");
         detail.SelectedIndex = 1;
         var tabs = (TabControl)window.FindName("DocumentTabs");
@@ -175,13 +177,71 @@ internal static class SmokeUi
         window.Close();
         await closed.Task;
         if (Environment.GetEnvironmentVariable("NOTETAKER_UI_AUDIO_SMOKE") == "1") await RunRecordingControlsAsync(output);
-        File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: Apple-style empty, playback, notes, recording, compact, capture popover and light/dark settings rendered. Favorite, delete, restore, search, actual audio waveform, seek, back/forward 15 seconds, input mode gating, transcript tab and graceful close passed. Generated audio fixture only; no audio device or network used.");
+        File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: Apple-style empty, playback, notes, recording, compact, capture popover and light/dark settings rendered. Favorite, delete, restore, search, actual audio waveform, focused 5-minute timeline and stable drag mapping, folder create/move/order/delete preserving audio and playhead, submenu, input mode gating, transcript tab and graceful close passed. Generated audio fixture only; no recording or network used.");
+    }
+
+    private static async Task VerifyFocusedWaveformAsync(string output)
+    {
+        var focused = new WaveformControl { Height = 170, Duration = 7200, Position = 3600, Peaks = Enumerable.Range(0, 7200).Select(i => (float)(.1 + .7 * Math.Abs(Math.Sin(i * .13)))).ToArray() };
+        focused.BeginScrub(); focused.RequestSeekAtFraction(.25);
+        if (focused.Position != 3525) throw new InvalidOperationException("Focused pointer did not map to the absolute audio time.");
+        focused.RequestSeekAtFraction(.25);
+        if (focused.Position != 3525 || focused.Viewport.Start != 3450) throw new InvalidOperationException("Dragging moved the time interval under the pointer.");
+        focused.EndScrub(); focused.Position = 3600;
+        var overview = new WaveformControl { Height = 30, IsOverview = true, Duration = 7200, Position = 3600, Peaks = focused.Peaks };
+        overview.RequestSeekAtFraction(.75);
+        if (overview.Position != 5400) throw new InvalidOperationException("Overview must retain whole-recording pointer mapping.");
+        overview.Position = 3600;
+        var panel = new StackPanel { Margin = new Thickness(28) };
+        panel.SetResourceReference(Panel.BackgroundProperty, "WindowSurface");
+        panel.Children.Add(new TextBlock { Text = "2시간 녹음 · 1:00:00 주변 5분", Margin = new Thickness(0, 0, 0, 24), FontSize = 17 });
+        panel.Children.Add(focused); panel.Children.Add(overview);
+        var window = new Window { Content = panel, Width = 760, Height = 360, Left = -20000, Top = -20000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
+        window.Show(); await CaptureAsync(window, Path.Combine(output, "focused-waveform.png")); window.Close();
+    }
+
+    private static async Task VerifyFoldersAsync(MainWindow window, LibraryStore library, WaveformControl waveform, string output)
+    {
+        waveform.RequestSeek(20);
+        var originalId = ((Recording)((ListBox)window.FindName("RecordingList")).SelectedItem).Id;
+        string audioHash = await MeetingNotesService.AudioHashAsync(library.AudioPath(originalId), default);
+        window.CreateNamedFolder("제품 개발"); window.CreateNamedFolder("고객 미팅");
+        if (waveform.Position != 20 || ((Recording)((ListBox)window.FindName("RecordingList")).SelectedItem).Id != originalId)
+            throw new InvalidOperationException("Folder creation cleared the selected recording or playback position.");
+        var folders = new RecordingFolderStore(library.Root); var first = folders.Active[0];
+        window.MoveSelectedToFolder(first.Id);
+        if (library.Load().Single().FolderId != first.Id || waveform.Position != 20) throw new InvalidOperationException("Folder assignment was not saved or reset playback.");
+        var tree = (TreeView)window.FindName("FolderTree");
+        var node = (TreeViewItem)tree.Items[0]; node.IsExpanded = true;
+        if (!File.ReadAllText(Path.Combine(library.Root, "folder-appearance.json")).Contains(first.Id.ToString())) throw new InvalidOperationException("Folder expansion was not saved.");
+        var search = (TextBox)window.FindName("SearchBox"); search.Text = "no matching recording";
+        ((TreeViewItem)node.Items[0]).IsSelected = true;
+        if (search.Text.Length != 0 || ((Recording)((ListBox)window.FindName("RecordingList")).SelectedItem).Id != originalId) throw new InvalidOperationException("Clicking a folder child selected the wrong recording under a search filter.");
+        await window.WaveformLoadTask; waveform.RequestSeek(20);
+        await CaptureAsync(window, Path.Combine(output, "folders.png"));
+        var list = (ListBox)window.FindName("RecordingList"); var context = list.ContextMenu;
+        context.PlacementTarget = list; context.IsOpen = true;
+        var move = (MenuItem)window.FindName("MoveFolderMenuItem"); move.IsSubmenuOpen = true;
+        await window.Dispatcher.InvokeAsync(() => { context.UpdateLayout(); move.UpdateLayout(); }, DispatcherPriority.ContextIdle);
+        if (!move.IsEnabled || move.Items.Count != 3 || move.Template.FindName("PART_Popup", move) is not Popup { IsOpen: true }) throw new InvalidOperationException("Folder submenu did not open.");
+        ((MenuItem)move.Items[0]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); context.IsOpen = false;
+        if (library.Load().Single().FolderId is not null || waveform.Position != 20) throw new InvalidOperationException("Moving out of a folder failed.");
+        node = (TreeViewItem)tree.Items[0];
+        ((MenuItem)node.ContextMenu.Items[2]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        if (new RecordingFolderStore(library.Root).Active[1].Id != first.Id) throw new InvalidOperationException("Folder order was not persisted.");
+        window.MoveSelectedToFolder(first.Id);
+        node = tree.Items.Cast<TreeViewItem>().Single(x => ((RecordingCollectionFolder)x.Tag).Id == first.Id);
+        ((MenuItem)node.ContextMenu.Items[4]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        if (new RecordingFolderStore(library.Root).IsActive(first.Id) || library.Load().Single().DeletedAt is not null || waveform.Position != 20)
+            throw new InvalidOperationException("Deleting a folder lost the recording or playback position.");
+        if (audioHash != await MeetingNotesService.AudioHashAsync(library.AudioPath(originalId), default)) throw new InvalidOperationException("Folder actions changed the audio.");
+        ((ListBox)window.FindName("FilterBox")).SelectedIndex = 0;
     }
     private static async Task RunRecordingControlsAsync(string output)
     {
         string root = Path.Combine(Path.GetTempPath(), "NoteTaker-ui-audio-" + Guid.NewGuid().ToString("N"));
         var store = new LibraryStore(root);
-        var window = new MainWindow(store) { Left = -20000, Top = -20000, WindowStartupLocation = WindowStartupLocation.Manual, ShowInTaskbar = false };
+        var window = new MainWindow(store, enableDesktopIntegration: false) { Left = -20000, Top = -20000, WindowStartupLocation = WindowStartupLocation.Manual, ShowInTaskbar = false };
         window.Show();
         try
         {

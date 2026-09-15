@@ -7,7 +7,19 @@ namespace NoteTaker.Core;
 
 // One session owns all capture devices, buffers and the writer. A wall clock keeps
 // system-audio silence on the timeline even when WASAPI emits no callbacks.
-public sealed class AudioRecorder : IAsyncDisposable
+public interface IRecordingSession : IAsyncDisposable
+{
+    string? Failure { get; }
+    double DurationSeconds { get; }
+    bool IsPaused { get; }
+    float MicrophoneLevel { get; }
+    float SystemLevel { get; }
+    Task StartAsync(string path, RecordingMode mode, string? microphoneId, string? outputId);
+    void TogglePause();
+    Task<double> StopAsync();
+}
+
+public sealed class AudioRecorder : IRecordingSession
 {
     private readonly object gate = new();
     private readonly List<WasapiCapture> captures = [];

@@ -30,6 +30,9 @@ public partial class SettingsWindow : Window
         SummaryProviderBox.SelectedIndex = settings.SummaryProvider == "openrouter" ? 1 : 0;
         SpeechLanguageBox.SelectedIndex = settings.SpeechLanguage == "auto" ? 1 : settings.SpeechLanguage == "en" ? 2 : 0;
         UseGpuBox.IsChecked = settings.UseGpu;
+        AutoGenerateBox.IsChecked = settings.AutoGenerate;
+        KeepRunningBox.IsChecked = settings.KeepRunningInTray;
+        GlobalShortcutsBox.IsChecked = settings.EnableGlobalShortcuts;
         LocalSummaryBox.SelectedIndex = settings.LocalSummaryModel == "qwen3.5:9b" ? 1 : 0;
         OllamaAddressBox.Text = settings.OllamaAddress;
         initialized = true; UpdateProviders();
@@ -43,7 +46,10 @@ public partial class SettingsWindow : Window
         SpeechLanguage = SpeechLanguageBox.SelectedIndex == 1 ? "auto" : SpeechLanguageBox.SelectedIndex == 2 ? "en" : "ko",
         UseGpu = UseGpuBox.IsChecked == true,
         LocalSummaryModel = LocalSummaryBox.SelectedIndex == 1 ? "qwen3.5:9b" : "qwen3.5:4b",
-        OllamaAddress = OllamaAddressBox.Text.Trim()
+        OllamaAddress = OllamaAddressBox.Text.Trim(),
+        AutoGenerate = AutoGenerateBox.IsChecked == true,
+        KeepRunningInTray = KeepRunningBox.IsChecked == true,
+        EnableGlobalShortcuts = GlobalShortcutsBox.IsChecked == true
     };
     private void Provider_Changed(object sender, SelectionChangedEventArgs e) { if (initialized) UpdateProviders(); }
     private void UpdateProviders()
@@ -123,10 +129,10 @@ public partial class SettingsWindow : Window
 internal sealed class RenameWindow : Window
 {
     public string Result { get; private set; }
-    public RenameWindow(string title)
+    public RenameWindow(string title, string windowTitle = "녹음 이름 변경", string fieldLabel = "녹음 이름", int maxLength = 160)
     {
         Result = title;
-        Title = "녹음 이름 변경"; Width = 440; Height = 218; ResizeMode = ResizeMode.NoResize;
+        Title = windowTitle; Width = 440; Height = 218; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false;
         Style = (Style)FindResource(typeof(Window)); WindowStyle = WindowStyle.None;
         WindowChrome.SetWindowChrome(this, new WindowChrome { CaptionHeight = 44, ResizeBorderThickness = new Thickness(0), GlassFrameThickness = new Thickness(0), CornerRadius = new CornerRadius(10), UseAeroCaptionButtons = false });
@@ -138,13 +144,13 @@ internal sealed class RenameWindow : Window
         header.Children.Add(windowControls); header.Children.Add(new TextBlock { Text = Title, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold });
         root.Children.Add(header);
         var panel = new StackPanel { Margin = new Thickness(24) };
-        var text = new TextBox { Text = title, MaxLength = 160 };
+        var text = new TextBox { Text = title, MaxLength = maxLength };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
         var cancel = new Button { Content = "취소", IsCancel = true };
         var save = new Button { Content = "저장", IsDefault = true, Style = (Style)FindResource("PrimaryButton"), Margin = new Thickness(8, 0, 0, 0) };
         save.Click += (_, _) => { if (!string.IsNullOrWhiteSpace(text.Text)) { Result = text.Text.Trim(); DialogResult = true; } };
         buttons.Children.Add(cancel); buttons.Children.Add(save);
-        panel.Children.Add(new TextBlock { Text = "녹음 이름", FontSize = 11, Margin = new Thickness(0, 0, 0, 6) });
+        panel.Children.Add(new TextBlock { Text = fieldLabel, FontSize = 11, Margin = new Thickness(0, 0, 0, 6) });
         panel.Children.Add(text); panel.Children.Add(buttons); Grid.SetRow(panel, 1); root.Children.Add(panel); Content = root;
         Loaded += (_, _) => { text.Focus(); text.SelectAll(); };
     }

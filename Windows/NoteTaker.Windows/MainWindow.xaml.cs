@@ -20,10 +20,12 @@ public partial class MainWindow : Window
     private readonly LibraryStore library;
     private readonly string aiModelRoot;
     private readonly SettingsStore settingsStore;
+    private readonly RecordingFolderStore folderStore;
     private AppSettings settings;
     private readonly AudioPlayer player = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
-    private AudioRecorder? recorder;
+    private IRecordingSession? recorder;
+    private readonly Func<IRecordingSession> recordingFactory;
     private Recording? activeRecording;
     private Recording? selected;
     private MeetingNotes? notes;
@@ -36,14 +38,20 @@ public partial class MainWindow : Window
     private CancellationTokenSource? waveformCancellation;
     internal Task WaveformLoadTask { get; private set; } = Task.CompletedTask;
     private bool loaded, transitioning, finishing, closePending, allowClose, playbackLoaded;
+    private DesktopIntegration? desktop;
+    private bool exitRequested;
+    internal DesktopIntegration? Desktop => desktop;
 
-    public MainWindow(LibraryStore library, bool discoverDevices = true, string? aiModelRoot = null)
+    public MainWindow(LibraryStore library, bool discoverDevices = true, string? aiModelRoot = null, bool enableDesktopIntegration = true, Func<IRecordingSession>? recordingFactory = null)
     {
         this.library = library;
+        this.recordingFactory = recordingFactory ?? (() => new AudioRecorder());
         this.aiModelRoot = aiModelRoot ?? library.Root;
         settingsStore = new SettingsStore(library.Root);
         settings = settingsStore.Load();
+        folderStore = new RecordingFolderStore(library.Root);
         InitializeComponent();
+        LoadFolderAppearance();
         PlaybackSlider.SeekRequested += SeekTo;
         OverviewWaveform.SeekRequested += SeekTo;
         loaded = true;
@@ -52,7 +60,30 @@ public partial class MainWindow : Window
         timer.Tick += Timer_Tick;
         timer.Start();
         UpdateControls();
+        if (enableDesktopIntegration) SourceInitialized += (_, _) =>
+        {
+            try
+            {
+                desktop = new DesktopIntegration(this, ShowFromTray, ToggleTrayRecording, () => Pause_Click(this, new RoutedEventArgs()), RequestExit);
+                desktop.ConfigureShortcuts(settings.EnableGlobalShortcuts);
+                if (!desktop.IsAvailable) SetStatus("트레이 아이콘을 만들지 못했습니다. 창을 닫으면 앱을 종료합니다.", true);
+                else if (desktop.ShortcutWarning is not null) SetStatus(desktop.ShortcutWarning, true);
+            }
+            catch (Exception ex) { SetStatus("트레이를 준비하지 못했습니다. " + FriendlyError(ex), true); }
+        };
     }
+
+    internal void ShowFromTray()
+    {
+        Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+    private async void ToggleTrayRecording()
+    {
+        if (recorder is not null) await StopRecordingAsync();
+        else { ShowFromTray(); Record_Click(this, new RoutedEventArgs()); }
+    }
+    internal void RequestExit() { exitRequested = true; Close(); }
 
     private MeetingNotesService MeetingService() => new(library,
         (s, key, progress) => AiProviders.Transcriber(aiModelRoot, s, key, progress), AiProviders.Summarizer);
@@ -89,39 +120,47 @@ public partial class MainWindow : Window
         AllCount.Text = recordings.Count(r => r.DeletedAt is null).ToString();
         FavoriteCount.Text = recordings.Count(r => r.DeletedAt is null && r.IsFavorite).ToString();
         DeletedCount.Text = recordings.Count(r => r.DeletedAt is not null).ToString();
+        ReloadFolders();
         FilterLibrary(id);
         if (library.LoadWarnings.Count > 0) SetStatus(library.LoadWarnings[0], true);
+        if (folderStore.LoadError is not null) SetStatus(folderStore.LoadError, true);
     }
 
     private void FilterLibrary(Guid? selectId = null)
     {
         if (!loaded) return;
         string query = SearchBox.Text.Trim();
-        string title = FilterBox.SelectedIndex == 2 ? "최근 삭제된 항목" : FilterBox.SelectedIndex == 1 ? "즐겨찾기" : "모든 녹음 항목";
+        string title = folderStore.Active.FirstOrDefault(f => f.Id == selectedFolder)?.Name ?? (FilterBox.SelectedIndex == 2 ? "최근 삭제된 항목" : FilterBox.SelectedIndex == 1 ? "즐겨찾기" : "모든 녹음 항목");
         SidebarTitle.Text = WindowSubtitle.Text = title;
         ClearSearchButton.Visibility = query.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         var list = recordings.Where(r => !r.IsRecording && (FilterBox.SelectedIndex == 2
             ? r.DeletedAt is not null : r.DeletedAt is null && (FilterBox.SelectedIndex != 1 || r.IsFavorite)))
+            .Where(r => selectedFolder is null || r.FolderId == selectedFolder)
             .Where(r => r.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        refreshingLibrary = true;
         RecordingList.ItemsSource = list;
         LibraryCount.Text = list.Count == 0 ? "녹음 없음" : $"{title}  ·  {list.Count}";
         RecordingList.SelectedItem = list.FirstOrDefault(r => r.Id == selectId) ?? list.FirstOrDefault();
-        if (list.Count == 0) SelectRecording(null);
+        refreshingLibrary = false;
+        SelectRecording(RecordingList.SelectedItem as Recording);
     }
-    private void Search_Changed(object sender, TextChangedEventArgs e) { if (loaded) FilterLibrary(selected?.Id); }
-    private void Filter_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) FilterLibrary(selected?.Id); }
+    private void Search_Changed(object sender, TextChangedEventArgs e) { if (loaded && !refreshingLibrary) FilterLibrary(selected?.Id); }
+    private void Filter_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!loaded || refreshingLibrary || FilterBox.SelectedIndex < 0) return;
+        selectedFolder = null; ClearFolderSelection(); FilterLibrary(selected?.Id);
+    }
     private void Recording_Selected(object sender, SelectionChangedEventArgs e)
     {
-        if (loaded) SelectRecording(RecordingList.SelectedItem as Recording);
+        if (loaded && !refreshingLibrary) SelectRecording(RecordingList.SelectedItem as Recording);
     }
 
     private void SelectRecording(Recording? recording)
     {
-        waveformCancellation?.Cancel();
-        player.Dispose(); playbackLoaded = false;
+        bool sameAudio = recording is not null && selected?.Id == recording.Id && selected.DurationSeconds == recording.DurationSeconds;
+        if (!sameAudio) { waveformCancellation?.Cancel(); player.Dispose(); playbackLoaded = false; }
         selected = recording; notes = null;
-        PlaybackSlider.Peaks = [];
-        PlaybackSlider.Position = 0;
+        if (!sameAudio) { PlaybackSlider.Peaks = []; PlaybackSlider.Position = 0; }
         if (recording is not null)
         {
             DetailTitle.Text = NotesTitle.Text = recording.Title;
@@ -131,11 +170,10 @@ public partial class MainWindow : Window
             FavoriteButton.Content = recording.IsFavorite ? "즐겨찾기 해제" : "즐겨찾기";
             DeleteButton.Content = recording.DeletedAt is null ? "삭제" : "복원";
             PlaybackSlider.Duration = recording.DurationSeconds;
-            PlaybackSlider.Position = 0;
-            PlaybackTime.Text = $"00:00 / {Recording.FormatTime(recording.DurationSeconds)}";
-            ElapsedLabel.Text = "00:00"; TotalLabel.Text = Recording.FormatTime(recording.DurationSeconds);
+            PlaybackTime.Text = $"{Recording.FormatTime(PlaybackSlider.Position)} / {Recording.FormatTime(recording.DurationSeconds)}";
+            ElapsedLabel.Text = Recording.FormatTime(PlaybackSlider.Position); TotalLabel.Text = Recording.FormatTime(recording.DurationSeconds);
             LoadDocuments(recording);
-            WaveformLoadTask = LoadWaveformAsync(recording);
+            if (!sameAudio) WaveformLoadTask = LoadWaveformAsync(recording);
             if (recording.Warning is not null) SetStatus(recording.Warning, true);
         }
         UpdateControls();
@@ -242,9 +280,11 @@ public partial class MainWindow : Window
         DeleteMenuItem.IsEnabled = DeleteButton.IsEnabled;
         FavoriteMenuItem.Header = FavoriteButton.Content;
         DeleteMenuItem.Header = DeleteButton.Content;
+        PopulateMoveMenu(MoveFolderMenuItem);
     }
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Q) { RequestExit(); e.Handled = true; return; }
         if (CapturePopup.IsOpen && e.Key == Key.Escape) { CapturePopup.IsOpen = false; RecordOptionsButton.Focus(); e.Handled = true; return; }
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
@@ -279,13 +319,15 @@ public partial class MainWindow : Window
             if ((Mode is RecordingMode.SystemAudio or RecordingMode.Mixed) && outputId is null)
                 throw new InvalidOperationException("출력 장치를 연결하고 장치 새로고침을 눌러 주세요.");
             player.Dispose(); playbackLoaded = false;
-            activeRecording = new Recording { Title = $"회의 {DateTime.Now:MM월 dd일 HH:mm}", Mode = Mode, IsRecording = true };
+            activeRecording = new Recording { Title = $"회의 {DateTime.Now:MM월 dd일 HH:mm}", Mode = Mode, IsRecording = true, FolderId = folderStore.IsActive(selectedFolder) ? selectedFolder : null };
             library.Save(activeRecording);
-            recorder = new AudioRecorder();
+            recorder = recordingFactory();
             UpdateControls();
             await recorder.StartAsync(library.AudioPath(activeRecording.Id), Mode, micId, outputId);
             SetStatus("녹음 중 · 선택한 출력 장치의 전체 소리를 녹음합니다.");
-            CaptureHint.Text = "녹음 중입니다. 창을 닫으면 녹음을 저장하고 종료합니다.";
+            CaptureHint.Text = settings.KeepRunningInTray && desktop?.IsAvailable == true
+                ? "창을 닫아도 녹음이 계속됩니다. 트레이에서 녹음을 제어할 수 있습니다."
+                : "녹음 중입니다. 창을 닫으면 녹음을 저장하고 종료합니다.";
         }
         catch (Exception ex)
         {
@@ -315,15 +357,17 @@ public partial class MainWindow : Window
         if (recorder is null || transitioning) return;
         transitioning = true; finishing = true; UpdateControls();
         var session = recorder;
+        Recording? completedRecording = null;
         try
         {
             double duration = await session.StopAsync();
             var completed = activeRecording! with { IsRecording = false, DurationSeconds = duration, Warning = session.Failure };
             library.Save(completed);
+            completedRecording = completed;
             SetStatus(session.Failure ?? $"녹음을 저장했습니다 · {Recording.FormatTime(duration)}", session.Failure is not null);
             // Session must be cleared before library reload updates enabled controls.
             recorder = null; activeRecording = null;
-            FilterBox.SelectedIndex = 0; SearchBox.Text = ""; DetailPanel.SelectedIndex = 0;
+            SelectFolderFilter(completed.FolderId); SearchBox.Text = ""; DetailPanel.SelectedIndex = 0;
             ReloadLibrary(completed.Id);
         }
         catch (Exception ex) { recorder = null; activeRecording = null; SetStatus(FriendlyError(ex) + " 다음 실행에서 녹음 복구를 시도합니다.", true); }
@@ -335,6 +379,8 @@ public partial class MainWindow : Window
             MicMeter.Value = SystemMeter.Value = 0;
             UpdateControls();
         }
+        if (completedRecording is { Warning: null } && settings.AutoGenerate && !closePending && !exitRequested)
+            await GenerateNotesAsync(completedRecording);
     }
 
     private async void Import_Click(object sender, RoutedEventArgs e)
@@ -345,7 +391,8 @@ public partial class MainWindow : Window
         {
             SetStatus("오디오를 가져오는 중…");
             var imported = await library.ImportAsync(dialog.FileName, token);
-            FilterBox.SelectedIndex = 0; SearchBox.Text = "";
+            if (folderStore.IsActive(selectedFolder)) imported = folderStore.MoveRecording(library, imported, selectedFolder);
+            SelectFolderFilter(imported.FolderId); SearchBox.Text = "";
             ReloadLibrary(imported.Id); SetStatus("오디오를 라이브러리에 저장했습니다.");
         });
     }
@@ -353,7 +400,10 @@ public partial class MainWindow : Window
     private async void Generate_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null) return;
-        var recording = selected;
+        await GenerateNotesAsync(selected);
+    }
+    private async Task GenerateNotesAsync(Recording recording)
+    {
         await RunWorkAsync(async token =>
         {
             string key = settings.TranscriptionProvider == "openrouter" || settings.SummaryProvider == "openrouter" ? SettingsStore.ReadKey(settings) : "";
@@ -433,7 +483,9 @@ public partial class MainWindow : Window
             if (dialog.ShowDialog() != true) return;
             settingsStore.Save(dialog.Result);
             settings = dialog.Result;
+            desktop?.ConfigureShortcuts(settings.EnableGlobalShortcuts);
             SetStatus("AI 설정을 이 Windows 계정에 저장했습니다.");
+            if (desktop?.ShortcutWarning is not null) SetStatus(desktop.ShortcutWarning, true);
         }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
@@ -541,6 +593,7 @@ public partial class MainWindow : Window
         ShareWebButton.IsEnabled = editable && selected?.DeletedAt is null && notes is not null;
         CopyButton.IsEnabled = ExportButton.IsEnabled = selected is not null && !string.IsNullOrWhiteSpace(ExportText());
         RecordingList.IsEnabled = SearchBox.IsEnabled = FilterBox.IsEnabled = runningWork is null && !transitioning;
+        FolderTree.IsEnabled = CreateFolderButton.IsEnabled = idle && folderStore.LoadError is null;
         CancelButton.Visibility = runningWork is null ? Visibility.Collapsed : Visibility.Visible;
         UpdatePlayIcon();
     }
@@ -553,6 +606,8 @@ public partial class MainWindow : Window
 
     private async void Timer_Tick(object? sender, EventArgs e)
     {
+        desktop?.Update(recorder is not null, recorder?.IsPaused == true, transitioning || runningWork is not null,
+            recorder is null ? "" : Recording.FormatTime(recorder.DurationSeconds));
         if (recorder is not null)
         {
             RecordingClock.Text = Recording.FormatTime(recorder.DurationSeconds);
@@ -574,6 +629,10 @@ public partial class MainWindow : Window
     {
         if (allowClose) return;
         e.Cancel = true;
+        if (!exitRequested && settings.KeepRunningInTray && desktop?.IsAvailable == true)
+        {
+            Hide(); SetStatus("트레이에서 계속 실행 중입니다. 트레이 메뉴에서 다시 열거나 종료할 수 있습니다."); return;
+        }
         if (closePending) return;
         closePending = true;
         SetStatus("진행 중인 작업을 정리하고 종료하는 중…");
@@ -584,6 +643,7 @@ public partial class MainWindow : Window
         waveformCancellation?.Cancel();
         await WaveformLoadTask;
         timer.Stop(); player.Dispose();
+        desktop?.Dispose();
         allowClose = true;
         // Closing may run without any incomplete await; defer the second Close
         // until WPF has left the original Closing event.

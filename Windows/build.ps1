@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('build','test','audio-smoke','ui-audio-smoke','run','publish','smoke-ui')][string]$Task = 'build',
+    [ValidateSet('build','test','audio-smoke','ui-audio-smoke','run','publish','smoke-ui','smoke-desktop')][string]$Task = 'build',
     [ValidateSet('win-x64','win-arm64')][string]$Runtime = 'win-x64',
     [string]$ArtifactRoot = (Join-Path $PSScriptRoot 'artifacts')
 )
@@ -56,6 +56,10 @@ switch ($Task) {
     'smoke-ui' {
         $output = Join-Path $ArtifactRoot 'ui-smoke'
         & $dotnetPath run --project $project -c Release -- --smoke-ui $output
+    }
+    'smoke-desktop' {
+        $output = Join-Path $ArtifactRoot 'desktop-smoke'
+        & $dotnetPath run --project $project -c Release -- --smoke-desktop $output
     }
     'ui-audio-smoke' {
         $previousUiAudioSmoke = $env:NOTETAKER_UI_AUDIO_SMOKE

@@ -13,6 +13,7 @@ public sealed record Recording
     public double DurationSeconds { get; init; }
     public RecordingMode Mode { get; init; }
     public bool IsFavorite { get; init; }
+    public Guid? FolderId { get; init; }
     public DateTimeOffset? DeletedAt { get; init; }
     public bool IsRecording { get; init; }
     public string? Warning { get; init; }
@@ -45,6 +46,9 @@ public sealed record AppSettings
     public string? ProtectedApiKey { get; init; }
     public string SharingServerUrl { get; init; } = "";
     public string? ProtectedSharingSyncToken { get; init; }
+    public bool KeepRunningInTray { get; init; } = true;
+    public bool EnableGlobalShortcuts { get; init; }
+    public bool AutoGenerate { get; init; }
 }
 
 public sealed record TranscriptSegment(double StartSeconds, double EndSeconds, string Text, string? Speaker = null);

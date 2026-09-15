@@ -32,14 +32,20 @@
        <Button x:Name="ClearSearchButton" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Right" Padding="4" MinWidth="20" Click="ClearSearch_Click" ToolTip="검색 지우기" AutomationProperties.Name="검색 지우기"><c:AppleIcon Kind="close" Width="12" Height="12" /></Button>
       </Grid>
      </StackPanel>
-     <ListBox Grid.Row="1" x:Name="FilterBox" SelectedIndex="0" SelectionChanged="Filter_Changed" Margin="6,4,6,6" AutomationProperties.Name="라이브러리 보기">
+     <ListBox Grid.Row="1" x:Name="FilterBox" SelectedIndex="0" SelectionChanged="Filter_Changed" Margin="6,4,6,6" AutomationProperties.Name="라이브러리 보기" AllowDrop="True" DragOver="Library_DragOver" Drop="Library_Drop">
       <ListBoxItem><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="23" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><c:AppleIcon Kind="waveform" Width="16" Height="16" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="모든 녹음 항목" /><TextBlock Grid.Column="2" x:Name="AllCount" FontSize="11" Opacity=".75" /></Grid></ListBoxItem>
       <ListBoxItem><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="23" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><c:AppleIcon Kind="star" Width="16" Height="16" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="즐겨찾기" /><TextBlock Grid.Column="2" x:Name="FavoriteCount" FontSize="11" Opacity=".75" /></Grid></ListBoxItem>
       <ListBoxItem><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="23" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><c:AppleIcon Kind="trash" Width="16" Height="16" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="최근 삭제된 항목" /><TextBlock Grid.Column="2" x:Name="DeletedCount" FontSize="11" Opacity=".75" /></Grid></ListBoxItem>
      </ListBox>
-     <StackPanel Grid.Row="2"><Border Height="1" Background="{DynamicResource Separator}" Margin="10,0" /><TextBlock x:Name="LibraryCount" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="14,13,14,5" /></StackPanel>
-     <ListBox Grid.Row="3" x:Name="RecordingList" SelectionChanged="Recording_Selected" PreviewMouseRightButtonDown="Recording_RightClick" Margin="6,0" AutomationProperties.Name="녹음 목록">
-      <ListBox.ContextMenu><ContextMenu Opened="RecordingMenu_Opened"><MenuItem x:Name="RenameMenuItem" Header="이름 변경" Click="Rename_Click" /><MenuItem x:Name="FavoriteMenuItem" Header="즐겨찾기" Click="Favorite_Click" /><MenuItem x:Name="DeleteMenuItem" Header="삭제" Click="Delete_Click" /></ContextMenu></ListBox.ContextMenu>
+     <StackPanel Grid.Row="2">
+      <Border Height="1" Background="{DynamicResource Separator}" Margin="10,0" />
+      <DockPanel Margin="14,5,10,0"><Button x:Name="CreateFolderButton" DockPanel.Dock="Right" Content="+" Style="{StaticResource ToolbarButton}" Click="CreateFolder_Click" ToolTip="새 폴더" AutomationProperties.Name="새 폴더" /><TextBlock Text="폴더" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" /></DockPanel>
+      <TreeView x:Name="FolderTree" MaxHeight="190" Margin="6,0" SelectedItemChanged="Folder_Selected" PreviewMouseRightButtonDown="Folder_RightClick" PreviewMouseLeftButtonDown="Library_DragStart" PreviewMouseMove="Library_DragMove" AllowDrop="True" DragOver="Library_DragOver" Drop="Library_Drop" AutomationProperties.Name="녹음 폴더" />
+      <Border x:Name="UnfiledDropTarget" Background="{DynamicResource SegmentSurface}" CornerRadius="5" Padding="7" Margin="12,4,12,0" AllowDrop="True" DragOver="Library_DragOver" Drop="Library_Drop"><TextBlock Text="여기로 드래그하여 폴더 밖으로 이동" FontSize="10" Foreground="{DynamicResource Muted}" /></Border>
+      <TextBlock x:Name="LibraryCount" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="14,9,14,5" />
+     </StackPanel>
+     <ListBox Grid.Row="3" x:Name="RecordingList" SelectionChanged="Recording_Selected" PreviewMouseRightButtonDown="Recording_RightClick" PreviewMouseLeftButtonDown="Library_DragStart" PreviewMouseMove="Library_DragMove" Margin="6,0" AutomationProperties.Name="녹음 목록">
+      <ListBox.ContextMenu><ContextMenu Opened="RecordingMenu_Opened"><MenuItem x:Name="RenameMenuItem" Header="이름 변경" Click="Rename_Click" /><MenuItem x:Name="FavoriteMenuItem" Header="즐겨찾기" Click="Favorite_Click" /><MenuItem x:Name="MoveFolderMenuItem" Header="폴더로 이동" /><MenuItem x:Name="DeleteMenuItem" Header="삭제" Click="Delete_Click" /></ContextMenu></ListBox.ContextMenu>
       <ListBox.ItemTemplate><DataTemplate><StackPanel>
        <TextBlock Text="{Binding DisplayTitle}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
        <TextBlock Text="{Binding Subtitle}" FontSize="10" Margin="0,3,0,0" Opacity=".7" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />

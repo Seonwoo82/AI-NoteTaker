@@ -16,6 +16,7 @@ public partial class App : Application
         base.OnStartup(e);
         Appearance.ApplySystem();
         SystemEvents.UserPreferenceChanged += PreferencesChanged;
+        SessionEnding += (_, _) => { if (MainWindow is NoteTaker.Windows.MainWindow window) window.RequestExit(); };
         try
         {
             if (e.Args.Length is 4 or 5 && e.Args[0] == "--smoke-ai")
@@ -31,6 +32,18 @@ public partial class App : Application
                 await SmokeUi.RunAsync(Path.GetFullPath(e.Args[1]));
                 Shutdown(0);
                 return;
+            }
+            if (e.Args.Length == 2 && e.Args[0] == "--smoke-desktop")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                await SmokeDesktop.RunAsync(Path.GetFullPath(e.Args[1]));
+                Shutdown(0); return;
+            }
+            if (e.Args.Length == 4 && e.Args[0] == "--smoke-capture-flow")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                await SmokeDesktop.RunCaptureFlowAsync(Path.GetFullPath(e.Args[1]), Path.GetFullPath(e.Args[2]), Path.GetFullPath(e.Args[3]));
+                Shutdown(0); return;
             }
             string? root = null;
             if (e.Args.Length == 2 && e.Args[0] == "--library-root") root = e.Args[1];
@@ -48,7 +61,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            if (e.Args.Length >= 2 && e.Args[0] is "--smoke-ui" or "--smoke-ai")
+            if (e.Args.Length >= 2 && e.Args[0] is "--smoke-ui" or "--smoke-ai" or "--smoke-desktop" or "--smoke-capture-flow")
             {
                 Directory.CreateDirectory(e.Args[1]);
                 File.WriteAllText(Path.Combine(e.Args[1], "error.txt"), ex.ToString());
