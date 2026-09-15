@@ -4,15 +4,15 @@ using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using SherpaOnnx;
 
-if (args.Length is not (4 or 5 or 6) || args[0] is not ("diarize" or "embed")) return 2;
+if (args.Length is not (4 or 5 or 6) || args[0] is not ("diarize" or "embed" or "embed-live")) return 2;
 try
 {
-    string command = args[0], source = Path.GetFullPath(args[1]), root = Path.GetFullPath(args[2]), output = Path.GetFullPath(args[3]);
+    string command = args[0], source = args[1] == "-" ? "-" : Path.GetFullPath(args[1]), root = Path.GetFullPath(args[2]), output = Path.GetFullPath(args[3]);
     await SpeakerModels.VerifyAsync(root, default);
     Progress("화자 분석용 오디오를 읽는 중…");
-    var samples = ReadAudio(source, command == "embed" ? 60 : 4 * 3600);
+    var samples = source == "-" && command == "embed-live" ? ReadLiveAudio() : ReadAudio(source, command.StartsWith("embed", StringComparison.Ordinal) ? 60 : 4 * 3600);
     if (samples.Length < 1600) throw new InvalidDataException("분석할 음성이 너무 짧습니다.");
-    if (command == "embed") NormalizeQuietSpeech(samples);
+    if (command.StartsWith("embed", StringComparison.Ordinal)) NormalizeQuietSpeech(samples);
     var config = new OfflineSpeakerDiarizationConfig();
     config.Segmentation.Pyannote.Model = ModelDownload.PathFor(root, SpeakerModels.Segmentation);
     config.Segmentation.NumThreads = 2;
@@ -35,11 +35,12 @@ try
     var ownerConfig = new SpeakerEmbeddingExtractorConfig { Model = ModelDownload.PathFor(root, SpeakerModels.Embedding), NumThreads = 2 };
     using var extractor = new SpeakerEmbeddingExtractor(ownerConfig);
     if (extractor.Dim != SpeakerModels.EmbeddingDimensions) throw new InvalidDataException("화자 모델 차원이 맞지 않습니다.");
-    if (command == "embed")
+    if (command.StartsWith("embed", StringComparison.Ordinal))
     {
         double voiced = UnionDuration(segments);
-        if (voiced < 3) throw new InvalidDataException("말소리가 충분하지 않습니다. 조용한 곳에서 예문을 읽어 주세요.");
-        if (segments.GroupBy(s => s.SpeakerId).Count(g => g.Sum(s => s.End - s.Start) >= 3) > 1)
+        double minimumSpeech = command == "embed-live" ? 1 : 3;
+        if (voiced < minimumSpeech) throw new InvalidDataException("말소리가 충분하지 않습니다. 조용한 곳에서 예문을 읽어 주세요.");
+        if (segments.GroupBy(s => s.SpeakerId).Count(g => g.Sum(s => s.End - s.Start) >= 1) > 1)
             throw new InvalidDataException("여러 목소리가 감지되었습니다. 혼자 조용한 곳에서 예문을 읽어 주세요.");
         var speech = CollectSamples(samples, segments, 30);
         var embedding = Extract(extractor, speech);
@@ -78,6 +79,18 @@ static float[] ReadAudio(string path, int maximumSeconds)
     Array.Resize(ref result, count);
     foreach (float sample in result) if (!float.IsFinite(sample)) throw new InvalidDataException("오디오 데이터가 올바르지 않습니다.");
     return result;
+}
+static float[] ReadLiveAudio()
+{
+    using var input = Console.OpenStandardInput(); using var memory = new MemoryStream(); var bytes = new byte[65536]; int read;
+    while ((read = input.Read(bytes)) > 0) { if (memory.Length + read > 2 * 1024 * 1024) throw new InvalidDataException("실시간 음성 구간이 너무 큽니다."); memory.Write(bytes, 0, read); }
+    memory.Position = 0; using var reader = new WaveFileReader(memory);
+    if (reader.TotalTime.TotalSeconds is < 1 or > 6 || reader.WaveFormat.Channels is not (1 or 2)) throw new InvalidDataException("실시간 오디오 형식이 올바르지 않습니다.");
+    ISampleProvider source = reader.ToSampleProvider();
+    if (source.WaveFormat.Channels == 2) source = new StereoToMonoSampleProvider(source);
+    source = new WdlResamplingSampleProvider(source, 16000); var result = new float[6 * 16000]; int count = 0;
+    while (count < result.Length && (read = source.Read(result, count, result.Length - count)) > 0) count += read;
+    Array.Resize(ref result, count); foreach (float sample in result) if (!float.IsFinite(sample)) throw new InvalidDataException("실시간 오디오가 올바르지 않습니다."); return result;
 }
 static float[] CollectSamples(float[] samples, IEnumerable<AcousticSegment> segments, int seconds)
 {

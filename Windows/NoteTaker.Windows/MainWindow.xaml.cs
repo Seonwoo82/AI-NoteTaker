@@ -307,7 +307,7 @@ public partial class MainWindow : Window
 
     private async void Record_Click(object sender, RoutedEventArgs e)
     {
-        if (recorder is not null || transitioning || runningWork is not null) return;
+        if (recorder is not null || transitioning || runningWork is not null || ProfileOpen) return;
         transitioning = true; UpdateControls();
         CapturePopup.IsOpen = false;
         RecordingClock.Text = "00:00";
@@ -325,6 +325,7 @@ public partial class MainWindow : Window
             recorder = recordingFactory();
             UpdateControls();
             await recorder.StartAsync(library.AudioPath(activeRecording.Id), Mode, micId, outputId);
+            StartLiveOwner();
             SetStatus("녹음 중 · 선택한 출력 장치의 전체 소리를 녹음합니다.");
             CaptureHint.Text = settings.KeepRunningInTray && desktop?.IsAvailable == true
                 ? "창을 닫아도 녹음이 계속됩니다. 트레이에서 녹음을 제어할 수 있습니다."
@@ -332,6 +333,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            await StopLiveOwnerAsync();
             if (recorder is not null) { await recorder.DisposeAsync(); recorder = null; }
             if (activeRecording is not null)
             {
@@ -347,6 +349,8 @@ public partial class MainWindow : Window
         try
         {
             recorder?.TogglePause();
+            liveOwner?.SetActive(recorder?.IsPaused != true);
+            UpdateLiveOwner();
             SetStatus(recorder?.IsPaused == true ? "녹음 일시정지 · 재개하면 이어서 저장됩니다." : "녹음 중");
             UpdateControls();
         }
@@ -357,6 +361,7 @@ public partial class MainWindow : Window
     {
         if (recorder is null || transitioning) return;
         transitioning = true; finishing = true; UpdateControls();
+        liveOwner?.SetActive(false);
         var session = recorder;
         Recording? completedRecording = null;
         try
@@ -374,6 +379,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { recorder = null; activeRecording = null; SetStatus(FriendlyError(ex) + " 다음 실행에서 녹음 복구를 시도합니다.", true); }
         finally
         {
+            await StopLiveOwnerAsync();
             await session.DisposeAsync();
             transitioning = false; finishing = false;
             CaptureHint.Text = "완료를 누르면 녹음이 라이브러리에 저장됩니다.";
@@ -382,6 +388,15 @@ public partial class MainWindow : Window
         }
         if (completedRecording is { Warning: null } && settings.AutoGenerate && !closePending && !exitRequested)
             await GenerateNotesAsync(completedRecording);
+        if (completedRecording is { Warning: null } && !closePending && !exitRequested && recorder is null && runningWork is null)
+        {
+            try
+            {
+                if (new MeetingProfileStore(library.Root).Load().AutomaticallyAnalyze)
+                    await AnalyzeParticipantsAsync(completedRecording);
+            }
+            catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
+        }
     }
 
     private async void Import_Click(object sender, RoutedEventArgs e)
@@ -573,7 +588,8 @@ public partial class MainWindow : Window
     private void UpdateControls()
     {
         if (!loaded) return;
-        bool idle = recorder is null && !transitioning && runningWork is null;
+        bool idle = recorder is null && !transitioning && runningWork is null && !ProfileOpen;
+        ProfileButton.IsEnabled = idle;
         RecordButton.IsEnabled = RecordOptionsButton.IsEnabled = CaptureOptions.IsEnabled = RefreshDevicesButton.IsEnabled = ImportButton.IsEnabled = SettingsButton.IsEnabled = idle;
         CaptureModeLabel.Text = RecordingModeLabel.Text = Mode switch { RecordingMode.Microphone => "마이크만", RecordingMode.SystemAudio => "시스템 오디오만", _ => "마이크 + 시스템" };
         MicRail.Visibility = Mode == RecordingMode.SystemAudio ? Visibility.Collapsed : Visibility.Visible;
@@ -614,6 +630,7 @@ public partial class MainWindow : Window
             recorder is null ? "" : Recording.FormatTime(recorder.DurationSeconds));
         if (recorder is not null)
         {
+            if (!transitioning) UpdateLiveOwner();
             RecordingClock.Text = Recording.FormatTime(recorder.DurationSeconds);
             MicMeter.Value = recorder.IsPaused ? 0 : recorder.MicrophoneLevel;
             SystemMeter.Value = recorder.IsPaused ? 0 : recorder.SystemLevel;
@@ -639,6 +656,7 @@ public partial class MainWindow : Window
         }
         if (closePending) return;
         closePending = true;
+        if (profileWindow is { } profileDialog) await profileDialog.StopAndCloseAsync();
         SetStatus("진행 중인 작업을 정리하고 종료하는 중…");
         workCancellation?.Cancel();
         if (runningWork is { } work) await work;

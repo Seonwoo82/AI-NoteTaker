@@ -19,13 +19,15 @@ public interface IRecordingSession : IAsyncDisposable
     Task<double> StopAsync();
 }
 
-public sealed class AudioRecorder : IRecordingSession
+public sealed class AudioRecorder : IRecordingSession, IRecentAudioSource
 {
     private readonly object gate = new();
     private readonly List<WasapiCapture> captures = [];
     private readonly List<MMDevice> devices = [];
     private readonly List<BufferedWaveProvider> buffers = [];
     private readonly Stopwatch clock = new();
+    private readonly RecentAudioBuffer recentAudio = new();
+    public RecentAudioWindow? RecentAudio() { lock (gate) return paused || stopping ? null : recentAudio.Snapshot(); }
     private readonly CancellationTokenSource cancellation = new();
     private WaveFileWriter? writer;
     private Task? pump;
@@ -121,6 +123,7 @@ public sealed class AudioRecorder : IRecordingSession
             if (!paused) { clock.Stop(); WriteUntil(clock.Elapsed.TotalSeconds); }
             foreach (var buffer in buffers) buffer.ClearBuffer();
             paused = !paused;
+            recentAudio.Clear();
             microphoneLevel = systemLevel = 0;
             if (!paused) clock.Start();
         }
@@ -167,6 +170,7 @@ public sealed class AudioRecorder : IRecordingSession
             PcmMixer.Mix(source, mixed, count);
             writer.Write(mixed, 0, count);
             writtenFrames += count / 4;
+            recentAudio.Append(mixed.AsSpan(0, count), (double)writtenFrames / AudioFiles.SampleRate);
         }
     }
 
@@ -200,6 +204,7 @@ public sealed class AudioRecorder : IRecordingSession
                     writer = null;
                     foreach (var device in devices) device.Dispose();
                     captures.Clear(); devices.Clear(); buffers.Clear();
+                    recentAudio.Clear();
                 }
             }
             return (double)writtenFrames / AudioFiles.SampleRate;

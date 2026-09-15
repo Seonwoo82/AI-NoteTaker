@@ -9,10 +9,12 @@ namespace NoteTaker.Windows;
 public partial class MainWindow
 {
     private ResolvedMeeting? meeting;
+    private MeetingProfile meetingProfile = new();
     private bool loadingParticipants;
 
     private void LoadParticipants(Recording recording)
     {
+        try { meetingProfile = new MeetingProfileStore(library.Root).Load(); } catch (Exception) { meetingProfile = new(); }
         try
         {
             meeting = new MeetingWorkspaceStore(library).Resolve(recording);
@@ -45,14 +47,15 @@ public partial class MainWindow
         else if (choice == "@unknown") turns = turns.Where(t => t.SpeakerId is null);
         else if (choice != "*") turns = turns.Where(t => t.SpeakerId == choice);
         ParticipantTurns.ItemsSource = turns.Select(t => new ParticipantTurnRow(t,
-            meeting?.Transcript.Speakers.FirstOrDefault(s => s.Id == t.SpeakerId)?.Name ?? "미지정")).ToList();
+            meeting?.Transcript.Speakers.FirstOrDefault(s => s.Id == t.SpeakerId)?.Name ?? "미지정",
+            string.Join(" · ", meetingProfile.Substitutions(t.Text).Select(s => $"표기 참고: {s.SourceText} → {s.DisplayText}")))).ToList();
     }
     private void ParticipantFilter_Changed(object sender, SelectionChangedEventArgs e) { if (!loadingParticipants && loaded) RefreshParticipantTurns(); }
     private void ParticipantSelection_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) UpdateParticipantControls(); }
     private void UpdateParticipantControls()
     {
         if (AnalyzeParticipantsButton is null) return;
-        bool idle = recorder is null && !transitioning && runningWork is null && selected?.DeletedAt is null && selected is not null;
+        bool idle = recorder is null && !transitioning && runningWork is null && !ProfileOpen && selected?.DeletedAt is null && selected is not null;
         AnalyzeParticipantsButton.IsEnabled = ParticipantCount.IsEnabled = idle;
         RenameParticipantButton.IsEnabled = MarkOwnerButton.IsEnabled = idle && meeting is not null && ParticipantPeople.SelectedItem is ParticipantChoice;
         AssignTurnButton.IsEnabled = PlayTurnButton.IsEnabled = idle && ParticipantTurns.SelectedItem is ParticipantTurnRow;
@@ -62,8 +65,11 @@ public partial class MainWindow
     }
     private async void AnalyzeParticipants_Click(object sender, RoutedEventArgs e)
     {
-        if (selected is null) return; var recording = selected;
-        int count = ParticipantCount.SelectedIndex;
+        if (selected is null) return;
+        await AnalyzeParticipantsAsync(selected, ParticipantCount.SelectedIndex);
+    }
+    private async Task AnalyzeParticipantsAsync(Recording recording, int count = 0)
+    {
         await RunWorkAsync(async token =>
         {
             StopTurnPlayback(); player.Dispose(); playbackLoaded = false;
@@ -130,7 +136,7 @@ public partial class MainWindow
         UpdateParticipantControls();
     }
     private sealed record ParticipantChoice(string Id, string Name);
-    private sealed record ParticipantTurnRow(TranscriptTurn Turn, string Speaker)
+    private sealed record ParticipantTurnRow(TranscriptTurn Turn, string Speaker, string GlossaryHint)
     {
         public string Time => $"{Recording.FormatTime(Turn.Start)} – {Recording.FormatTime(Turn.End)}";
         public string Text => Turn.Text;
