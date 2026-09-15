@@ -5039,13 +5039,13 @@
         }
       }
     },
-    "This shares a copy of the title and minutes only. Anyone with the link can read it until it expires in 7 days. Creating a new link invalidates the previous one.": {
+    "This shares a copy of the title and minutes only. Anyone with the link can read it until it expires in 7 days.": {
       "extractionState": "manual",
       "localizations": {
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "제목과 회의록 사본만 공유합니다. 링크가 있는 사람은 누구나 7일 동안 읽을 수 있습니다. 새 링크를 만들면 이전 링크는 무효화됩니다."
+            "value": "제목과 회의록 사본만 공유합니다. 링크가 있는 사람은 누구나 7일 동안 읽을 수 있습니다."
           }
         }
       }
@@ -5056,7 +5056,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "해제하면 이후 링크 접근은 막을 수 있지만, 다른 사람이 이미 저장한 사본은 되돌릴 수 없습니다."
+            "value": "공유를 취소하면 이후 링크 접근은 막을 수 있지만, 다른 사람이 이미 저장한 사본은 되돌릴 수 없습니다."
           }
         }
       }
@@ -5105,13 +5105,13 @@
         }
       }
     },
-    "This device can revoke or replace the active link. The link address is shown only when a link is created here.": {
+    "The link address is shown only when it is created. You can still cancel sharing here.": {
       "extractionState": "manual",
       "localizations": {
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이 기기에서 활성 링크를 해제하거나 새로 만들 수 있습니다. 링크 주소는 이곳에서 링크를 만들 때만 표시됩니다."
+            "value": "링크 주소는 생성 직후 이 창에서만 표시됩니다. 여기에서 공유를 취소할 수 있습니다."
           }
         }
       }
@@ -5144,7 +5144,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "웹 링크 해제"
+            "value": "공유 취소"
           }
         }
       }
@@ -5215,13 +5215,13 @@
         }
       }
     },
-    "Web link created. The previous link is no longer valid.": {
+    "Web link created.": {
       "extractionState": "manual",
       "localizations": {
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "웹 링크를 만들었습니다. 이전 링크는 더 이상 유효하지 않습니다."
+            "value": "공유 링크를 만들었습니다."
           }
         }
       }
@@ -5232,7 +5232,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "웹 링크를 해제하는 중…"
+            "value": "공유를 취소하는 중…"
           }
         }
       }
@@ -5243,7 +5243,7 @@
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "웹 링크를 해제했습니다."
+            "value": "공유를 취소했습니다."
           }
         }
       }

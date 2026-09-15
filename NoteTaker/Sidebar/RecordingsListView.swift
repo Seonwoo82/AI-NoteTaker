@@ -47,6 +47,7 @@ struct RecordingsListView: View {
                                     }
                                 } label: {
                                     row(recording)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                             }
