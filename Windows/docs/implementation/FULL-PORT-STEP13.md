@@ -25,3 +25,11 @@ Python 3 실행 파일을 `PYTHON=python`으로 지정한 Windows에서 일부 �
 upstream `LibraryStore.swift`와 `LibraryController.swift`에 **영구 삭제·30일 지난 삭제 항목 정리·기기 로컬 삭제 표식**, 그리고 **저장된 오디오 내보내기**가 있다. Windows에는 현재 삭제/복원과 Clova용 변환만 있어 이 기능은 추가 구현이 필요하다. 삭제 표식과 원격 복원/재다운로드의 상호작용까지 대조하며 구현해야 한다. 이 항목을 제외하고 전체 이식을 완료했다고 판단하지 않는다.
 
 새 ZIP의 최종 재검증, 자연 업무 회의의 의미/화자 정확도, 실제 기기·배포 환경의 미검증 범위도 전체 계획에서 계속 추적한다.
+
+## 수정 후 포터블 재검증
+
+`bc6f0fa253ee8be6cf63a56e708d8c4a8493fb47`에서 만든 0.4.0 후보 ZIP을 새 폴더에 풀고 `verify-package.ps1 -AllFeatures`를 실행해 9개 경로가 모두 통과했다. UI, Whisper, Qwen, Windows 트레이, 파일 입력의 녹음 수명, 참여자, 프로필, 회의 분석, 회의록 보완/정리/목차를 확인했다. 결과: `Windows/artifacts/AI-NoteTaker-0.4.0-win-x64.verification.json`, 새 폴더: `Windows/artifacts/verify-package-479e78cd/`.
+
+ZIP은 650,530,794바이트, SHA-256 `1E6260DC22D8F69756AB13EE65F127A21615BEA8921E02A39BF1411CF27E3380`다. 모델은 외부 모델 폴더를 사용하며 ZIP에 포함되지 않는다. 밝은 재생/폴더 삽입선과 작은 어두운 회의록 화면을 직접 확인했다. 이 후보는 위에 명시한 아직 남은 라이브러리 기능을 포함한 최종 전체 이식 배포는 아니다.
+
+최신 Release 전체 테스트는 211 통과/하드웨어 5 건너뜀이다 (`Windows/artifacts/test-step13/step13.trx`). 별도로 생성한 낮은 음량의 테스트 신호만 재생하는 `PlayerOpensPausesAndResumesGeneratedAudio`를 실제 출력 장치에서 실행해 1개 통과했다 (`playback-device.trx`). 마이크·루프백 캡처를 실행하거나 사람의 청취 평가를 한 것은 아니다.
