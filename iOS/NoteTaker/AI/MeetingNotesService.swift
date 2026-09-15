@@ -315,19 +315,47 @@ final class MeetingNotesService {
     @discardableResult
     func copyMarkdown(for id: UUID, pasteboard: NSPasteboard = .general) -> Bool {
         guard let markdown = document(for: id)?.markdown, !markdown.isEmpty else { return false }
+        return copyText(markdown, pasteboard: pasteboard)
+    }
+
+    @discardableResult
+    func copyTranscript(for id: UUID, pasteboard: NSPasteboard = .general) -> Bool {
+        guard let transcript = document(for: id)?.transcript, !transcript.isEmpty else { return false }
+        return copyText(transcript, pasteboard: pasteboard)
+    }
+
+    @discardableResult
+    func copyText(_ text: String, pasteboard: NSPasteboard = .general) -> Bool {
+        guard !text.isEmpty else { return false }
         pasteboard.clearContents()
-        return pasteboard.setString(markdown, forType: .string)
+        return pasteboard.setString(text, forType: .string)
     }
 #elseif canImport(UIKit)
     @discardableResult
     func copyMarkdown(for id: UUID, pasteboard: UIPasteboard = .general) -> Bool {
         guard let markdown = document(for: id)?.markdown, !markdown.isEmpty else { return false }
-        pasteboard.string = markdown
-        return pasteboard.string == markdown
+        return copyText(markdown, pasteboard: pasteboard)
+    }
+
+    @discardableResult
+    func copyTranscript(for id: UUID, pasteboard: UIPasteboard = .general) -> Bool {
+        guard let transcript = document(for: id)?.transcript, !transcript.isEmpty else { return false }
+        return copyText(transcript, pasteboard: pasteboard)
+    }
+
+    @discardableResult
+    func copyText(_ text: String, pasteboard: UIPasteboard = .general) -> Bool {
+        guard !text.isEmpty else { return false }
+        pasteboard.string = text
+        return pasteboard.string == text
     }
 #else
     @discardableResult
     func copyMarkdown(for id: UUID) -> Bool { false }
+    @discardableResult
+    func copyTranscript(for id: UUID) -> Bool { false }
+    @discardableResult
+    func copyText(_ text: String) -> Bool { false }
 #endif
 
     private func startNext() {

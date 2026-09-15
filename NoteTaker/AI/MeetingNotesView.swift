@@ -17,7 +17,8 @@ struct MeetingNotesView: View {
     @State private var showingRegenerateConfirmation = false
     @State private var showingWebShare = false
     @State private var showSyncSettingsAfterShareDismiss = false
-    @State private var copied = false
+    @State private var copyFeedbackID: UUID?
+    private var copied: Bool { copyFeedbackID != nil }
     @State private var selectedOutlineBlock: Int?
 
     init(recording: Recording, service: MeetingNotesService, configuration: AIConfiguration,
@@ -80,17 +81,29 @@ struct MeetingNotesView: View {
         .task(id: recording.id) {
             await service.load(recording)
         }
+        .task(id: copyFeedbackID) {
+            guard copyFeedbackID != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
+            copyFeedbackID = nil
+        }
+        .onChange(of: selectedTab) { copyFeedbackID = nil }
+        .onChange(of: selectedTranscriptMode) { copyFeedbackID = nil }
+        .onDisappear { copyFeedbackID = nil }
         .onChange(of: recording.id) { oldID, _ in
             if showingEnhancement { service.cancel(oldID) }
             showingEnhancement = false
             showingWebShare = false
             showSyncSettingsAfterShareDismiss = false
-            copied = false
+            copyFeedbackID = nil
             selectedTab = .minutes
             selectedTranscriptMode = .cleaned
         }
         .onChange(of: document?.markdown) {
-            copied = false
+            copyFeedbackID = nil
             selectedOutlineBlock = nil
         }
         .onChange(of: document?.transcriptCleanup?.sourceHash) {
@@ -270,10 +283,10 @@ struct MeetingNotesView: View {
                 Spacer()
 
                 Button {
-                    copied = service.copyMarkdown(for: recording.id)
+                    copySelectedContent()
                 } label: {
                     Label(
-                        copied ? String(localized: "Copied") : String(localized: "Copy Markdown"),
+                        copied ? String(localized: "Copied") : (selectedTab == .minutes ? String(localized: "Copy Markdown") : String(localized: "Copy Transcript")),
                         systemImage: copied ? "checkmark" : "doc.on.doc"
                     )
                 }
@@ -388,6 +401,29 @@ struct MeetingNotesView: View {
         Text(text)
             .font(.body).lineSpacing(4).textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func copySelectedContent() {
+        guard let document else { return }
+        let text: String
+        if selectedTab == .minutes {
+            text = document.markdown
+        } else if selectedTranscriptMode == .cleaned, let cleanup = validTranscriptCleanup(for: document) {
+            if cleanup.sourceKind == .speakers,
+               let transcript = document.participantTranscript(resolvingWith: resolvedTranscript) {
+                text = NumberedTranscript.text(transcript, textOverrides: cleanup.textOverrides)
+            } else {
+                text = cleanup.cleanedText
+            }
+        } else if let transcript = document.participantTranscript(resolvingWith: resolvedTranscript) {
+            text = NumberedTranscript.text(transcript)
+        } else {
+            text = document.transcript
+        }
+        copyFeedbackID = nil
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        if NSPasteboard.general.setString(text, forType: .string) { copyFeedbackID = UUID() }
     }
 
     private func validTranscriptCleanup(for document: MeetingNotesDocument) -> TranscriptCleanup? {

@@ -35,11 +35,15 @@ struct MeetingNotesServiceTests {
         defer { clipboard.releaseGlobally() }
         #expect(newService.copyMarkdown(for: h.recording.id, pasteboard: clipboard))
         #expect(clipboard.string(forType: .string) == notes.markdown)
+        #expect(newService.copyTranscript(for: h.recording.id, pasteboard: clipboard))
+        #expect(clipboard.string(forType: .string) == notes.transcript)
 #elseif canImport(UIKit)
         let clipboard = UIPasteboard.withUniqueName()
         defer { UIPasteboard.remove(withName: clipboard.name) }
         #expect(newService.copyMarkdown(for: h.recording.id, pasteboard: clipboard))
         #expect(clipboard.string == notes.markdown)
+        #expect(newService.copyTranscript(for: h.recording.id, pasteboard: clipboard))
+        #expect(clipboard.string == notes.transcript)
 #endif
     }
 

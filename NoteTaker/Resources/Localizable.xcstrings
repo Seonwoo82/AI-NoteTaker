@@ -507,6 +507,17 @@
         }
       }
     },
+    "Copy Transcript": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "전사 복사"
+          }
+        }
+      }
+    },
     "Copy Markdown": {
       "extractionState": "manual",
       "localizations": {

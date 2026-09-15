@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 
@@ -47,6 +48,44 @@ final class MeetingOutlineUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed,
                        "Selecting the eighth section must scroll its real body heading into view.")
         saveScreenshot(main, name: "outline-navigated")
+    }
+
+    @MainActor
+    func testCopyResetsAndUsesSelectedTab() throws {
+        let root = try seedMeeting()
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTesting", "-libraryRoot", root.path, "-AppleLanguages", "(en)"]
+        app.launch()
+        let main = app.windows["main"]
+        if !main.waitForExistence(timeout: 2) {
+            app.descendants(matching: .statusItem).firstMatch.click()
+            app.buttons["menu-bar-open-window"].click()
+        }
+        XCTAssertTrue(main.waitForExistence(timeout: 5))
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "AI Meeting Notes")).firstMatch.click()
+        let copy = app.buttons["ai-copy-markdown"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        let pasteboard = NSPasteboard.general
+        let saved = (pasteboard.pasteboardItems ?? []).map { item in
+            let result = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { result.setData(data, forType: type) }
+            }
+            return result
+        }
+        defer { pasteboard.clearContents(); pasteboard.writeObjects(saved) }
+        copy.click()
+        XCTAssertTrue(copy.label.contains("Copied"))
+        XCTAssertTrue((pasteboard.string(forType: .string) ?? "").hasPrefix("# 제품 회의"))
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Transcript")).firstMatch.click()
+        XCTAssertFalse(copy.label.contains("Copied"))
+        XCTAssertTrue(copy.isEnabled)
+        copy.click()
+        XCTAssertEqual(pasteboard.string(forType: .string), "화면 검증용 합성 전사문입니다.")
+        let reset = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Copy Transcript"), object: copy)
+        XCTAssertEqual(XCTWaiter.wait(for: [reset], timeout: 4), .completed)
+        copy.click()
+        XCTAssertTrue(copy.label.contains("Copied"))
     }
 
     @MainActor

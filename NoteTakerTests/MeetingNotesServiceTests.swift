@@ -43,6 +43,8 @@ struct MeetingNotesServiceTests {
         defer { clipboard.releaseGlobally() }
         #expect(newService.copyMarkdown(for: h.recording.id, pasteboard: clipboard))
         #expect(clipboard.string(forType: .string) == notes.markdown)
+        #expect(newService.copyTranscript(for: h.recording.id, pasteboard: clipboard))
+        #expect(clipboard.string(forType: .string) == notes.transcript)
     }
 
     @Test("Automatic generation respects opt-out and does not backfill existing recordings")
