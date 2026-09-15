@@ -1,0 +1,7 @@
+# Windows-only build output, evaluation artifacts, and IDE state
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+*.user
+*.suo

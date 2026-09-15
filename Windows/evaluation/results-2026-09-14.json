@@ -1,0 +1,38 @@
+[
+  {
+    "Run": "whisper-measured",
+    "Seconds": 4.4993334,
+    "RTF": 0.065528070103577,
+    "RawEdits": 11,
+    "RawReferenceCharacters": 316,
+    "NormalizedEdits": 2,
+    "NormalizedReferenceCharacters": 316,
+    "NormalizedCER": 0.006329113924050633,
+    "SampledWorkingSetMB": 673,
+    "WholeDevicePeakMiB": 5407
+  },
+  {
+    "Run": "qwen17-measured",
+    "Seconds": 7.9342898,
+    "RTF": 0.11555460598596581,
+    "RawEdits": 1,
+    "RawReferenceCharacters": 316,
+    "NormalizedEdits": 1,
+    "NormalizedReferenceCharacters": 316,
+    "NormalizedCER": 0.0031645569620253164,
+    "SampledWorkingSetMB": 2760,
+    "WholeDevicePeakMiB": 7295
+  },
+  {
+    "Run": "qwen06-measured-final",
+    "Seconds": 4.3484701,
+    "RTF": 0.06333090443044484,
+    "RawEdits": 2,
+    "RawReferenceCharacters": 316,
+    "NormalizedEdits": 2,
+    "NormalizedReferenceCharacters": 316,
+    "NormalizedCER": 0.006329113924050633,
+    "SampledWorkingSetMB": 1511,
+    "WholeDevicePeakMiB": 5883
+  }
+]

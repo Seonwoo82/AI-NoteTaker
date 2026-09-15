@@ -44,3 +44,6 @@ DerivedData/
 docs/PLAN.md
 docs/superpowers/
 docs/validation/
+
+# Local development SDK and model-download tools
+.tools/
