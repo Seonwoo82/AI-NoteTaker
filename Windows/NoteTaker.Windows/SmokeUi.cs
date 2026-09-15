@@ -219,6 +219,16 @@ internal static class SmokeUi
         if (search.Text.Length != 0 || ((Recording)((ListBox)window.FindName("RecordingList")).SelectedItem).Id != originalId) throw new InvalidOperationException("Clicking a folder child selected the wrong recording under a search filter.");
         await window.WaveformLoadTask; waveform.RequestSeek(20);
         await CaptureAsync(window, Path.Combine(output, "folders.png"));
+        var second = new RecordingFolderStore(library.Root).Active[1];
+        if (!window.PreviewFolderDrop(first.Id, second.Id, true)) throw new InvalidOperationException("Folder insertion after header was rejected.");
+        await CaptureAsync(window, Path.Combine(output, "folder-insertion-after.png")); window.CommitFolderDrop();
+        if (new RecordingFolderStore(library.Root).Active[1].Id != first.Id) throw new InvalidOperationException("Drop after folder moved it before instead.");
+        if (!window.PreviewFolderDrop(first.Id, second.Id, false)) throw new InvalidOperationException("Folder insertion before header was rejected.");
+        await CaptureAsync(window, Path.Combine(output, "folder-insertion-before.png")); window.CommitFolderDrop();
+        if (new RecordingFolderStore(library.Root).Active[0].Id != first.Id || waveform.Position != 20) throw new InvalidOperationException("Drop before folder lost order or playback position.");
+        if (window.PreviewFolderDrop(first.Id, first.Id, true)) throw new InvalidOperationException("A folder cannot target itself.");
+        window.PreviewFolderDrop(first.Id, null, true); window.ClearFolderDropPreview(); window.CommitFolderDrop();
+        if (new RecordingFolderStore(library.Root).Active[0].Id != first.Id) throw new InvalidOperationException("Cancelled drag reordered folders.");
         var list = (ListBox)window.FindName("RecordingList"); var context = list.ContextMenu;
         context.PlacementTarget = list; context.IsOpen = true;
         var move = (MenuItem)window.FindName("MoveFolderMenuItem"); move.IsSubmenuOpen = true;

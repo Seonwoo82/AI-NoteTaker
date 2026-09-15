@@ -51,7 +51,7 @@
      <StackPanel Grid.Row="2">
       <Border Height="1" Background="{DynamicResource Separator}" Margin="10,0" />
       <DockPanel Margin="14,5,10,0"><Button x:Name="CreateFolderButton" DockPanel.Dock="Right" Content="+" Style="{StaticResource ToolbarButton}" Click="CreateFolder_Click" ToolTip="새 폴더" AutomationProperties.Name="새 폴더" /><TextBlock Text="폴더" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" /></DockPanel>
-      <TreeView x:Name="FolderTree" MaxHeight="190" Margin="6,0" SelectedItemChanged="Folder_Selected" PreviewMouseRightButtonDown="Folder_RightClick" PreviewMouseLeftButtonDown="Library_DragStart" PreviewMouseMove="Library_DragMove" AllowDrop="True" DragOver="Library_DragOver" Drop="Library_Drop" AutomationProperties.Name="녹음 폴더" />
+      <TreeView x:Name="FolderTree" MaxHeight="190" Margin="6,0" SelectedItemChanged="Folder_Selected" PreviewMouseRightButtonDown="Folder_RightClick" PreviewMouseLeftButtonDown="Library_DragStart" PreviewMouseMove="Library_DragMove" AllowDrop="True" DragOver="Library_DragOver" DragLeave="Library_DragLeave" Drop="Library_Drop" AutomationProperties.Name="녹음 폴더" />
       <Border x:Name="UnfiledDropTarget" Background="{DynamicResource SegmentSurface}" CornerRadius="5" Padding="7" Margin="12,4,12,0" AllowDrop="True" DragOver="Library_DragOver" Drop="Library_Drop"><TextBlock Text="여기로 드래그하여 폴더 밖으로 이동" FontSize="10" Foreground="{DynamicResource Muted}" /></Border>
       <TextBlock x:Name="LibraryCount" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="14,9,14,5" />
      </StackPanel>

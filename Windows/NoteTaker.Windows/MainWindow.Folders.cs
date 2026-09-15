@@ -16,6 +16,8 @@ public partial class MainWindow
     private HashSet<Guid> expandedFolders = [];
     private Point dragOrigin;
     private object? dragItem;
+    private readonly Dictionary<Guid, Border> folderDropLines = [];
+    private Guid? folderDropId, folderDropBefore;
     private const string FolderDragFormat = "AI-NoteTaker.Folder";
     private const string RecordingDragFormat = "AI-NoteTaker.Recording";
     private string FolderAppearancePath => Path.Combine(library.Root, "folder-appearance.json");
@@ -35,6 +37,7 @@ public partial class MainWindow
     }
     private void ReloadFolders()
     {
+        ClearFolderDropPreview(); folderDropLines.Clear();
         refreshingLibrary = true;
         try
         {
@@ -53,6 +56,9 @@ public partial class MainWindow
                 Grid.SetColumn(name, 1); header.Children.Add(name);
                 var count = new TextBlock { Text = members.Length.ToString(), FontSize = 10, Opacity = .65, Margin = new Thickness(5, 0, 1, 0), VerticalAlignment = VerticalAlignment.Center };
                 Grid.SetColumn(count, 2); header.Children.Add(count);
+                var dropLine = new Border { Height = 2, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+                dropLine.SetResourceReference(Border.BackgroundProperty, "Accent");
+                Grid.SetColumnSpan(dropLine, 3); Panel.SetZIndex(dropLine, 1); header.Children.Add(dropLine); folderDropLines[folder.Id] = dropLine;
                 var item = new TreeViewItem { Header = header, Tag = folder, IsExpanded = expandedFolders.Contains(folder.Id), IsSelected = selectedFolder == folder.Id, ToolTip = folder.Name };
                 AutomationProperties.SetName(item, $"{folder.Name}, 녹음 {members.Length}개");
                 item.Expanded += (_, e) => { if (e.OriginalSource == item) SaveFolderExpansion(folder.Id, true); };
@@ -185,23 +191,33 @@ public partial class MainWindow
         var point = e.GetPosition(this);
         if (Math.Abs(point.X - dragOrigin.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(point.Y - dragOrigin.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         var source = dragItem; dragItem = null;
-        if (source is Recording { DeletedAt: null } record) DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(RecordingDragFormat, record.Id), DragDropEffects.Move);
-        else if (source is RecordingCollectionFolder folder) DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(FolderDragFormat, folder.Id), DragDropEffects.Move);
+        try
+        {
+            if (source is Recording { DeletedAt: null } record) DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(RecordingDragFormat, record.Id), DragDropEffects.Move);
+            else if (source is RecordingCollectionFolder folder) DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(FolderDragFormat, folder.Id), DragDropEffects.Move);
+        }
+        finally { ClearFolderDropPreview(); }
     }
     private void Library_DragOver(object sender, DragEventArgs e)
     {
+        ClearFolderDropPreview();
         bool available = recorder is null && runningWork is null && !transitioning && folderStore.LoadError is null;
         bool all = sender == UnfiledDropTarget || sender == FilterBox && Ancestor<ListBoxItem>(e.OriginalSource as DependencyObject) is { } row && FilterBox.Items.IndexOf(row) == 0;
         var node = Ancestor<TreeViewItem>(e.OriginalSource as DependencyObject);
         bool folderTarget = sender == FolderTree && DropFolder(node) is not null;
         bool allowed = e.Data.GetDataPresent(RecordingDragFormat) && (all || folderTarget) || e.Data.GetDataPresent(FolderDragFormat) && sender == FolderTree && node?.Tag is not Recording;
+        if (available && allowed && e.Data.GetDataPresent(FolderDragFormat))
+        {
+            bool after = node?.Header is FrameworkElement header && e.GetPosition(header).Y >= header.ActualHeight / 2;
+            allowed = e.Data.GetData(FolderDragFormat) is Guid id && PreviewFolderDrop(id, (node?.Tag as RecordingCollectionFolder)?.Id, after);
+        }
         e.Effects = available && allowed ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true;
     }
     private void Library_Drop(object sender, DragEventArgs e)
     {
         Library_DragOver(sender, e); if (e.Effects != DragDropEffects.Move) return;
         var target = DropFolder(Ancestor<TreeViewItem>(e.OriginalSource as DependencyObject));
-        if (e.Data.GetData(FolderDragFormat) is Guid folderId) FolderAction(() => folderStore.Move(folderId, target?.Id));
+        if (e.Data.GetData(FolderDragFormat) is Guid) CommitFolderDrop();
         else if (e.Data.GetData(RecordingDragFormat) is Guid recordId && recordings.FirstOrDefault(r => r.Id == recordId && r.DeletedAt is null) is { } record)
         {
             FolderAction(() =>
@@ -212,6 +228,34 @@ public partial class MainWindow
                 SelectFolderFilter(target?.Id);
             });
         }
+        ClearFolderDropPreview();
+    }
+    private void Library_DragLeave(object sender, DragEventArgs e) => ClearFolderDropPreview();
+    internal bool PreviewFolderDrop(Guid id, Guid? target, bool after)
+    {
+        ClearFolderDropPreview();
+        if (recorder is not null || runningWork is not null || transitioning || !folderStore.IsActive(id) || target == id || target is { } targetId && !folderStore.IsActive(targetId)) return false;
+        var others = folderStore.Active.Where(f => f.Id != id).ToArray();
+        if (others.Length == 0) return false;
+        folderDropId = id;
+        folderDropBefore = target is null ? null : after ? others.SkipWhile(f => f.Id != target).Skip(1).FirstOrDefault()?.Id : target;
+        Guid lineId = target ?? others[^1].Id;
+        if (folderDropLines.TryGetValue(lineId, out var line))
+        {
+            line.VerticalAlignment = after || target is null ? VerticalAlignment.Bottom : VerticalAlignment.Top;
+            line.Margin = new Thickness(0, -3, 0, -3); line.Visibility = Visibility.Visible;
+        }
+        return true;
+    }
+    internal void CommitFolderDrop()
+    {
+        var id = folderDropId; var before = folderDropBefore; ClearFolderDropPreview();
+        if (id is { } value) FolderAction(() => folderStore.Move(value, before));
+    }
+    internal void ClearFolderDropPreview()
+    {
+        folderDropId = folderDropBefore = null;
+        foreach (var line in folderDropLines.Values) line.Visibility = Visibility.Collapsed;
     }
     private RecordingCollectionFolder? DropFolder(TreeViewItem? node) => node?.Tag switch
     {

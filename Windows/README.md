@@ -74,7 +74,7 @@ Qwen3-ASR은 설정의 전사 엔진에서 선택할 수 있습니다. 언어를
 - 큰 파형은 재생 위치 주변 5분을, 아래 개요는 전체 녹음을 보여줍니다. 드래그 중에는 표시 구간을 고정해 포인터 위치와 실제 오디오 시간이 어긋나지 않게 합니다.
 - AI 설정에서 **녹음 완료 후 회의록 자동 생성**과 **전역 단축키**를 각각 켤 수 있습니다. 전역 단축키는 `Ctrl+Alt+Shift+N` 앱 열기, `R` 녹음 시작/완료, `P` 일시정지/재개입니다. 자동 생성은 선택한 엔진을 사용하므로 OpenRouter 선택 시 키와 크레딧이 필요합니다.
 
-실제 장치 분리·절전·Bluetooth 재연결·수시간 혼합 녹음의 샘플 클록 정렬은 추가 검증 대상입니다. 현재 개발 소스의 화자 프로필과 회의 분석·프로젝트 브리핑은 위 검증 문서를 참고하세요. 4B 모델의 구조화 분석에는 결정/업무·질문 구분 오류가 관찰됐으므로 근거를 확인해야 합니다. Mac/iPhone/Cloudflare 전체 동기화, 모델 카탈로그와 긴 회의 예산, 전사 정리·회의록 보완/목차, 최종 패키지는 계속 이식 중입니다.
+실제 장치 분리·절전·Bluetooth 재연결·수시간 혼합 녹음의 샘플 클록 정렬은 추가 검증 대상입니다. 4B 모델에는 결정/업무·질문 구분 오류가 관찰됐으므로 원문 근거를 확인해야 합니다. [자연 한국어 대화의 측정 결과와 한계](docs/implementation/FULL-PORT-STEP12.md). 영구 삭제·30일 삭제 보관·저장된 오디오 내보내기는 추가 이식 중이며 최종 패키지 검증과 실제 Apple 기기/배포 서버 검증도 남아 있습니다.
 
 ## 데이터와 기존 OpenRouter
 
@@ -124,4 +124,4 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 # whisper 대신 qwen, 추가 옵션 small(0.6B), cpu, cancel-resume(120초 초과 파일)
 ```
 
-현재 개발 소스의 자동 테스트 208개 통과, 장치 테스트 5개는 일반 test에서 건너뜁니다. 지속 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
+현재 개발 소스의 자동 테스트 211개 통과, 장치 테스트 5개는 일반 test에서 건너뜁니다. 지속 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).

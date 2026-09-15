@@ -39,6 +39,7 @@ public static class MeetingAnalysisPrompt
             Extract questions and their actual answers from this meeting. Return ONE JSON object with schemaVersion=1, actions=[], questions, decisions=[].
             Each question has id, question (concise Korean), questionTurnIDs, answer (concise Korean or null), answerTurnIDs, status (answered, partial, unanswered, uncertain).
             answered and partial need answer text and cited answer turns. unanswered needs answer=null and answerTurnIDs=[]. An uncertain answer needs evidence too. Do not answer from your own knowledge.
+            An introduction, factual statement, answer, decision, or deferral is not a question. Extract only utterances that actually ask for information or a response. Return an empty questions array when none are supported; never manufacture a question to fill the output.
             Extract each distinct question ONCE. Stop the questions array after the questions actually asked. Prefer 0-5 questions for a short conversation.
             """ + ReferenceRules,
         "decisions" => """
@@ -61,16 +62,24 @@ public static class MeetingAnalysisPrompt
         object Text(bool nullable = false) => new Dictionary<string, object> { ["type"] = nullable ? new[] { "string", "null" } : "string", ["maxLength"] = 4000 };
         object Enum(params string[] values) => new { type = "string", @enum = values };
         object Object(Dictionary<string, object> properties) => new { type = "object", properties, required = properties.Keys.ToArray(), additionalProperties = false };
-        object Array(object items, int maximum = 0) => new { type = "array", items, maxItems = maximum > 0 ? maximum : Math.Min(200, Math.Max(10, transcript.Turns.Count * 3)) };
+        object Array(object items, int maximum = 0, int minimum = 0) => new { type = "array", items, minItems = minimum, maxItems = maximum > 0 ? maximum : Math.Min(200, Math.Max(10, transcript.Turns.Count * 3)) };
         object speakers = new { type = new[] { "string", "null" }, @enum = transcript.Speakers.Select(s => (string?)s.Id).Append(null).ToArray() };
-        object evidence = Array(Enum(transcript.Turns.Select(t => t.Id).ToArray()));
+        object evidence = Array(Enum(transcript.Turns.Select(t => t.Id).ToArray()), minimum: 1);
+        object noAnswerEvidence = new { type = "array", maxItems = 0, items = new { type = "string" } };
+        object Question(bool hasAnswer, params string[] statuses) => Object(new()
+        {
+            ["id"] = Text(), ["question"] = Text(), ["questionTurnIDs"] = evidence,
+            ["answer"] = hasAnswer ? Text() : new { type = "null" },
+            ["answerTurnIDs"] = hasAnswer ? evidence : noAnswerEvidence, ["status"] = Enum(statuses)
+        });
+        object question = new { anyOf = new[] { Question(true, "answered", "partial"), Question(false, "unanswered"), Question(true, "uncertain"), Question(false, "uncertain") } };
         object step = Object(new() { ["kind"] = Enum("proposal", "concern", "decision", "deferred", "revised"), ["text"] = Text(), ["speakerID"] = speakers, ["evidenceTurnIDs"] = evidence });
         return JsonSerializer.SerializeToElement(Object(new()
         {
             ["schemaVersion"] = new { type = "integer", @enum = new[] { 1 } },
             ["actions"] = category is "all" or "actions" ? Array(Object(new() { ["id"] = Text(), ["kind"] = Enum("commitment", "request"), ["text"] = Text(), ["actorSpeakerID"] = speakers, ["targetSpeakerID"] = speakers, ["dueText"] = Text(true), ["evidenceTurnIDs"] = evidence })) : new { type = "array", maxItems = 0, items = new { type = "string" } },
-            ["questions"] = category is "all" or "questions" ? Array(Object(new() { ["id"] = Text(), ["question"] = Text(), ["questionTurnIDs"] = evidence, ["answer"] = Text(true), ["answerTurnIDs"] = evidence, ["status"] = Enum("answered", "partial", "unanswered", "uncertain") })) : new { type = "array", maxItems = 0, items = new { type = "string" } },
-            ["decisions"] = category is "all" or "decisions" ? Array(Object(new() { ["id"] = Text(), ["topic"] = Text(), ["status"] = Enum("decided", "deferred", "unresolved"), ["steps"] = Array(step, 30) })) : new { type = "array", maxItems = 0, items = new { type = "string" } }
+            ["questions"] = category is "all" or "questions" ? Array(question) : new { type = "array", maxItems = 0, items = new { type = "string" } },
+            ["decisions"] = category is "all" or "decisions" ? Array(Object(new() { ["id"] = Text(), ["topic"] = Text(), ["status"] = Enum("decided", "deferred", "unresolved"), ["steps"] = Array(step, 30, minimum: 1) })) : new { type = "array", maxItems = 0, items = new { type = "string" } }
         }));
     }
     public static MeetingInsights Decode(string text, MeetingTranscript transcript)
