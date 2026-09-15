@@ -32,10 +32,11 @@ switch ($Task) {
         if ($LASTEXITCODE -eq 0) {
             Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination $output
             Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'EXECUTION_PLAN.md') -Destination $output
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'FULL-PORT-PLAN.md') -Destination $output
             $docsOutput = Join-Path $output 'docs/implementation'
             New-Item -ItemType Directory -Force $docsOutput | Out-Null
-            foreach ($docName in @('FREE-AI-VERIFICATION.md','FREE-TRANSCRIPTION-RESEARCH.md','WINDOWS-APPLE-UI.md','WINDOWS-PORT.md')) {
-                Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs/implementation/$docName") -Destination $docsOutput
+            foreach ($doc in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'docs/implementation') -Filter '*.md' -File) {
+                Copy-Item -LiteralPath $doc.FullName -Destination $docsOutput
             }
             $evaluationOutput = $output
             New-Item -ItemType Directory -Force $evaluationOutput | Out-Null

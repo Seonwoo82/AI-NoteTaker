@@ -7,7 +7,7 @@ namespace NoteTaker.Windows;
 public partial class MainWindow
 {
     private ProfileWindow? profileWindow;
-    private bool ProfileOpen => profileWindow is not null;
+    private bool ModalOperationOpen => profileWindow is not null || notesEditingWindow is not null;
     private LiveOwnerMonitor? liveOwner;
     private void StartLiveOwner()
     {
@@ -38,7 +38,7 @@ public partial class MainWindow
     }
     private async void Profile_Click(object sender, RoutedEventArgs e)
     {
-        if (recorder is not null || runningWork is not null || transitioning || ProfileOpen) return;
+        if (recorder is not null || runningWork is not null || transitioning || ModalOperationOpen) return;
         try
         {
             StopTurnPlayback(); player.Dispose(); playbackLoaded = false;

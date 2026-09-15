@@ -249,7 +249,7 @@ public sealed class AiTests
             return Task.FromResult(summaries == 3 ? StubHandler.Json("failure", HttpStatusCode.InternalServerError) : StubHandler.Json(Complete));
         }));
         var service = new MeetingNotesService(library, client);
-        var settings = new AppSettings(); var progress = new Progress<string>();
+        var settings = new AppSettings { TranscriptCleanupEnabled = false }; var progress = new Progress<string>();
         await service.GenerateAsync(record, settings, "test", progress, default);
         await service.GenerateAsync(record, settings, "test", progress, default);
         string original = File.ReadAllText(library.NotesPath(record.Id));

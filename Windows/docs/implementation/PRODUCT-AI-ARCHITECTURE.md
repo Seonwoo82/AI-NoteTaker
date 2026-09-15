@@ -17,7 +17,7 @@ OpenRouter를 선택한 기능만 사용자 입력 키로 OpenRouter에 직접 �
 
 개인용 클로바노트는 오디오 내보내기 → 사용자가 업로드/전사 → 전사 파일 가져오기로 연결한다. 개인용 네이버 계정에 앱이 자동 로그인하거나 무료 전사 API를 호출하는 구조가 아니다.
 
-근거 코드: `NoteTaker.Core/Models.cs`, `AiProviders.cs`, `OpenRouterClient.cs`, `SettingsStore.cs`, `ClovaAudioExport.cs`, `TranscriptImport.cs`, `SpeakerModels.cs`.
+근거 코드: `NoteTaker.Core/Models.cs`, `AiProviders.cs`, `OpenRouterClient.cs`, `LibraryStore.cs`의 `SettingsStore`, `ClovaAudioExport.cs`, `TranscriptImport.cs`, `SpeakerModels.cs`.
 
 ## 외부 서비스 한도
 

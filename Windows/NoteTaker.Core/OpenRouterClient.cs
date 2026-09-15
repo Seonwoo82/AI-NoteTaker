@@ -13,7 +13,7 @@ public sealed class OpenRouterClient : IDisposable
     public OpenRouterClient(HttpMessageHandler? handler = null)
     {
         http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
-        { BaseAddress = new Uri("https://openrouter.ai/api/v1/"), Timeout = TimeSpan.FromMinutes(10) };
+        { BaseAddress = new Uri("https://openrouter.ai/api/v1/"), Timeout = TimeSpan.FromSeconds(3660) };
     }
 
     public async Task<AiText> TranscribeAsync(byte[] wav, AppSettings settings, string key, CancellationToken token)
@@ -30,14 +30,18 @@ public sealed class OpenRouterClient : IDisposable
         return new AiText(text.Trim(), ReadCost(json.RootElement));
     }
 
-    public async Task<AiText> CompleteAsync(string system, string content, AppSettings settings, string key, CancellationToken token)
+    public async Task<AiText> CompleteAsync(string system, string content, AppSettings settings, string key, CancellationToken token, int? maximumTokens = null)
     {
-        using var json = await SendAsync("chat/completions", new
+        var budget = CompletionBudget.ForModel(settings.SummaryModelInfo, settings.SummaryModel);
+        int output = Math.Min(budget.OutputTokens, Math.Max(1, maximumTokens ?? budget.OutputTokens));
+        var body = new Dictionary<string, object>
         {
-            model = settings.SummaryModel,
-            messages = new[] { new { role = "system", content = system }, new { role = "user", content } },
-            max_tokens = 8192, stream = false
-        }, key, token);
+            ["model"] = settings.SummaryModel,
+            ["messages"] = new[] { new { role = "system", content = system }, new { role = "user", content } },
+            ["max_tokens"] = output, ["stream"] = false
+        };
+        if (AiModel.RequiresReasoningBudget(settings.SummaryModel)) body["reasoning"] = new { effort = "low", exclude = true };
+        using var json = await SendAsync("chat/completions", body, key, token, requestTimeout: CompletionBudget.TimeoutFor(output));
         var root = json.RootElement;
         if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
             throw new InvalidDataException("모델이 회의록을 반환하지 않았습니다.");
@@ -99,23 +103,25 @@ public sealed class OpenRouterClient : IDisposable
         var result = new TranscribedAudio(text, segments); TranscriptTiming.Validate(result, 120); return result;
     }
 
-    private async Task<JsonDocument> SendAsync(string path, object body, string key, CancellationToken token, bool detailedTranscription = false)
+    private async Task<JsonDocument> SendAsync(string path, object body, string key, CancellationToken token, bool detailedTranscription = false, TimeSpan? requestTimeout = null)
     {
         if (string.IsNullOrWhiteSpace(key)) throw new InvalidOperationException("설정에서 OpenRouter API 키를 저장해 주세요.");
         using var request = new HttpRequestMessage(HttpMethod.Post, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
         request.Headers.Add("X-Title", "AI-NoteTaker Windows");
         request.Content = JsonContent.Create(body);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(requestTimeout ?? TimeSpan.FromMinutes(10));
         try
         {
-            using var response = await http.SendAsync(request, token);
+            using var response = await http.SendAsync(request, deadline.Token);
             if (!response.IsSuccessStatusCode)
             {
                 var error = StatusError(response.StatusCode);
                 if (detailedTranscription && response.StatusCode == HttpStatusCode.BadRequest) throw new OpenRouterRequestException(response.StatusCode, error.Message);
                 throw error;
             }
-            var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+            var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(deadline.Token));
             if (json.RootElement.TryGetProperty("error", out _))
             {
                 json.Dispose();

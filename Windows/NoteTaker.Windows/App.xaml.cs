@@ -19,6 +19,12 @@ public partial class App : Application
         SessionEnding += (_, _) => { if (MainWindow is NoteTaker.Windows.MainWindow window) window.RequestExit(); };
         try
         {
+            if (e.Args.Length == 3 && e.Args[0] == "--smoke-notes")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                await SmokeNotesEditing.RunAsync(Path.GetFullPath(e.Args[1]), Path.GetFullPath(e.Args[2]));
+                Shutdown(0); return;
+            }
             if (e.Args.Length == 3 && e.Args[0] == "--smoke-meeting")
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -79,7 +85,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            if (e.Args.Length >= 2 && e.Args[0] is "--smoke-ui" or "--smoke-ai" or "--smoke-desktop" or "--smoke-capture-flow" or "--smoke-participants" or "--smoke-profile" or "--smoke-meeting")
+            if (e.Args.Length >= 2 && e.Args[0] is "--smoke-ui" or "--smoke-ai" or "--smoke-desktop" or "--smoke-capture-flow" or "--smoke-participants" or "--smoke-profile" or "--smoke-meeting" or "--smoke-notes")
             {
                 Directory.CreateDirectory(e.Args[1]);
                 File.WriteAllText(Path.Combine(e.Args[1], "error.txt"), ex.ToString());

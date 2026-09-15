@@ -42,6 +42,11 @@ public sealed record AppSettings
     public string OllamaAddress { get; init; } = "http://127.0.0.1:11434";
     public string QwenAsrModel { get; init; } = "1.7b";
     public string SummaryModel { get; init; } = "google/gemini-2.5-flash";
+    public string EnhancementModel { get; init; } = "";
+    public string LocalEnhancementModel { get; init; } = "";
+    public AiModel? SummaryModelInfo { get; init; }
+    public AiModel? EnhancementModelInfo { get; init; }
+    public bool TranscriptCleanupEnabled { get; init; } = true;
     public string TranscriptionModel { get; init; } = "openai/whisper-large-v3";
     public string Language { get; init; } = "ko";
     public string? ProtectedApiKey { get; init; }
@@ -70,7 +75,11 @@ public sealed record TranscriptCache(string AudioHash, string Model, string Lang
 public sealed record MeetingNotes(string Markdown, DateTimeOffset CreatedAt, string Model, decimal? CostUsd)
 {
     public string? TranscriptHash { get; init; }
+    [JsonPropertyName("transcriptCleanup")] public TranscriptCleanup? Cleanup { get; init; }
+    public MeetingNotesEnhancement? Enhancement { get; init; }
+    public string? CleanupNotice { get; init; }
 }
+public sealed record MeetingNotesEnhancement([property: JsonPropertyName("modelID")] string ModelId, string Instructions);
 public sealed record AudioDevice(string Id, string Name)
 {
     public override string ToString() => Name;

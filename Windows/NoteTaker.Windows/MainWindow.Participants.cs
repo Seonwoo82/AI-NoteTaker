@@ -51,14 +51,15 @@ public partial class MainWindow
         else if (choice != "*") turns = turns.Where(t => t.SpeakerId == choice);
         ParticipantTurns.ItemsSource = turns.Select(t => new ParticipantTurnRow(t,
             meeting?.Transcript.Speakers.FirstOrDefault(s => s.Id == t.SpeakerId)?.Name ?? "미지정",
-            string.Join(" · ", meetingProfile.Substitutions(t.Text).Select(s => $"표기 참고: {s.SourceText} → {s.DisplayText}")))).ToList();
+            string.Join(" · ", meetingProfile.Substitutions(t.Text).Select(s => $"표기 참고: {s.SourceText} → {s.DisplayText}")),
+            CleanedTurnsBox.IsChecked == true ? cleanedTurnText?.GetValueOrDefault(t.Id) : null)).ToList();
     }
     private void ParticipantFilter_Changed(object sender, SelectionChangedEventArgs e) { if (!loadingParticipants && loaded) RefreshParticipantTurns(); }
     private void ParticipantSelection_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) UpdateParticipantControls(); }
     private void UpdateParticipantControls()
     {
         if (AnalyzeParticipantsButton is null) return;
-        bool idle = recorder is null && !transitioning && runningWork is null && !ProfileOpen && selected?.DeletedAt is null && selected is not null;
+        bool idle = recorder is null && !transitioning && runningWork is null && !ModalOperationOpen && selected?.DeletedAt is null && selected is not null;
         AnalyzeParticipantsButton.IsEnabled = ParticipantCount.IsEnabled = idle;
         RenameParticipantButton.IsEnabled = MarkOwnerButton.IsEnabled = idle && meeting is not null && ParticipantPeople.SelectedItem is ParticipantChoice;
         AssignTurnButton.IsEnabled = PlayTurnButton.IsEnabled = idle && ParticipantTurns.SelectedItem is ParticipantTurnRow;
@@ -143,9 +144,9 @@ public partial class MainWindow
         UpdateParticipantControls();
     }
     private sealed record ParticipantChoice(string Id, string Name);
-    private sealed record ParticipantTurnRow(TranscriptTurn Turn, string Speaker, string GlossaryHint)
+    private sealed record ParticipantTurnRow(TranscriptTurn Turn, string Speaker, string GlossaryHint, string? CleanedText = null)
     {
         public string Time => $"{Recording.FormatTime(Turn.Start)} – {Recording.FormatTime(Turn.End)}";
-        public string Text => Turn.Text;
+        public string Text => CleanedText ?? Turn.Text;
     }
 }

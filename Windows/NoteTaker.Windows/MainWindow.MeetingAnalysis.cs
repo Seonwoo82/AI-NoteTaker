@@ -51,7 +51,7 @@ public partial class MainWindow
     private void UpdateMeetingControls()
     {
         if (AnalyzeMeetingButton is null) return;
-        bool idle = recorder is null && !transitioning && runningWork is null && !ProfileOpen && selected is { DeletedAt: null };
+        bool idle = recorder is null && !transitioning && runningWork is null && !ModalOperationOpen && selected is { DeletedAt: null };
         AnalyzeMeetingButton.IsEnabled = EditProjectButton.IsEnabled = idle && meeting is not null;
         ActionOpenButton.IsEnabled = ActionDoneButton.IsEnabled = ActionDismissButton.IsEnabled = idle && MeetingActions.SelectedItem is InsightRow { ActionId: not null };
         CancelMeetingButton.Visibility = runningWork is null ? Visibility.Collapsed : Visibility.Visible;
@@ -94,7 +94,7 @@ public partial class MainWindow
     private void InsightListen_Click(object sender, RoutedEventArgs e) { if (sender is Button { Tag: InsightRow row }) OpenMeetingEvidence(row.RecordingId, row.TurnIds, true); }
     internal void OpenMeetingEvidence(Guid recordingId, IReadOnlyList<string> ids, bool play = false)
     {
-        if (runningWork is not null || recorder is not null || transitioning || ProfileOpen) return;
+        if (runningWork is not null || recorder is not null || transitioning || ModalOperationOpen) return;
         var target = recordings.FirstOrDefault(r => r.Id == recordingId && r.DeletedAt is null && !r.IsRecording);
         if (target is null) { SetStatus("원본 회의를 찾을 수 없습니다.", true); return; }
         if (selected?.Id != recordingId)

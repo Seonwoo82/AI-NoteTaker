@@ -187,7 +187,7 @@ public partial class MainWindow : Window
             notes = JsonDisk.Read<MeetingNotes>(library.NotesPath(recording.Id));
             var transcript = JsonDisk.Read<TranscriptCache>(library.TranscriptPath(recording.Id));
             transcriptText = transcript is null ? "" : (transcript.Complete ? "" : "[부분 전사]\n\n") + string.Join("\n\n", transcript.Chunks);
-            NotesViewer.Document = MarkdownView.Render(notes?.Markdown ?? "");
+            RenderNotes(notes?.Markdown ?? "");
             NotesPlaceholder.Visibility = notes is null ? Visibility.Visible : Visibility.Collapsed;
             TranscriptBox.Text = transcript is null ? "전사문이 아직 없습니다. AI 회의록을 생성하면 오디오를 먼저 전사합니다." :
                 (transcript.Complete ? "" : "[부분 전사 · 다시 생성하면 이어서 처리합니다.]\n\n") + string.Join("\n\n", transcript.Chunks);
@@ -202,13 +202,15 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            NotesViewer.Document = MarkdownView.Render(""); notes = null;
+            RenderNotes(""); notes = null;
             transcriptText = "";
             TranscriptBox.Text = "저장된 문서를 읽지 못했습니다. 저장 폴더에서 원본을 확인해 주세요.";
             NotesPlaceholder.Visibility = Visibility.Visible;
             SetStatus(FriendlyError(ex), true);
         }
         LoadParticipants(recording);
+        try { LoadCleanup(JsonDisk.Read<TranscriptCache>(library.TranscriptPath(recording.Id))); }
+        catch (Exception) { LoadCleanup(null); }
     }
 
     private void RefreshDevices()
@@ -308,7 +310,7 @@ public partial class MainWindow : Window
 
     private async void Record_Click(object sender, RoutedEventArgs e)
     {
-        if (recorder is not null || transitioning || runningWork is not null || ProfileOpen) return;
+        if (recorder is not null || transitioning || runningWork is not null || ModalOperationOpen) return;
         transitioning = true; UpdateControls();
         CapturePopup.IsOpen = false;
         RecordingClock.Text = "00:00";
@@ -563,13 +565,13 @@ public partial class MainWindow : Window
         var dialog = new RenameWindow(selected.Title) { Owner = this };
         if (dialog.ShowDialog() == true) SaveEdit(selected with { Title = dialog.Result });
     }
-    private string ExportText() => DocumentTabs.SelectedIndex == 1 ? transcriptText : notes?.Markdown ?? "";
+    private string ExportText() => DocumentTabs.SelectedIndex switch { 1 => transcriptText, 2 => cleanedTranscriptText, _ => notes?.Markdown ?? "" };
     private void DocumentTab_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) UpdateControls(); }
     private void Export_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null || string.IsNullOrWhiteSpace(ExportText())) return;
         string title = string.Concat(selected.Title.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
-        var dialog = new SaveFileDialog { FileName = title + (DocumentTabs.SelectedIndex == 1 ? "-전사문" : "-회의록") + ".md", Filter = "Markdown|*.md", AddExtension = true };
+        var dialog = new SaveFileDialog { FileName = title + (DocumentTabs.SelectedIndex switch { 1 => "-전사문", 2 => "-정리한-전사", _ => "-회의록" }) + ".md", Filter = "Markdown|*.md", AddExtension = true };
         try { if (dialog.ShowDialog(this) == true) { File.WriteAllText(dialog.FileName, ExportText()); SetStatus("Markdown 파일을 내보냈습니다."); } }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
@@ -589,7 +591,7 @@ public partial class MainWindow : Window
     private void UpdateControls()
     {
         if (!loaded) return;
-        bool idle = recorder is null && !transitioning && runningWork is null && !ProfileOpen;
+        bool idle = recorder is null && !transitioning && runningWork is null && !ModalOperationOpen;
         ProfileButton.IsEnabled = idle;
         RecordButton.IsEnabled = RecordOptionsButton.IsEnabled = CaptureOptions.IsEnabled = RefreshDevicesButton.IsEnabled = ImportButton.IsEnabled = SettingsButton.IsEnabled = idle;
         CaptureModeLabel.Text = RecordingModeLabel.Text = Mode switch { RecordingMode.Microphone => "마이크만", RecordingMode.SystemAudio => "시스템 오디오만", _ => "마이크 + 시스템" };
@@ -610,6 +612,7 @@ public partial class MainWindow : Window
         FavoriteButton.IsEnabled = RenameButton.IsEnabled = DeleteButton.IsEnabled = editable;
         GenerateButton.IsEnabled = TranscribeOnlyButton.IsEnabled = SummarizeOnlyButton.IsEnabled = ImportTranscriptButton.IsEnabled = ClovaExportButton.IsEnabled = editable && selected?.DeletedAt is null;
         ShareWebButton.IsEnabled = editable && selected?.DeletedAt is null && notes is not null;
+        EnhanceNotesButton.IsEnabled = CleanTranscriptButton.IsEnabled = ShareWebButton.IsEnabled;
         CopyButton.IsEnabled = ExportButton.IsEnabled = selected is not null && !string.IsNullOrWhiteSpace(ExportText());
         RecordingList.IsEnabled = SearchBox.IsEnabled = FilterBox.IsEnabled = runningWork is null && !transitioning;
         FolderTree.IsEnabled = CreateFolderButton.IsEnabled = idle && folderStore.LoadError is null;
@@ -658,6 +661,7 @@ public partial class MainWindow : Window
         if (closePending) return;
         closePending = true;
         if (profileWindow is { } profileDialog) await profileDialog.StopAndCloseAsync();
+        if (notesEditingWindow is { } editor) await editor.StopAndCloseAsync();
         SetStatus("진행 중인 작업을 정리하고 종료하는 중…");
         workCancellation?.Cancel();
         if (runningWork is { } work) await work;

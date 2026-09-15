@@ -18,6 +18,7 @@ public interface ISummarizer : IDisposable
     string Model { get; }
     int MaximumInputBytes { get; }
     Task<AiText> CompleteAsync(string system, string text, CancellationToken token);
+    Task<AiText> CompletePartialAsync(string system, string text, CancellationToken token) => CompleteAsync(system, text, token);
 }
 public interface IStructuredSummarizer : ISummarizer
 {
@@ -36,8 +37,10 @@ public sealed class CloudTranscriber(OpenRouterClient client, AppSettings settin
 public sealed class CloudSummarizer(OpenRouterClient client, AppSettings settings, string key, bool ownsClient = false) : ISummarizer
 {
     public string Model => settings.SummaryModel;
-    public int MaximumInputBytes => 48000;
+    public CompletionBudget Budget => CompletionBudget.ForModel(settings.SummaryModelInfo, Model);
+    public int MaximumInputBytes => Budget.InputBytes;
     public Task<AiText> CompleteAsync(string system, string text, CancellationToken token) => client.CompleteAsync(system, text, settings, key, token);
+    public Task<AiText> CompletePartialAsync(string system, string text, CancellationToken token) => client.CompleteAsync(system, text, settings, key, token, Budget.PartialOutputTokens);
     public void Dispose() { if (ownsClient) client.Dispose(); }
 }
 
@@ -87,7 +90,7 @@ public sealed class OllamaSummarizer : IStructuredSummarizer
 {
     private readonly HttpClient http;
     public string Model { get; }
-    public int MaximumInputBytes => 16000;
+    public int MaximumInputBytes => CompletionBudget.Local.InputBytes;
     public OllamaSummarizer(AppSettings settings, HttpMessageHandler? handler = null)
     {
         Model = settings.LocalSummaryModel;
@@ -112,7 +115,7 @@ public sealed class OllamaSummarizer : IStructuredSummarizer
             {
                 ["model"] = Model, ["messages"] = new[] { new { role = "system", content = system }, new { role = "user", content = text } },
                 ["stream"] = false, ["think"] = false, ["keep_alive"] = 0,
-                ["options"] = schema is null ? (object)new { num_ctx = 8192, num_predict = 4096, temperature = .1 }
+                ["options"] = schema is null ? (object)new { num_ctx = 16384, num_predict = 4096, temperature = .1 }
                     : new { num_ctx = 32768, num_predict = 8192, temperature = .2, repeat_penalty = 1.1 }
             };
             if (schema is not null) body["format"] = schema.Value;
@@ -165,5 +168,11 @@ public static class AiProviders
     {
         "ollama" => new OllamaSummarizer(settings), "openrouter" => new CloudSummarizer(new(), settings, key, true),
         _ => throw new InvalidOperationException("지원하지 않는 회의록 엔진입니다.")
+    };
+    public static AppSettings EnhancementSettings(AppSettings settings) => settings with
+    {
+        SummaryModel = string.IsNullOrWhiteSpace(settings.EnhancementModel) ? settings.SummaryModel : settings.EnhancementModel,
+        SummaryModelInfo = string.IsNullOrWhiteSpace(settings.EnhancementModel) ? settings.SummaryModelInfo : settings.EnhancementModelInfo,
+        LocalSummaryModel = string.IsNullOrWhiteSpace(settings.LocalEnhancementModel) ? settings.LocalSummaryModel : settings.LocalEnhancementModel
     };
 }
