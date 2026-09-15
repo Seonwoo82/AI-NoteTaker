@@ -37,10 +37,17 @@ internal static class SmokeParticipants
             ((ComboBox)window.FindName("ParticipantFilter")).SelectedIndex = 1;
             if (((ListBox)window.FindName("ParticipantTurns")).Items.Count != resolved.OwnTurns.Count) throw new InvalidOperationException("Own-turn filter mismatch.");
             await SmokeUi.CaptureAsync(window, Path.Combine(output, "own-turns.png"));
+            // Model a pre-upgrade cache: the user's saved plain transcript has no word timestamps.
+            var oldCache = JsonDisk.Read<TranscriptCache>(library.TranscriptPath(recording.Id))!;
+            JsonDisk.Write(library.TranscriptPath(recording.Id), oldCache with { Segments = oldCache.Segments.Select(s => s with { Words = [] }).ToList() });
             string originalTranscript = File.ReadAllText(library.TranscriptPath(recording.Id));
+            ((ComboBox)window.FindName("ParticipantCount")).SelectedIndex = 4;
             ((Button)window.FindName("AnalyzeParticipantsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await window.CurrentWork;
             if (window.LastWorkError is not null) throw window.LastWorkError;
             var reopened = new MeetingWorkspaceStore(library).Resolve(recording)!;
+            if (!document.Transcript.Speakers.Select(s => s.Id).ToHashSet().SetEquals(reopened.Transcript.Speakers.Select(s => s.Id))) throw new InvalidOperationException("Explicit participant count changed the identities of the same four people.");
+            var detailed = JsonDisk.Read<ParticipantTranscriptCache>(new ParticipantTranscriptService(library, modelRoot).CachePath(recording.Id));
+            if (detailed?.Complete != true || !detailed.Chunks.SelectMany(c => c.Segments).Any(s => s.Words.Count > 0)) throw new InvalidOperationException("Legacy transcript did not receive an independent detailed timing cache.");
             if (reopened.OwnTurns.Count != resolved.OwnTurns.Count || reopened.Transcript.Speakers[0].Name != "확인한 참여자") throw new InvalidOperationException("Reanalysis lost edits.");
             if (originalTranscript != File.ReadAllText(library.TranscriptPath(recording.Id)) || preservedNotes != JsonDisk.Read<MeetingNotes>(library.NotesPath(recording.Id)) ||
                 audioHash != await MeetingNotesService.AudioHashAsync(library.AudioPath(recording.Id), default)) throw new InvalidOperationException("Analysis changed source material.");
@@ -53,7 +60,7 @@ internal static class SmokeParticipants
             await SmokeUi.CaptureAsync(window, Path.Combine(output, "virtualized-3000-turns.png"));
             var turnList = (ListBox)window.FindName("ParticipantTurns");
             if (turnList.Items.Count != 3000 || turnList.ItemContainerGenerator.ContainerFromIndex(2999) is not null) throw new InvalidOperationException("Long turn list was not virtualized.");
-            File.WriteAllText(Path.Combine(output, "result.txt"), $"PASS: Real Whisper Chinese ASR and Sherpa ONNX speaker analysis through the WPF action; {document.Transcript.Speakers.Count} published groups, {document.Transcript.Turns.Count} timed turns. Owner marking, own-turn filter, rename persistence after reanalysis and source audio/transcript/notes preservation verified. Light and compact dark UI rendered. Public Chinese fixture only; no microphone was opened and no speaker-identification accuracy claim is made for Korean meetings.");
+            File.WriteAllText(Path.Combine(output, "result.txt"), $"PASS: Real Whisper Chinese ASR and Sherpa ONNX speaker analysis through the WPF action; {document.Transcript.Speakers.Count} published groups, {document.Transcript.Turns.Count} timed turns. Owner marking, own-turn filter, legacy word-timing cache preparation, stable identities after explicit participant-count reanalysis, rename persistence and source audio/transcript/notes preservation verified. Light and compact dark UI rendered. Public Chinese fixture only; no microphone was opened and no speaker-identification accuracy claim is made for Korean meetings.");
         }
         finally { window.Close(); }
     }

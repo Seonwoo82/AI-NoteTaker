@@ -52,7 +52,54 @@ public sealed class OpenRouterClient : IDisposable
         return new AiText(value.GetString()!.Trim(), ReadCost(root));
     }
 
-    private async Task<JsonDocument> SendAsync(string path, object body, string key, CancellationToken token)
+    public async Task<TranscribedAudio> TranscribeDetailedAsync(byte[] wav, AppSettings settings, string key, CancellationToken token)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = settings.TranscriptionModel, ["input_audio"] = new { data = Convert.ToBase64String(wav), format = "wav" },
+            ["response_format"] = "verbose_json", ["timestamp_granularities"] = new[] { "segment", "word" }
+        };
+        if (settings.SpeechLanguage != "auto") body["language"] = settings.SpeechLanguage;
+        using var json = await SendAsync("audio/transcriptions", body, key, token, detailedTranscription: true);
+        return DecodeDetailed(json.RootElement);
+    }
+    public static TranscribedAudio DecodeDetailed(JsonElement root)
+    {
+        if (!root.TryGetProperty("text", out var textElement) || textElement.ValueKind != JsonValueKind.String) throw new InvalidDataException("상세 전사에 원문이 없습니다.");
+        string text = textElement.GetString()!; var words = new List<TranscriptWord>(); var segments = new List<TranscriptSegment>();
+        double ReadNumber(JsonElement item, string property) => item.TryGetProperty(property, out var number) && number.ValueKind == JsonValueKind.Number && number.TryGetDouble(out double value) && double.IsFinite(value) ? value : throw new InvalidDataException("상세 전사의 시간 형식이 올바르지 않습니다.");
+        if (root.TryGetProperty("words", out var array) && array.ValueKind == JsonValueKind.Array)
+        {
+            if (array.GetArrayLength() > 100000) throw new InvalidDataException("상세 전사 결과가 너무 큽니다.");
+            foreach (var item in array.EnumerateArray())
+            {
+                var value = item.TryGetProperty("word", out var word) ? word : item.TryGetProperty("text", out var wordText) ? wordText : default;
+                if (value.ValueKind != JsonValueKind.String) throw new InvalidDataException("단어 전사 내용이 올바르지 않습니다.");
+                words.Add(new(ReadNumber(item, "start"), ReadNumber(item, "end"), value.GetString()!));
+            }
+        }
+        TranscriptTiming.ValidateWords(words, 120);
+        if (root.TryGetProperty("segments", out array) && array.ValueKind == JsonValueKind.Array)
+        {
+            if (array.GetArrayLength() > 20000) throw new InvalidDataException("상세 전사 결과가 너무 큽니다.");
+            foreach (var item in array.EnumerateArray())
+            {
+                if (!item.TryGetProperty("text", out var value) || value.ValueKind != JsonValueKind.String) throw new InvalidDataException("상세 전사 내용이 올바르지 않습니다.");
+                double start = ReadNumber(item, "start"), end = ReadNumber(item, "end"); string part = value.GetString()!;
+                if (!string.IsNullOrWhiteSpace(part)) segments.Add(new(start, end, part) { Words = TranscriptTiming.AttachText(part, words.Where(w => w.StartSeconds >= start && w.StartSeconds < end).ToList()) });
+            }
+        }
+        if (segments.Count == 0 && words.Count > 0)
+        {
+            var attached = TranscriptTiming.AttachText(text, words);
+            if (attached.Count == 0) throw new TranscriptionTimingException();
+            segments.Add(new(words.Min(w => w.StartSeconds), words.Max(w => w.EndSeconds), text) { Words = attached });
+        }
+        if (segments.Count == 0 && !string.IsNullOrWhiteSpace(text)) throw new TranscriptionTimingException();
+        var result = new TranscribedAudio(text, segments); TranscriptTiming.Validate(result, 120); return result;
+    }
+
+    private async Task<JsonDocument> SendAsync(string path, object body, string key, CancellationToken token, bool detailedTranscription = false)
     {
         if (string.IsNullOrWhiteSpace(key)) throw new InvalidOperationException("설정에서 OpenRouter API 키를 저장해 주세요.");
         using var request = new HttpRequestMessage(HttpMethod.Post, path);
@@ -62,7 +109,12 @@ public sealed class OpenRouterClient : IDisposable
         try
         {
             using var response = await http.SendAsync(request, token);
-            if (!response.IsSuccessStatusCode) throw StatusError(response.StatusCode);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = StatusError(response.StatusCode);
+                if (detailedTranscription && response.StatusCode == HttpStatusCode.BadRequest) throw new OpenRouterRequestException(response.StatusCode, error.Message);
+                throw error;
+            }
             var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
             if (json.RootElement.TryGetProperty("error", out _))
             {
@@ -90,3 +142,7 @@ public sealed class OpenRouterClient : IDisposable
         usage.TryGetProperty("cost", out var cost) && cost.ValueKind == JsonValueKind.Number && cost.TryGetDecimal(out var number) ? number : null;
     public void Dispose() => http.Dispose();
 }
+
+public sealed class OpenRouterRequestException(HttpStatusCode status, string message) : InvalidOperationException(message)
+{ public HttpStatusCode Status { get; } = status; }
+public sealed class TranscriptionTimingException() : InvalidOperationException("선택한 전사 모델이 시간 정보를 반환하지 않았습니다.");

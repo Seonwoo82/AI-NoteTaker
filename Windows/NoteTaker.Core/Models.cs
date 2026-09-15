@@ -52,7 +52,11 @@ public sealed record AppSettings
     public bool AutoGenerate { get; init; }
 }
 
-public sealed record TranscriptSegment(double StartSeconds, double EndSeconds, string Text, string? Speaker = null);
+public sealed record TranscriptWord(double StartSeconds, double EndSeconds, string Text);
+public sealed record TranscriptSegment(double StartSeconds, double EndSeconds, string Text, string? Speaker = null)
+{
+    public List<TranscriptWord> Words { get; init; } = [];
+}
 public sealed record TranscriptCache(string AudioHash, string Model, string Language, List<string> Chunks, bool Complete)
 {
     public int SchemaVersion { get; init; } = 1;

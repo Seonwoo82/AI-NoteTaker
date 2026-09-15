@@ -37,6 +37,7 @@ public partial class MainWindow
         ParticipantsStatus.Text = meeting is null ? "참여자를 분석하면 발화 시간과 내용을 함께 볼 수 있습니다. 첫 실행에 약 47MB의 모델을 다운로드합니다." :
             $"{meeting.Transcript.Speakers.Count}개 화자 그룹 · {meeting.Transcript.Turns.Count}개 발화 · 미지정 {meeting.Transcript.Turns.Count(t => t.SpeakerId is null)}개" +
             (meeting.UnresolvedEditCount > 0 ? $" · 이전 수정 {meeting.UnresolvedEditCount}개는 현재 발화에 연결되지 않았습니다." : "");
+        ParticipantsStatus.ToolTip = meeting is null ? null : $"발화 시간 전사: {meeting.Transcript.TranscriptionModelId}\n저장된 전사문은 AI 회의록의 전사문 탭에서 확인할 수 있습니다. 참여자 분석용 시간 전사는 별도로 준비할 수 있습니다.";
         RefreshParticipantTurns(); UpdateParticipantControls();
     }
     private void RefreshParticipantTurns()

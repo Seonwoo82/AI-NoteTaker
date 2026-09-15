@@ -20,13 +20,13 @@ public interface ISummarizer : IDisposable
     Task<AiText> CompleteAsync(string system, string text, CancellationToken token);
 }
 
-public sealed class CloudTranscriber(OpenRouterClient client, AppSettings settings, string key, bool ownsClient = false) : ITranscriber
+public sealed class CloudTranscriber(OpenRouterClient client, AppSettings settings, string key, bool ownsClient = false, bool detailed = false) : ITranscriber
 {
     public string Provider => "openrouter";
     public string Model => settings.TranscriptionModel;
-    public string Fingerprint => $"openrouter/{Model}/auto/pcm16k-v1/chunk120";
+    public string Fingerprint => $"openrouter/{Model}/auto/pcm16k-v1/chunk120" + (detailed ? "/timed-v1" : "");
     public int ChunkSeconds => 120;
-    public async Task<TranscribedAudio> TranscribeAsync(byte[] wav, CancellationToken token) => new((await client.TranscribeAsync(wav, settings, key, token)).Text, []);
+    public async Task<TranscribedAudio> TranscribeAsync(byte[] wav, CancellationToken token) => detailed ? await client.TranscribeDetailedAsync(wav, settings, key, token) : new((await client.TranscribeAsync(wav, settings, key, token)).Text, []);
     public void Dispose() { if (ownsClient) client.Dispose(); }
 }
 public sealed class CloudSummarizer(OpenRouterClient client, AppSettings settings, string key, bool ownsClient = false) : ISummarizer
@@ -37,12 +37,12 @@ public sealed class CloudSummarizer(OpenRouterClient client, AppSettings setting
     public void Dispose() { if (ownsClient) client.Dispose(); }
 }
 
-public sealed class WhisperTranscriber(string root, AppSettings settings, IProgress<string> progress) : ITranscriber
+public sealed class WhisperTranscriber(string root, AppSettings settings, IProgress<string> progress, bool detailed = false) : ITranscriber
 {
     private WhisperFactory? factory;
     public string Provider => "whisper";
     public string Model => "large-v3-turbo";
-    public string Fingerprint => $"whisper.net-1.9.1/{Model}/{ModelDownload.WhisperTurbo.Sha256}/{settings.SpeechLanguage}/pcm16k-v1/chunk120/temp0";
+    public string Fingerprint => $"whisper.net-1.9.1/{Model}/{ModelDownload.WhisperTurbo.Sha256}/{settings.SpeechLanguage}/pcm16k-v1/chunk120/temp0" + (detailed ? "/utf8-timed-v1" : "");
     public int ChunkSeconds => 120;
     public Task<TranscribedAudio> TranscribeAsync(byte[] wav, CancellationToken token) => Task.Run(async () =>
     {
@@ -62,15 +62,19 @@ public sealed class WhisperTranscriber(string root, AppSettings settings, IProgr
             }
             progress.Report($"Whisper 실행 엔진 · {Whisper.net.LibraryLoader.RuntimeOptions.LoadedLibrary}");
         }
-        using var processor = factory.CreateBuilder().WithLanguage(settings.SpeechLanguage)
-            .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8)).WithTemperature(0).WithNoSpeechThreshold(.6f).Build();
+        var capture = new WhisperUtf8Capture();
+        var builder = factory.CreateBuilder().WithLanguage(settings.SpeechLanguage)
+            .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8)).WithTemperature(0).WithNoSpeechThreshold(.6f);
+        if (detailed) builder.WithTokenTimestamps().WithStringPool(capture);
+        await using var processor = builder.Build();
         using var stream = new MemoryStream(wav, writable: false);
         var segments = new List<TranscriptSegment>();
         await foreach (var segment in processor.ProcessAsync(stream, token))
         {
-            if (!string.IsNullOrWhiteSpace(segment.Text)) segments.Add(new(segment.Start.TotalSeconds, segment.End.TotalSeconds, segment.Text.Trim()));
+            if (!string.IsNullOrWhiteSpace(segment.Text)) segments.Add(new(segment.Start.TotalSeconds, segment.End.TotalSeconds, detailed ? segment.Text : segment.Text.Trim())
+                { Words = detailed ? WhisperTokenAlignment.Align(segment, capture) : [] });
         }
-        return new TranscribedAudio(string.Join(" ", segments.Select(x => x.Text)), segments);
+        return new TranscribedAudio(string.Join(" ", segments.Select(x => x.Text.Trim())), segments);
     }, token);
     public void Dispose() { factory?.Dispose(); factory = null; }
 }
@@ -142,7 +146,7 @@ public static class AiProviders
 {
     public static ITranscriber Transcriber(string root, AppSettings settings, string key, IProgress<string> progress) => settings.TranscriptionProvider switch
     {
-        "whisper" => new WhisperTranscriber(root, settings, progress),
+        "whisper" => new WhisperTranscriber(root, settings, progress, true),
         "qwen" => new QwenTranscriber(root, settings, progress),
         "openrouter" => new CloudTranscriber(new(), settings, key, true),
         _ => throw new InvalidOperationException("지원하지 않는 전사 엔진입니다.")

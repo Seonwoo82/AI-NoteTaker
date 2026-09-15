@@ -136,20 +136,58 @@ public static class MeetingTranscriptAssembler
         var speakers = new List<MeetingSpeaker>(); var turns = new List<TranscriptTurn>();
         var known = diarization.Speakers.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         var published = new HashSet<string>(StringComparer.Ordinal);
+        string? Speaker(double start, double end)
+        {
+            var candidates = diarization.Segments.Where(s => s.Start < end && s.End > start).Select(s => s.SpeakerId).Distinct(StringComparer.Ordinal).ToList();
+            return candidates.Count == 1 && known.Contains(candidates[0]) ? candidates[0] : null;
+        }
         foreach (var segment in source.OrderBy(s => s.StartSeconds))
         {
             if (!double.IsFinite(segment.StartSeconds) || !double.IsFinite(segment.EndSeconds) || segment.StartSeconds < 0 ||
                 segment.StartSeconds >= duration || segment.EndSeconds <= segment.StartSeconds || string.IsNullOrWhiteSpace(segment.Text)) continue;
             double start = segment.StartSeconds, end = Math.Min(duration, segment.EndSeconds);
-            // Segment-only timestamps cannot prove which person spoke each word when a segment spans a speaker change.
-            // Leave those turns unassigned; do not manufacture precise word timing or a majority speaker.
-            var candidates = diarization.Segments.Where(s => s.Start < end && s.End > start).Select(s => s.SpeakerId).Distinct(StringComparer.Ordinal).ToList();
-            string? speakerId = candidates.Count == 1 && known.Contains(candidates[0]) ? candidates[0] : null;
-            if (speakerId is not null && published.Add(speakerId)) speakers.Add(new(speakerId, $"참여자 {speakers.Count + 1}"));
-            string text = segment.Text.Trim();
-            turns.Add(new(TurnId(recordingId, audioVersion, start, end, text), start, end, speakerId, text));
+            var pieces = WordPieces(segment, duration, Speaker) ?? [new Piece(start, end, Speaker(start, end), segment.Text)];
+            foreach (var piece in pieces)
+            {
+                if (string.IsNullOrWhiteSpace(piece.Text)) continue;
+                string? speakerId = piece.Speaker;
+                if (speakerId is not null && published.Add(speakerId)) speakers.Add(new(speakerId, $"참여자 {speakers.Count + 1}"));
+                string text = piece.Text.Trim();
+                turns.Add(new(TurnId(recordingId, audioVersion, piece.Start, piece.End, text), piece.Start, piece.End, speakerId, text));
+            }
         }
         var result = new MeetingTranscript(recordingId, audioVersion, model, speakers, turns);
         result.Validate(duration); return result;
+    }
+    private sealed record Piece(double Start, double End, string? Speaker, string Text);
+    private static List<Piece>? WordPieces(TranscriptSegment segment, double duration, Func<double, double, string?> speaker)
+    {
+        var words = segment.Words;
+        if (words.Count == 0 || string.Concat(words.Select(w => w.Text)) != segment.Text || !words.Any(w => w.EndSeconds > w.StartSeconds && !string.IsNullOrWhiteSpace(w.Text))) return null;
+        var timed = new List<Piece>(); string pending = ""; double pendingStart = double.MaxValue, pendingEnd = 0, previous = 0;
+        foreach (var word in words)
+        {
+            double start = word.StartSeconds, end = Math.Min(duration, word.EndSeconds);
+            if (!double.IsFinite(start) || !double.IsFinite(end) || start < previous || start > duration || end < start) return null;
+            previous = start;
+            if (start == end || string.IsNullOrWhiteSpace(word.Text)) { pending += word.Text; pendingStart = Math.Min(pendingStart, start); pendingEnd = Math.Max(pendingEnd, end); continue; }
+            bool unaligned = !string.IsNullOrWhiteSpace(pending); start = Math.Min(start, pendingStart);
+            timed.Add(new(start, end, unaligned ? null : speaker(start, end), pending + word.Text));
+            pending = ""; pendingStart = double.MaxValue; pendingEnd = 0;
+        }
+        if (pending.Length > 0)
+        {
+            if (timed.Count == 0) return null;
+            var last = timed[^1]; timed[^1] = last with { End = Math.Max(last.End, pendingEnd), Speaker = string.IsNullOrWhiteSpace(pending) ? last.Speaker : null, Text = last.Text + pending };
+        }
+        var pieces = new List<Piece>();
+        foreach (var word in timed)
+        {
+            if (pieces.Count > 0 && pieces[^1] is { } last && last.Speaker == word.Speaker && word.Start - last.End <= 2 &&
+                new StringInfo(last.Text + word.Text).LengthInTextElements <= 4000)
+                pieces[^1] = last with { End = Math.Max(last.End, word.End), Text = last.Text + word.Text };
+            else pieces.Add(word);
+        }
+        return pieces;
     }
 }

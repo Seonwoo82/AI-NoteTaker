@@ -57,7 +57,7 @@ public sealed class MeetingNotesService
                     var segments = result.Segments.Count > 0 ? result.Segments :
                         string.IsNullOrWhiteSpace(result.Text) ? [] : new[] { new TranscriptSegment(0, Math.Min(engine.ChunkSeconds, Math.Max(0, recording.DurationSeconds - offset)), result.Text) };
                     cache.Chunks.Add(result.Text);
-                    cache.Segments.AddRange(segments.Select(x => x with { StartSeconds = x.StartSeconds + offset, EndSeconds = x.EndSeconds + offset }));
+                    cache.Segments.AddRange(segments.Select(x => TranscriptTiming.Offset(x, offset)));
                     JsonDisk.Write(library.TranscriptPath(recording.Id), cache);
                 }
                 index++;
