@@ -65,8 +65,7 @@ public sealed record ResolvedMeeting(MeetingIntelligenceDocument Source, Meeting
 
 public sealed class MeetingWorkspaceStore(LibraryStore library)
 {
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> Gates = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object gate = Gates.GetOrAdd(library.Root, _ => new());
+    private readonly object gate = JsonDisk.Gate;
     public string DocumentPath(Guid id) => Path.Combine(library.DirectoryFor(id), "meeting-intelligence.json");
     private string EditsPath(Guid id) => Path.Combine(library.DirectoryFor(id), "meeting-edits-local.json");
     private string EditsRevision(Guid id) => File.Exists(EditsPath(id)) ? Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(EditsPath(id)))) : "absent";

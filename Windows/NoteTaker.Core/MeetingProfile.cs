@@ -99,8 +99,7 @@ public static class OwnerVoicePolicy
 }
 public sealed class MeetingProfileStore(string root)
 {
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> Gates = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object gate = Gates.GetOrAdd(Path.GetFullPath(root), _ => new());
+    private readonly object gate = JsonDisk.Gate;
     public string ProfilePath => Path.Combine(root, "meeting-profile.json");
     public string VoicePath => Path.Combine(root, "voice-profile-local.json");
     public string? ProfileRevision => Revision(ProfilePath);

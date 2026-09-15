@@ -7,8 +7,7 @@ namespace NoteTaker.Core;
 public sealed record NotesSourceSnapshot(string AudioHash, Dictionary<string, string?> Revisions);
 public sealed class NotesDocumentStore(LibraryStore library)
 {
-    private static readonly ConcurrentDictionary<string, object> Gates = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object gate = Gates.GetOrAdd(library.Root, _ => new());
+    private readonly object gate = JsonDisk.Gate;
     private Dictionary<string, string?> Revisions(Recording recording)
     {
         string directory = library.DirectoryFor(recording.Id);

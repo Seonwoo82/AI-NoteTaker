@@ -8,16 +8,24 @@ namespace NoteTaker.Core;
 
 public static class JsonDisk
 {
+    // Short filesystem commits share this gate; network/model work never holds it.
+    public static object Gate { get; } = new();
     public static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true,
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public static T? Read<T>(string path) => File.Exists(path)
-        ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) : default;
+    public static T? Read<T>(string path)
+    {
+        lock (Gate) return File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) : default;
+    }
 
     public static void Write<T>(string path, T value)
+    {
+        lock (Gate) WriteLocked(path, value);
+    }
+    private static void WriteLocked<T>(string path, T value)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -47,10 +55,25 @@ public sealed class LibraryStore
     public string AudioPath(Guid id) => Path.Combine(DirectoryFor(id), "audio.wav");
     public string TranscriptPath(Guid id) => Path.Combine(DirectoryFor(id), "transcript.json");
     public string NotesPath(Guid id) => Path.Combine(DirectoryFor(id), "notes.json");
-    public void Save(Recording recording) => JsonDisk.Write(Path.Combine(DirectoryFor(recording.Id), "meta.json"), recording);
+    public void Save(Recording recording)
+    {
+        lock (JsonDisk.Gate)
+        {
+            string path = Path.Combine(DirectoryFor(recording.Id), "meta.json");
+            var previous = JsonDisk.Read<Recording>(path);
+            var wire = SyncRecordings.FromLocal(recording, previous?.SyncMetadata ?? recording.SyncMetadata,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), stamp: true);
+            JsonDisk.Write(path, recording with { SyncMetadata = wire });
+        }
+    }
 
     public IReadOnlyList<Recording> Load()
     {
+        lock (JsonDisk.Gate) return LoadLocked();
+    }
+    private IReadOnlyList<Recording> LoadLocked()
+    {
+        SyncFileTransaction.Recover(Root);
         LoadWarnings.Clear();
         var result = new List<Recording>();
         foreach (var directory in Directory.EnumerateDirectories(Path.Combine(Root, "Recordings")))
@@ -60,7 +83,7 @@ public sealed class LibraryStore
             {
                 var recording = JsonDisk.Read<Recording>(Path.Combine(directory, "meta.json"));
                 if (recording is null) continue;
-                if (recording.Id != id || recording.SchemaVersion != 1 || string.IsNullOrWhiteSpace(recording.Title) || !Enum.IsDefined(recording.Mode) || !double.IsFinite(recording.DurationSeconds) || recording.DurationSeconds < 0)
+                if (recording.Id != id || recording.SchemaVersion != 1 || recording.Title is null || !Enum.IsDefined(recording.Mode) || !double.IsFinite(recording.DurationSeconds) || recording.DurationSeconds < 0)
                     throw new InvalidDataException("지원하지 않는 메타데이터입니다.");
                 if (recording.IsRecording)
                 {

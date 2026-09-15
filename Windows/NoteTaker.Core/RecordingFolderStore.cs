@@ -19,10 +19,10 @@ public sealed class RecordingFolderStore
 {
     private readonly string path;
     private List<RecordingCollectionFolder> folders = [];
-    public string? LoadError { get; }
-    public IReadOnlyList<RecordingCollectionFolder> All => folders.AsReadOnly();
-    public IReadOnlyList<RecordingCollectionFolder> Active => folders.Where(x => x.DeletedAt is null)
-        .OrderBy(x => x.SortOrder ?? long.MaxValue).ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(x => x.Id).ToArray();
+    public string? LoadError { get; private set; }
+    public IReadOnlyList<RecordingCollectionFolder> All { get { lock (JsonDisk.Gate) { Reload(); return folders.ToArray(); } } }
+    public IReadOnlyList<RecordingCollectionFolder> Active { get { lock (JsonDisk.Gate) { Reload(); return folders.Where(x => x.DeletedAt is null)
+        .OrderBy(x => x.SortOrder ?? long.MaxValue).ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(x => x.Id).ToArray(); } } }
 
     public RecordingFolderStore(string root)
     {
@@ -40,8 +40,12 @@ public sealed class RecordingFolderStore
         { LoadError = "폴더 정보를 읽지 못했습니다. 원본을 보존했으며 폴더 변경을 중지했습니다."; }
     }
 
-    public bool IsActive(Guid? id) => id is not null && folders.Any(x => x.Id == id && x.DeletedAt is null);
+    public bool IsActive(Guid? id) => id is not null && All.Any(x => x.Id == id && x.DeletedAt is null);
     public RecordingCollectionFolder Create(string name)
+    {
+        lock (JsonDisk.Gate) return CreateLocked(name);
+    }
+    private RecordingCollectionFolder CreateLocked(string name)
     {
         EnsureWritable(); name = ValidName(name); RejectDuplicate(name);
         if (Active.Count >= 256) throw new InvalidOperationException("폴더는 최대 256개까지 만들 수 있습니다.");
@@ -53,15 +57,27 @@ public sealed class RecordingFolderStore
     }
     public RecordingCollectionFolder Rename(Guid id, string name)
     {
+        lock (JsonDisk.Gate) return RenameLocked(id, name);
+    }
+    private RecordingCollectionFolder RenameLocked(Guid id, string name)
+    {
         EnsureWritable(); var previous = RequireActive(id); name = ValidName(name); RejectDuplicate(name, id);
         var renamed = Stamp(previous with { Name = name }, previous); Replace(renamed); return renamed;
     }
     public void Delete(Guid id)
     {
+        lock (JsonDisk.Gate) DeleteLocked(id);
+    }
+    private void DeleteLocked(Guid id)
+    {
         EnsureWritable(); var previous = RequireActive(id);
         Replace(Stamp(previous with { DeletedAt = DateTimeOffset.UtcNow }, previous));
     }
     public void Move(Guid id, Guid? beforeId)
+    {
+        lock (JsonDisk.Gate) MoveLocked(id, beforeId);
+    }
+    private void MoveLocked(Guid id, Guid? beforeId)
     {
         EnsureWritable(); var source = RequireActive(id);
         if (beforeId == id) return;
@@ -72,6 +88,10 @@ public sealed class RecordingFolderStore
         Commit(folders.Select(x => ranked.GetValueOrDefault(x.Id, x)).ToList());
     }
     public void ApplyRemote(RecordingCollectionFolder remote)
+    {
+        lock (JsonDisk.Gate) ApplyRemoteLocked(remote);
+    }
+    private void ApplyRemoteLocked(RecordingCollectionFolder remote)
     {
         EnsureWritable(); Validate(remote);
         var previous = folders.FirstOrDefault(x => x.Id == remote.Id);
@@ -85,7 +105,15 @@ public sealed class RecordingFolderStore
     }
     private void Replace(RecordingCollectionFolder folder) => Commit(folders.Where(x => x.Id != folder.Id).Append(folder).ToList());
     private void Commit(List<RecordingCollectionFolder> next) { JsonDisk.Write(path, new FolderFile(1, next)); folders = next; }
-    private void EnsureWritable() { if (LoadError is not null) throw new InvalidDataException(LoadError); }
+    public void Reload()
+    {
+        lock (JsonDisk.Gate)
+        {
+            var current = new RecordingFolderStore(Path.GetDirectoryName(path)!);
+            folders = current.folders; LoadError = current.LoadError;
+        }
+    }
+    private void EnsureWritable() { Reload(); if (LoadError is not null) throw new InvalidDataException(LoadError); }
     private RecordingCollectionFolder RequireActive(Guid id) => folders.FirstOrDefault(x => x.Id == id && x.DeletedAt is null) ?? throw new InvalidOperationException("이 폴더는 없거나 삭제되었습니다.");
     private void RejectDuplicate(string name, Guid? except = null)
     {
@@ -94,7 +122,7 @@ public sealed class RecordingFolderStore
     private static string ValidName(string name)
     {
         name = name.Trim();
-        if (name.Length == 0 || name.EnumerateRunes().Count() > 120) throw new ArgumentException("폴더 이름은 1~120자로 입력해 주세요.");
+        if (name.Length == 0 || System.Globalization.StringInfo.ParseCombiningCharacters(name).Length > 120 || System.Text.Encoding.UTF8.GetByteCount(name) > 512) throw new ArgumentException("폴더 이름은 1~120자, UTF-8 512바이트 안으로 입력해 주세요.");
         return name;
     }
     public static void Validate(RecordingCollectionFolder folder)
