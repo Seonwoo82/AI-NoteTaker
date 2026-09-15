@@ -1,5 +1,9 @@
 # AI-NoteTaker
 
+> **Windows 미리보기 추가:** .NET 10 / WPF 기반 Windows 앱은 [`Windows/`](Windows/README.md)에 있습니다.
+> 마이크·시스템 녹음, 무료 로컬 Whisper/Qwen 전사·Ollama 회의록, 클로바노트 파일 연동과 선택적 OpenRouter를 지원합니다.
+> 아래의 Mac/iPhone 기능표와 동기화·화자 분석 설명은 Apple 앱에 해당합니다. Windows 지원 범위와 실행 방법은 별도 가이드를 확인하세요.
+
 **Mac에서 회의를 녹음하고, AI 회의록과 발화자별 전사문을 iPhone에서도 이어서 확인하세요.**
 
 AI-NoteTaker는 SwiftUI로 만든 macOS·iOS 개인용 음성 노트 앱입니다. OpenRouter 기반 AI 미팅 기록, FluidAudio 기반 로컬 화자 분석, Mac ↔ iPhone 자동 동기화, 사용자 소유 Cloudflare Worker/D1/R2 저장소를 지원합니다. 기본 녹음과 재생은 로컬에서 동작하고, AI 생성·동기화·화자 분석은 설정에서 선택해 사용합니다.
