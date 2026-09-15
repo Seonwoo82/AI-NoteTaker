@@ -52,27 +52,15 @@ struct PlaybackDetailView: View {
                 }
                 .accessibilityIdentifier("waveform-view")
 
-                WaveformView(
+                FocusedWaveformView(
                     peaks: controller.waveformPeaks,
                     currentTime: controller.currentTime,
                     duration: controller.duration,
-                    prominence: .overview,
                     onSeek: { newValue in
                         Task { await controller.seek(to: newValue) }
                     }
                 )
-                .frame(height: 30)
-                .accessibilityIdentifier("overview-waveform")
-
-                HStack {
-                    Text(DurationFormat.list(controller.currentTime))
-                    Spacer()
-                    Text(DurationFormat.list(controller.duration))
-                }
-                .font(.system(.caption, design: .monospaced))
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(timeAccessibilityLabel)
-                .accessibilityIdentifier("playback-time-label")
+                .id(PlaybackRecordingIdentity(recording))
             }
             .frame(maxWidth: 560)
 
@@ -129,10 +117,6 @@ struct PlaybackDetailView: View {
         } message: {
             Text(String(localized: "This removes this Mac's audio and AI files. Sync metadata stays so other devices keep the cloud deletion state."))
         }
-    }
-
-    private var timeAccessibilityLabel: String {
-        "\(DurationFormat.list(controller.currentTime)) / \(DurationFormat.list(controller.duration))"
     }
 
     private func prepareSelectedRecording() async throws {

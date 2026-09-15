@@ -2,11 +2,14 @@ import AVFAudio
 import Foundation
 
 nonisolated enum WaveformSampler {
-    static func peaks(from url: URL, bucketCount: Int = 96) -> [Double] {
-        guard bucketCount > 0 else { return [] }
+    static func peaks(from url: URL, bucketCount: Int? = nil) -> [Double] {
+        if let bucketCount, bucketCount <= 0 { return [] }
         do {
             let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
-            guard file.length > 0,
+            guard file.length > 0 else { return [] }
+            let bucketCount = bucketCount ?? defaultBucketCount(frameCount: file.length,
+                sampleRate: file.processingFormat.sampleRate)
+            guard bucketCount > 0,
                   let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 16_384) else {
                 return []
             }
@@ -40,6 +43,13 @@ nonisolated enum WaveformSampler {
         } catch {
             return []
         }
+    }
+
+    static func defaultBucketCount(frameCount: Int64, sampleRate: Double) -> Int {
+        guard frameCount > 0, sampleRate.isFinite, sampleRate > 0 else { return 0 }
+        // Roughly one peak per second keeps a focused timeline detailed. Clamp
+        // before converting to Int so even extreme metadata stays bounded.
+        return Int(min(86_400, max(96, ceil(Double(frameCount) / sampleRate))))
     }
 
     static func downsample(_ samples: [Float], bucketCount: Int) -> [Double] {
