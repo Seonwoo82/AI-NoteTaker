@@ -77,7 +77,7 @@ internal static class SmokeProfile
             throw new InvalidOperationException($"Held-out live voice check failed: same={sameScore:F4}, other={otherScore:F4}.");
         await AutomaticAnalysis(root, output, publicSpeech, modelRoot);
         JsonDisk.Write(Path.Combine(output, "result.json"), new { Passed = true, LiveSameSpeakerCosine = sameScore, LiveOtherSpeakerCosine = otherScore, LiveInferenceSeconds = liveSeconds,
-            Scope = "Real WPF profile/enrollment/cancel/close/delete/failure plus Sherpa enrollment and stdin live inference. Real automatic Whisper/Sherpa analysis after file capture. Public Chinese speech only; no microphone or physical playback. No Korean meeting accuracy claim." });
+            Scope = "Real WPF profile/enrollment/cancel/close/delete/failure plus Sherpa enrollment and stdin live inference. Real automatic Whisper/Sherpa then Ollama meeting analysis after file capture. Public Chinese speech only; no microphone or physical playback. No Korean meeting accuracy claim." });
     }
     private static async Task AutomaticAnalysis(string root, string output, string fixture, string modelRoot)
     {
@@ -103,10 +103,11 @@ internal static class SmokeProfile
             await SmokeUi.CaptureAsync(window, Path.Combine(output, "live-other.png"));
             Click(window, "StopButton");
             await WaitUntil(() => !((FrameworkElement)window.FindName("RecordingPanel")).IsVisible, TimeSpan.FromSeconds(20));
-            await window.CurrentWork;
+            await window.LastStopButtonWork;
             if (window.LastWorkError is not null) throw window.LastWorkError;
             var recording = library.Load().Single(); var meeting = new MeetingWorkspaceStore(library).Resolve(recording);
             if (meeting?.Transcript.Speakers.Any(s => s.IsOwner && s.Name == "김민수") != true) throw new InvalidOperationException("Automatic analysis did not identify the enrolled fixture speaker.");
+            if (meeting.Source.Insights is null) throw new InvalidOperationException("Automatic meeting analysis did not follow participant analysis.");
             ((TabControl)window.FindName("DetailPanel")).SelectedIndex = 2;
             await SmokeUi.CaptureAsync(window, Path.Combine(output, "automatic-owner-analysis.png"));
             // A manual correction remains authoritative after removing automatic owner attribution.

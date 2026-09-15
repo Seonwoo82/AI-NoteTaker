@@ -65,9 +65,15 @@ public sealed record ResolvedMeeting(MeetingIntelligenceDocument Source, Meeting
 
 public sealed class MeetingWorkspaceStore(LibraryStore library)
 {
-    private readonly object gate = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> Gates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object gate = Gates.GetOrAdd(library.Root, _ => new());
     public string DocumentPath(Guid id) => Path.Combine(library.DirectoryFor(id), "meeting-intelligence.json");
     private string EditsPath(Guid id) => Path.Combine(library.DirectoryFor(id), "meeting-edits-local.json");
+    private string EditsRevision(Guid id) => File.Exists(EditsPath(id)) ? Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(EditsPath(id)))) : "absent";
+    public MeetingWorkspaceSnapshot Snapshot(Recording recording)
+    {
+        lock (gate) return new(Load(recording), Edits(recording.Id), Revision(recording.Id), EditsRevision(recording.Id));
+    }
     public string? Revision(Guid id) => File.Exists(DocumentPath(id)) ? Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(DocumentPath(id)))) : null;
     public MeetingIntelligenceDocument? Load(Recording recording)
     {
@@ -106,13 +112,14 @@ public sealed class MeetingWorkspaceStore(LibraryStore library)
             JsonDisk.Write(EditsPath(recording.Id), edits); return edit;
         }
     }
-    public void Save(Recording recording, MeetingIntelligenceDocument document, string? expectedRevision)
+    public void Save(Recording recording, MeetingIntelligenceDocument document, string? expectedRevision, string? expectedEditsRevision = null)
     {
         lock (gate)
         {
             // Reading the old data before writing also prevents overwriting an unreadable document.
             var previous = Load(recording); _ = Edits(recording.Id);
             if (Revision(recording.Id) != expectedRevision) throw new InvalidOperationException("분석 중 문서가 변경되었습니다. 최신 문서를 확인한 뒤 다시 실행해 주세요.");
+            if (expectedEditsRevision is not null && EditsRevision(recording.Id) != expectedEditsRevision) throw new InvalidOperationException("분석 중 수동 수정이 변경되었습니다. 최신 내용을 확인한 뒤 다시 실행해 주세요.");
             MeetingValidation.Require(document.RecordingId == recording.Id && document.AudioVersion == recording.AudioVersion);
             long timestamp = Math.Max(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), previous is null ? 0 : checked(previous.ModifiedAt + 1));
             var stamped = document with { ModifiedAt = timestamp, MutationId = Guid.NewGuid() }; stamped.Validate(recording.DurationSeconds);
@@ -120,3 +127,4 @@ public sealed class MeetingWorkspaceStore(LibraryStore library)
         }
     }
 }
+public sealed record MeetingWorkspaceSnapshot(MeetingIntelligenceDocument? Document, IReadOnlyList<MeetingEdit> Edits, string? Revision, string EditsRevision);

@@ -19,6 +19,10 @@ public interface ISummarizer : IDisposable
     int MaximumInputBytes { get; }
     Task<AiText> CompleteAsync(string system, string text, CancellationToken token);
 }
+public interface IStructuredSummarizer : ISummarizer
+{
+    Task<AiText> CompleteStructuredAsync(string system, string text, JsonElement schema, CancellationToken token);
+}
 
 public sealed class CloudTranscriber(OpenRouterClient client, AppSettings settings, string key, bool ownsClient = false, bool detailed = false) : ITranscriber
 {
@@ -79,7 +83,7 @@ public sealed class WhisperTranscriber(string root, AppSettings settings, IProgr
     public void Dispose() { factory?.Dispose(); factory = null; }
 }
 
-public sealed class OllamaSummarizer : ISummarizer
+public sealed class OllamaSummarizer : IStructuredSummarizer
 {
     private readonly HttpClient http;
     public string Model { get; }
@@ -98,15 +102,21 @@ public sealed class OllamaSummarizer : ISummarizer
             throw new InvalidOperationException("Ollama 주소는 이 PC의 http://127.0.0.1:포트 형식이어야 합니다.");
         return uri;
     }
-    public async Task<AiText> CompleteAsync(string system, string text, CancellationToken token)
+    public Task<AiText> CompleteAsync(string system, string text, CancellationToken token) => CompleteCoreAsync(system, text, null, token);
+    public Task<AiText> CompleteStructuredAsync(string system, string text, JsonElement schema, CancellationToken token) => CompleteCoreAsync(system, text, schema, token);
+    private async Task<AiText> CompleteCoreAsync(string system, string text, JsonElement? schema, CancellationToken token)
     {
         try
         {
-            using var response = await http.PostAsJsonAsync("api/chat", new
+            var body = new Dictionary<string, object>
             {
-                model = Model, messages = new[] { new { role = "system", content = system }, new { role = "user", content = text } },
-                stream = false, think = false, keep_alive = 0, options = new { num_ctx = 8192, num_predict = 4096, temperature = .1 }
-            }, token);
+                ["model"] = Model, ["messages"] = new[] { new { role = "system", content = system }, new { role = "user", content = text } },
+                ["stream"] = false, ["think"] = false, ["keep_alive"] = 0,
+                ["options"] = schema is null ? (object)new { num_ctx = 8192, num_predict = 4096, temperature = .1 }
+                    : new { num_ctx = 32768, num_predict = 8192, temperature = .2, repeat_penalty = 1.1 }
+            };
+            if (schema is not null) body["format"] = schema.Value;
+            using var response = await http.PostAsJsonAsync("api/chat", body, token);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound) throw new InvalidOperationException("로컬 요약 모델이 없습니다. AI 설정에서 모델을 준비해 주세요.");
             response.EnsureSuccessStatusCode();
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));

@@ -13,7 +13,7 @@
       <TextBlock Text="이름" Margin="0,0,0,5" /><TextBox x:Name="ProfileNameBox" MaxLength="120" AutomationProperties.Name="프로필 이름" />
       <TextBlock Text="별칭 · 쉼표로 구분" Margin="0,13,0,5" /><TextBox x:Name="ProfileAliasesBox" MaxLength="3000" AutomationProperties.Name="프로필 별칭" />
       <TextBlock Text="역할" Margin="0,13,0,5" /><TextBox x:Name="ProfileRoleBox" MaxLength="160" AutomationProperties.Name="프로필 역할" />
-      <CheckBox x:Name="AutoAnalyzeBox" Content="녹음이 끝나면 참여자 자동 분석" Margin="0,16,0,0" />
+      <CheckBox x:Name="AutoAnalyzeBox" Content="녹음이 끝나면 참여자와 회의 자동 분석" Margin="0,16,0,0" />
      </StackPanel></Border>
      <TextBlock Text="자주 쓰는 용어" FontSize="16" FontWeight="SemiBold" Margin="0,18,0,7" /><TextBlock Text="회의에서 들리는 표현과 올바른 표기를 함께 입력하세요." Foreground="{DynamicResource Muted}" Margin="0,0,0,9" />
      <DataGrid x:Name="GlossaryGrid" Height="215" AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True" HeadersVisibility="Column" RowHeaderWidth="0" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Separator}" BorderBrush="{DynamicResource Separator}" Background="{DynamicResource CardSurface}" RowBackground="{DynamicResource CardSurface}" AlternatingRowBackground="{DynamicResource WindowSurface}" Foreground="{DynamicResource Ink}" SelectionUnit="FullRow" AutomationProperties.Name="용어집">

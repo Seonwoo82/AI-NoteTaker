@@ -16,10 +16,10 @@
 | F-001 참여자 구분 | 상세 시간·그룹 재연결 구현, 실제 모델/WPF 검증 | Whisper 원본 UTF-8 토큰과 상세 시간 조합, cloud verbose timestamps/fallback, 기존 전사 보존·상세 캐시 재개, 음성 특징에 따른 안정적 화자 ID 구현. 같은 음성의 인원 지정 재분석에서 수동 이름 유지 확인. 애매한 그룹 분할/합침은 미연결 수정으로 표시. 한국어 실제 다자 회의·장시간 정확도/성능과 최대 지원 길이 검증 필요 |
 | F-002 목소리 프로필·라이브 본인 표시 | 구현·실제 모델/WPF/포터블 검증, 실제 장치 검증 필요 | 명시적 10–30초 등록·재등록·삭제·취소·실패 보존, 최근 3초 라이브 나/다른 참여자 표시, pause와 소유 worker 취소, 기존 회의 재적용 구현. 공개 음성 파일 입력으로 검증. 한국어 실제 마이크·혼합 녹음 정확도/부하 검증 필요 |
 | F-003 내 발화와 연속 재생 | 구현·PCM 단위 검증, 실제 청취 필요 | 내 발화 필터와 선택/전체 내 발화 이어듣기. 선택 프레임만 연결하는 제공자 테스트. 실제 출력 장치 청취와 등록 UI 오디오 충돌 연동 필요 |
-| F-004–006 약속/요청·질문/답변·결정 흐름 | 데이터 계약·근거 검증 구현, 분석/화면 미구현 | 구조화 모델 호출과 UI, 상태와 근거 이동/재생, 실제/잘못된 모델 응답 및 재분석 테스트 |
-| F-007 프로젝트 브리핑 | 미구현 | 이전 회의 결정/미완료 업무/미해결 질문 집계, 한 프로젝트 자동 선택, 원본 회의 이동 |
+| F-004–006 약속/요청·질문/답변·결정 흐름 | 서비스·WPF·포터블 검증, 모델 의미 정확도 추가 검증 | 구간/범주별 구조화 호출, 원자적 저장과 실패 보존, 업무 상태/필터/근거 이동 구현. 실제 로컬 4B 모델은 일부 범주 오분류 확인. 다른 모델·실제 회의 정확도와 실제 출력 장치 청취 검증 필요 |
+| F-007 프로젝트 브리핑 | 구현·단위/WPF/포터블 검증, 동기화 대기 | 프로젝트 설정·해제, 최근 결정/미완료 업무/미해결 질문 집계, 단일 프로젝트 자동 선택, 다른 회의 원본 이동 확인. Apple/Worker 상호운용은 전체 sync 단계 |
 | F-008 이름·별칭·역할·용어 | 구현·단위/WPF 검증, 동기화 대기 | 이름·별칭·역할·용어 편집/저장, 60KiB 계약·12KB 프롬프트 참고, 참여자 발화의 원문 보존 주석. Apple/Worker 실제 동기화 상호운용 검증은 후속 |
-| F-009 수동 수정 | 화자 관련 UI/이력·재분석 보존 구현 | 화자명·본인 표시·개별 발화 수정. 업무 상태·프로젝트 이력의 데이터 계약 구현. 해당 UI와 전체 sync, 모델/화자 그룹 변화 시 재연결 검증 필요 |
+| F-009 수동 수정 | 화자·업무 상태·프로젝트 UI와 이력 구현 | 화자명·본인 표시·개별 발화·업무 상태·프로젝트 편집 구현. 같은 근거의 재분석에서 업무 상태 유지 검증. 전체 sync, 모델/화자 그룹 변화 시 재연결 검증 필요 |
 | 회의록 AI 보완·전사 정리 | 미구현 | 지시→미리보기→적용/버리기, 취소·동시 변경 보호, 번호/시간/숫자/발화 ID 보존, 원본 비교·자동 정리 실패 시 원문 사용 |
 | 회의록 목차 | 미구현 | 긴 문서의 제목 탐색 및 본문 위치 이동 |
 | 전체 Cloudflare 동기화 및 F-010 | 공유만 구현 | Apple wire schema 호환: M4A/metadata/folders/tombstones/notes/intelligence/edits/profile/AI preferences; hash·size·revision·atomic publication; offline outbox/retry/auto/manual/status |
@@ -38,9 +38,10 @@ Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은
 - 2026-09-16: 로컬 참여자 분석, 수동 수정 이력, 내 발화/정확한 PCM 이어듣기, 구조화 회의 계약 추가. 테스트 98 통과/5 하드웨어 건너뜀, 실제 Whisper+Sherpa WPF 및 포터블 EXE 검증. [두 번째 이식 단계 검증](docs/implementation/FULL-PORT-STEP2.md). 전체 범위는 아직 미완료다.
 - 2026-09-16: 텍스트/용어 프로필, 로컬 목소리 등록·취소·삭제, 라이브 본인 표시와 자동 참여자 분석 추가. 테스트 107 통과/5 하드웨어 건너뜀. 실제 WPF와 새 self-contained 폴더에서 공개 음성으로 검증. [세 번째 이식 단계 검증](docs/implementation/FULL-PORT-STEP3.md). 상세 시간 정렬·구조화 분석 UI·프로젝트·정리/보완·전체 동기화·최종 PR은 미완료다.
 - 2026-09-16: 한국어/CJK 토큰 바이트 보존, 상세 발화 시간, 기존 캐시 업그레이드, 인원 변경 시 음성 기반 ID 재연결 추가. 테스트 118 통과/5 하드웨어 건너뜀. [네 번째 이식 단계 검증](docs/implementation/FULL-PORT-STEP4.md). 구조화 분석 서비스/UI·프로젝트·정리/보완·전체 동기화·최종 배포/PR은 계속 진행 중이다.
+- 2026-09-16: 구조화 회의 분석, 업무 상태와 근거 탐색, 프로젝트 편집/브리핑 추가. 테스트 135 통과/5 하드웨어 건너뜀. 실제 로컬 Qwen + WPF와 새 포터블 EXE 검증. [다섯 번째 단계 검증 및 4B 모델의 오분류](docs/implementation/FULL-PORT-STEP5.md). 모델 선택/예산·정리/보완·목차·전체 동기화·장시간/의미 정확도·최종 배포/PR은 미완료다.
 
 ## 다음 단계 조사 메모
 
 - Windows 런타임은 NuGet `org.k2fsa.sherpa.onnx` 1.13.8, ONNX Runtime 1.28.2, Pyannote segmentation-3.0과 3D-Speaker ERes2Net-Base다. 512차원 모델 ID를 명시하며 Apple의 기기 로컬 음성 벡터와 상호 교환하지 않는다. 취소는 소유 worker 프로세스 종료로 처리한다.
 - 공식 예제: https://github.com/k2-fsa/sherpa-onnx/blob/master/dotnet-examples/offline-speaker-diarization/Program.cs . 바인딩 소스는 `scripts/dotnet/OfflineSpeakerDiarization.cs`, `OfflineSpeakerDiarizationConfig.cs`, `SpeakerEmbeddingExtractor.cs`에 있다. 모델·공개 다중 화자 WAV는 공식 `speaker-segmentation-models`, 임베딩은 `speaker-recongition-models` release에 있다.
-- 다음은 구조화 분석 서비스/UI와 프로젝트 브리핑이다. `Shared/MeetingIntelligence/MeetingAnalysisService.swift`, `MeetingAnalysisPrompt.swift`, `MeetingConversationView.swift`, `MeetingBriefingView.swift`를 기준으로 한다. 이후 정리/보완·모델 선택·전체 동기화·최종 배포까지 이어간다. 상세 시간 전사는 120초×180구간(6시간), 현재 Sherpa 전체 오디오 로더는 4시간 상한이므로 장시간 처리 범위를 함께 맞추고 검증해야 한다. 현재 JSON 필드/검증 테스트는 실제 Apple/Worker 상호운용 증거와 별개다.
+- 다음은 모델 선택/제공자 문맥·출력 예산, 전사 정리와 회의록 보완/목차다. 이후 전체 동기화·최종 배포까지 이어간다. 4B 모델의 구조화 분석 의미 분류 오류도 모델 비교로 검증한다. 상세 시간 전사는 120초×180구간(6시간), 현재 Sherpa 전체 오디오 로더는 4시간 상한이므로 장시간 처리 범위를 함께 맞추고 검증해야 한다. 현재 JSON 필드/검증 테스트는 실제 Apple/Worker 상호운용 증거와 별개다.

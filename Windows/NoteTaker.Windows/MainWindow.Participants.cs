@@ -28,6 +28,7 @@ public partial class MainWindow
         string? previous = (ParticipantFilter.SelectedItem as ParticipantChoice)?.Id;
         string? previousPerson = (ParticipantPeople.SelectedItem as ParticipantChoice)?.Id;
         var choices = new List<ParticipantChoice> { new("*", "모든 참여자"), new("@own", "내 발화"), new("@unknown", "미지정") };
+        if (meeting?.Source.RecordingId == evidenceRecordingId && evidenceTurnIds.Count > 0) choices.Add(new("@evidence", $"선택 항목의 근거 ({evidenceTurnIds.Count})"));
         if (meeting is not null) choices.AddRange(meeting.Transcript.Speakers.Select(s => new ParticipantChoice(s.Id, s.Name + (s.IsOwner ? " · 나" : ""))));
         ParticipantFilter.ItemsSource = choices; ParticipantFilter.SelectedItem = choices.FirstOrDefault(c => c.Id == previous) ?? choices[0];
         ParticipantPeople.ItemsSource = meeting?.Transcript.Speakers.Select(s =>
@@ -38,13 +39,14 @@ public partial class MainWindow
             $"{meeting.Transcript.Speakers.Count}개 화자 그룹 · {meeting.Transcript.Turns.Count}개 발화 · 미지정 {meeting.Transcript.Turns.Count(t => t.SpeakerId is null)}개" +
             (meeting.UnresolvedEditCount > 0 ? $" · 이전 수정 {meeting.UnresolvedEditCount}개는 현재 발화에 연결되지 않았습니다." : "");
         ParticipantsStatus.ToolTip = meeting is null ? null : $"발화 시간 전사: {meeting.Transcript.TranscriptionModelId}\n저장된 전사문은 AI 회의록의 전사문 탭에서 확인할 수 있습니다. 참여자 분석용 시간 전사는 별도로 준비할 수 있습니다.";
-        RefreshParticipantTurns(); UpdateParticipantControls();
+        RefreshParticipantTurns(); UpdateParticipantControls(); RenderMeetingInsights();
     }
     private void RefreshParticipantTurns()
     {
         string choice = (ParticipantFilter.SelectedItem as ParticipantChoice)?.Id ?? "*";
         var turns = meeting?.Transcript.Turns.AsEnumerable() ?? [];
         if (choice == "@own") turns = meeting?.OwnTurns ?? [];
+        else if (choice == "@evidence") turns = turns.Where(t => evidenceTurnIds.Contains(t.Id));
         else if (choice == "@unknown") turns = turns.Where(t => t.SpeakerId is null);
         else if (choice != "*") turns = turns.Where(t => t.SpeakerId == choice);
         ParticipantTurns.ItemsSource = turns.Select(t => new ParticipantTurnRow(t,
@@ -63,14 +65,16 @@ public partial class MainWindow
         PlayOwnTurnsButton.IsEnabled = idle && meeting?.OwnTurns.Count > 0;
         StopTurnsButton.IsEnabled = player.HasRangePlayback;
         CancelParticipantAnalysisButton.Visibility = runningWork is null ? Visibility.Collapsed : Visibility.Visible;
+        UpdateMeetingControls();
     }
     private async void AnalyzeParticipants_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null) return;
         await AnalyzeParticipantsAsync(selected, ParticipantCount.SelectedIndex);
     }
-    private async Task AnalyzeParticipantsAsync(Recording recording, int count = 0)
+    private async Task<bool> AnalyzeParticipantsAsync(Recording recording, int count = 0)
     {
+        bool saved = false;
         await RunWorkAsync(async token =>
         {
             StopTurnPlayback(); player.Dispose(); playbackLoaded = false;
@@ -79,10 +83,12 @@ public partial class MainWindow
             try
             {
                 await service.AnalyzeAsync(recording, settings, settings.TranscriptionProvider == "openrouter" ? SettingsStore.ReadKey(settings) : "", count, progress, token);
+                saved = true;
                 SetStatus("참여자 분석을 저장했습니다. 이름과 잘못 구분된 발화를 확인해 주세요.");
             }
             finally { if (selected?.Id == recording.Id) { LoadDocuments(recording); LoadParticipants(recording); } }
         });
+        return saved;
     }
     private void RenameParticipant_Click(object sender, RoutedEventArgs e)
     {
@@ -110,10 +116,10 @@ public partial class MainWindow
         }
         menu.PlacementTarget = AssignTurnButton; menu.IsOpen = true;
     }
-    private void SaveMeetingEdit(string kind, string target, string value)
+    private void SaveMeetingEdit(string kind, string target, string value, Recording? sourceRecording = null)
     {
-        if (selected is null) return;
-        try { new MeetingWorkspaceStore(library).Append(selected, kind, target, value); LoadParticipants(selected); SetStatus("수정했습니다. 다시 분석해도 수정 이력은 보존됩니다."); }
+        var recording = sourceRecording ?? selected; if (recording is null) return;
+        try { new MeetingWorkspaceStore(library).Append(recording, kind, target, value); if (selected?.Id == recording.Id) LoadParticipants(recording); else RefreshBriefing(); SetStatus("수정했습니다. 다시 분석해도 수정 이력은 보존됩니다."); }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
     private void PlayTurn_Click(object sender, RoutedEventArgs e) { if (ParticipantTurns.SelectedItem is ParticipantTurnRow row) PlayTurns([row.Turn]); }

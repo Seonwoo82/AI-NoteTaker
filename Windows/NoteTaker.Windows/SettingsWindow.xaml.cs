@@ -129,7 +129,7 @@ public partial class SettingsWindow : Window
 internal sealed class RenameWindow : Window
 {
     public string Result { get; private set; }
-    public RenameWindow(string title, string windowTitle = "녹음 이름 변경", string fieldLabel = "녹음 이름", int maxLength = 160)
+    public RenameWindow(string title, string windowTitle = "녹음 이름 변경", string fieldLabel = "녹음 이름", int maxLength = 160, bool allowEmpty = false)
     {
         Result = title;
         Title = windowTitle; Width = 440; Height = 218; ResizeMode = ResizeMode.NoResize;
@@ -148,7 +148,7 @@ internal sealed class RenameWindow : Window
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
         var cancel = new Button { Content = "취소", IsCancel = true };
         var save = new Button { Content = "저장", IsDefault = true, Style = (Style)FindResource("PrimaryButton"), Margin = new Thickness(8, 0, 0, 0) };
-        save.Click += (_, _) => { if (!string.IsNullOrWhiteSpace(text.Text)) { Result = text.Text.Trim(); DialogResult = true; } };
+        save.Click += (_, _) => { if (allowEmpty || !string.IsNullOrWhiteSpace(text.Text)) { Result = text.Text.Trim(); DialogResult = true; } };
         buttons.Children.Add(cancel); buttons.Children.Add(save);
         panel.Children.Add(new TextBlock { Text = fieldLabel, FontSize = 11, Margin = new Thickness(0, 0, 0, 6) });
         panel.Children.Add(text); panel.Children.Add(buttons); Grid.SetRow(panel, 1); root.Children.Add(panel); Content = root;

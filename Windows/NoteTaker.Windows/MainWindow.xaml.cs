@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? workCancellation;
     private Task? runningWork;
     internal Task CurrentWork => runningWork ?? Task.CompletedTask;
+    internal Task LastStopButtonWork { get; private set; } = Task.CompletedTask;
     internal Exception? LastWorkError { get; private set; }
     private CancellationTokenSource? waveformCancellation;
     internal Task WaveformLoadTask { get; private set; } = Task.CompletedTask;
@@ -356,7 +357,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
-    private async void Stop_Click(object sender, RoutedEventArgs e) => await StopRecordingAsync();
+    private async void Stop_Click(object sender, RoutedEventArgs e) { LastStopButtonWork = StopRecordingAsync(); await LastStopButtonWork; }
     private async Task StopRecordingAsync()
     {
         if (recorder is null || transitioning) return;
@@ -392,8 +393,8 @@ public partial class MainWindow : Window
         {
             try
             {
-                if (new MeetingProfileStore(library.Root).Load().AutomaticallyAnalyze)
-                    await AnalyzeParticipantsAsync(completedRecording);
+                if (new MeetingProfileStore(library.Root).Load().AutomaticallyAnalyze && await AnalyzeParticipantsAsync(completedRecording) && !closePending && !exitRequested)
+                    await AnalyzeMeetingAsync(completedRecording);
             }
             catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
         }

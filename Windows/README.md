@@ -1,6 +1,6 @@
 # AI-NoteTaker for Windows · Preview 0.3
 
-현재 `codex/windows-complete-port` 소스에서는 최신 Apple 앱의 전체 기능을 이식하고 있습니다. **5분 집중 파형, 녹음 폴더, Windows 트레이·전역 단축키, 녹음 후 자동 회의록 생성, 로컬 참여자 분석과 수동 수정, 내 발화 이어듣기, 이름/용어/목소리 프로필과 라이브 본인 표시**를 추가했습니다. 아래 기존 0.3 ZIP에는 이 개발 변경이 포함되지 않습니다. [전체 이식 상태](FULL-PORT-PLAN.md), [기본 기능 검증](docs/implementation/FULL-PORT-STEP1.md), [참여자 기능 검증과 한계](docs/implementation/FULL-PORT-STEP2.md), [프로필과 라이브 표시 검증](docs/implementation/FULL-PORT-STEP3.md).
+현재 `codex/windows-complete-port` 소스에서는 최신 Apple 앱의 전체 기능을 이식하고 있습니다. **5분 집중 파형, 녹음 폴더, Windows 트레이·전역 단축키, 녹음 후 자동 회의록 생성, 로컬 참여자 분석과 수동 수정, 내 발화 이어듣기, 이름/용어/목소리 프로필과 라이브 본인 표시, 단어별 시간과 화자 ID 유지, 약속·질문·결정 분석과 프로젝트 브리핑**을 추가했습니다. 아래 기존 0.3 ZIP에는 이 개발 변경이 포함되지 않습니다. [전체 이식 상태](FULL-PORT-PLAN.md), [기본 기능 검증](docs/implementation/FULL-PORT-STEP1.md), [참여자 검증](docs/implementation/FULL-PORT-STEP2.md), [프로필 검증](docs/implementation/FULL-PORT-STEP3.md), [상세 시간 검증](docs/implementation/FULL-PORT-STEP4.md), [회의 분석 검증과 모델 오분류](docs/implementation/FULL-PORT-STEP5.md).
 
 API 키와 상품화 구조는 [현재 AI 처리 방식](docs/implementation/PRODUCT-AI-ARCHITECTURE.md)에 정리했습니다. 기본 로컬 처리에는 API 키가 필요 없으며, OpenRouter를 선택한 경우 현재는 사용자 키를 입력합니다. 일반 고객용 로그인·결제 서버는 별도 구현 영역입니다.
 
@@ -70,7 +70,7 @@ Qwen3-ASR은 설정의 전사 엔진에서 선택할 수 있습니다. 언어를
 - 큰 파형은 재생 위치 주변 5분을, 아래 개요는 전체 녹음을 보여줍니다. 드래그 중에는 표시 구간을 고정해 포인터 위치와 실제 오디오 시간이 어긋나지 않게 합니다.
 - AI 설정에서 **녹음 완료 후 회의록 자동 생성**과 **전역 단축키**를 각각 켤 수 있습니다. 전역 단축키는 `Ctrl+Alt+Shift+N` 앱 열기, `R` 녹음 시작/완료, `P` 일시정지/재개입니다. 자동 생성은 선택한 엔진을 사용하므로 OpenRouter 선택 시 키와 크레딧이 필요합니다.
 
-실제 장치 분리·절전·Bluetooth 재연결·수시간 혼합 녹음의 샘플 클록 정렬은 추가 검증 대상입니다. Mac/iPhone/Cloudflare 전체 동기화, 화자 프로필, 회의 분석·프로젝트 브리핑, 전사 정리·회의록 보완은 아직 이식 중입니다.
+실제 장치 분리·절전·Bluetooth 재연결·수시간 혼합 녹음의 샘플 클록 정렬은 추가 검증 대상입니다. 현재 개발 소스의 화자 프로필과 회의 분석·프로젝트 브리핑은 위 검증 문서를 참고하세요. 4B 모델의 구조화 분석에는 결정/업무·질문 구분 오류가 관찰됐으므로 근거를 확인해야 합니다. Mac/iPhone/Cloudflare 전체 동기화, 모델 카탈로그와 긴 회의 예산, 전사 정리·회의록 보완/목차, 최종 패키지는 계속 이식 중입니다.
 
 ## 데이터와 기존 OpenRouter
 
@@ -117,4 +117,4 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 # whisper 대신 qwen, 추가 옵션 small(0.6B), cpu, cancel-resume(120초 초과 파일)
 ```
 
-현재 개발 소스의 자동 테스트 88개 통과, 장치 테스트 5개는 일반 test에서 건너뜁니다. 새 기능의 WPF·Windows Shell·실제 자동 로컬 AI 검증은 [추가 기능 검증](docs/implementation/FULL-PORT-STEP1.md), 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
+현재 개발 소스의 자동 테스트 135개 통과, 장치 테스트 5개는 일반 test에서 건너뜁니다. 새 기능의 WPF·Windows Shell·실제 로컬 AI 검증은 위 단계별 검증 문서, 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
