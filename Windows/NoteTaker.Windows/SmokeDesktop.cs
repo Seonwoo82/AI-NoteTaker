@@ -40,7 +40,11 @@ internal static class SmokeDesktop
                 window.Close();
                 if (window.IsVisible || capture.Stopped || closed.Task.IsCompleted) throw new InvalidOperationException("Close-to-tray stopped the active capture.");
                 if (scenario == "exit-during-capture") { window.RequestExit(); await closed.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
-                else { Click("StopButton"); await window.CurrentWork.WaitAsync(TimeSpan.FromMinutes(5)); }
+                else
+                {
+                    if (!window.HandleShortcut(System.Windows.Input.Key.Enter, System.Windows.Input.ModifierKeys.Control, null)) throw new InvalidOperationException("Finish recording shortcut failed.");
+                    await window.LastStopButtonWork.WaitAsync(TimeSpan.FromMinutes(5));
+                }
                 var recording = library.Load().Single();
                 if (!capture.Stopped || recording.IsRecording || recording.FolderId != folderId || recording.DurationSeconds <= 0) throw new InvalidOperationException("Completed capture metadata or folder was lost.");
                 if (await MeetingNotesService.AudioHashAsync(fixture, default) != await MeetingNotesService.AudioHashAsync(library.AudioPath(recording.Id), default)) throw new InvalidOperationException("Capture lifecycle changed fixture audio.");

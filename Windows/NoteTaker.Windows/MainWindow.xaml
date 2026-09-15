@@ -56,7 +56,7 @@
       <TextBlock x:Name="LibraryCount" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="14,9,14,5" />
      </StackPanel>
      <ListBox Grid.Row="3" x:Name="RecordingList" SelectionChanged="Recording_Selected" PreviewMouseRightButtonDown="Recording_RightClick" PreviewMouseLeftButtonDown="Library_DragStart" PreviewMouseMove="Library_DragMove" Margin="6,0" AutomationProperties.Name="녹음 목록">
-      <ListBox.ContextMenu><ContextMenu Opened="RecordingMenu_Opened"><MenuItem x:Name="RenameMenuItem" Header="이름 변경" Click="Rename_Click" /><MenuItem x:Name="FavoriteMenuItem" Header="즐겨찾기" Click="Favorite_Click" /><MenuItem x:Name="MoveFolderMenuItem" Header="폴더로 이동" /><MenuItem x:Name="ExportAudioMenuItem" Header="오디오 내보내기…" Click="ExportAudio_Click" /><MenuItem x:Name="DeleteMenuItem" Header="삭제" Click="Delete_Click" /><MenuItem x:Name="PermanentDeleteMenuItem" Header="영구 삭제…" Click="PermanentDelete_Click" Visibility="Collapsed" /></ContextMenu></ListBox.ContextMenu>
+      <ListBox.ContextMenu><ContextMenu Opened="RecordingMenu_Opened"><MenuItem x:Name="RenameMenuItem" Header="이름 변경" Click="Rename_Click" /><MenuItem x:Name="FavoriteMenuItem" Header="즐겨찾기" Click="Favorite_Click" /><MenuItem x:Name="MoveFolderMenuItem" Header="폴더로 이동" /><MenuItem x:Name="ShareAudioMenuItem" Header="오디오 공유…" Click="ShareAudio_Click" /><MenuItem x:Name="ExportAudioMenuItem" Header="오디오 내보내기…" Click="ExportAudio_Click" /><MenuItem x:Name="DeleteMenuItem" Header="삭제" Click="Delete_Click" /><MenuItem x:Name="PermanentDeleteMenuItem" Header="영구 삭제…" Click="PermanentDelete_Click" Visibility="Collapsed" /></ContextMenu></ListBox.ContextMenu>
       <ListBox.ItemTemplate><DataTemplate><StackPanel>
        <TextBlock Text="{Binding DisplayTitle}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
        <TextBlock Text="{Binding Subtitle}" FontSize="10" Margin="0,3,0,0" Opacity=".7" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
@@ -88,15 +88,16 @@
        </Grid>
        <StackPanel Grid.Row="4" Margin="0,0,0,20">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-         <Button x:Name="BackButton" Style="{StaticResource TransportButton}" Click="Back_Click" ToolTip="15초 뒤로" AutomationProperties.Name="15초 뒤로"><c:AppleIcon Kind="back" Width="25" Height="25" /></Button>
+         <Button x:Name="BackButton" Style="{StaticResource TransportButton}" Click="Back_Click" ToolTip="15초 뒤로 (Ctrl+←)" AutomationProperties.Name="15초 뒤로"><c:AppleIcon Kind="back" Width="25" Height="25" /></Button>
          <Button x:Name="PlayButton" Style="{StaticResource TransportButton}" Background="{DynamicResource SegmentSurface}" Margin="16,0" Click="Play_Click" ToolTip="재생 / 일시정지 (Space)" AutomationProperties.Name="재생"><c:AppleIcon x:Name="PlayIcon" Kind="play" Width="23" Height="23" /></Button>
-         <Button x:Name="ForwardButton" Style="{StaticResource TransportButton}" Click="Forward_Click" ToolTip="15초 앞으로" AutomationProperties.Name="15초 앞으로"><c:AppleIcon Kind="forward" Width="25" Height="25" /></Button>
+         <Button x:Name="ForwardButton" Style="{StaticResource TransportButton}" Click="Forward_Click" ToolTip="15초 앞으로 (Ctrl+→)" AutomationProperties.Name="15초 앞으로"><c:AppleIcon Kind="forward" Width="25" Height="25" /></Button>
         </StackPanel>
         <TextBlock x:Name="PlaybackTime" Text="00:00 / 00:00" FontFamily="Consolas" FontSize="12" TextAlignment="Center" Margin="0,9,0,0" />
        </StackPanel>
        <StackPanel Grid.Row="5"><WrapPanel HorizontalAlignment="Center">
         <Button x:Name="RenameButton" Content="이름 변경" Click="Rename_Click" Margin="0,0,8,8" /><Button x:Name="FavoriteButton" Content="즐겨찾기" Click="Favorite_Click" Margin="0,0,8,8" />
-        <Button x:Name="ExportAudioButton" Content="오디오 내보내기…" Click="ExportAudio_Click" Margin="0,0,8,8" /><Button x:Name="ClovaExportButton" Content="클로바노트용 내보내기…" Click="ClovaExport_Click" Margin="0,0,8,8" /><Button Content="폴더에서 보기" Click="RevealRecording_Click" Margin="0,0,8,8" /><Button x:Name="DeleteButton" Content="삭제" Click="Delete_Click" Margin="0,0,8,8" Foreground="{DynamicResource RecordRed}" /><Button x:Name="PermanentDeleteButton" Content="영구 삭제…" Click="PermanentDelete_Click" Visibility="Collapsed" Margin="0,0,0,8" Foreground="{DynamicResource RecordRed}" />
+        <Button x:Name="ShareAudioButton" Content="오디오 공유…" Click="ShareAudio_Click" Margin="0,0,8,8" />
+        <Button x:Name="ExportAudioButton" Content="오디오 내보내기…" Click="ExportAudio_Click" Margin="0,0,8,8" /><Button x:Name="ClovaExportButton" Content="클로바노트용 내보내기…" Click="ClovaExport_Click" Margin="0,0,8,8" /><Button x:Name="RevealAudioButton" Content="폴더에서 보기" Click="RevealRecording_Click" Margin="0,0,8,8" /><Button x:Name="DeleteButton" Content="삭제" Click="Delete_Click" Margin="0,0,8,8" Foreground="{DynamicResource RecordRed}" /><Button x:Name="PermanentDeleteButton" Content="영구 삭제…" Click="PermanentDelete_Click" Visibility="Collapsed" Margin="0,0,0,8" Foreground="{DynamicResource RecordRed}" />
        </WrapPanel><Button Content="AI 회의록 보기" Style="{StaticResource LinkButton}" Click="ShowNotes_Click" HorizontalAlignment="Center" /></StackPanel>
       </Grid>
      </TabItem>

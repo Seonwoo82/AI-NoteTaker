@@ -1,10 +1,14 @@
 <Project>
  <ItemGroup><ProjectReference Include="$(MSBuildThisFileDirectory)NoteTaker.SpeechWorker/NoteTaker.SpeechWorker.csproj" ReferenceOutputAssembly="false" /></ItemGroup>
  <Target Name="CopySpeechWorker" AfterTargets="Build">
-  <ItemGroup><SpeechWorkerFiles Include="$(MSBuildThisFileDirectory)NoteTaker.SpeechWorker/bin/$(Configuration)/$(TargetFramework)/$(RuntimeIdentifier)/**/*" /></ItemGroup>
+  <MSBuild Projects="$(MSBuildThisFileDirectory)NoteTaker.SpeechWorker/NoteTaker.SpeechWorker.csproj" Targets="GetTargetPath" RemoveProperties="TargetFramework" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier)">
+   <Output TaskParameter="TargetOutputs" ItemName="SpeechWorkerTargetPath" />
+  </MSBuild>
+  <PropertyGroup><SpeechWorkerOutputDirectory>@(SpeechWorkerTargetPath->'%(RootDir)%(Directory)')</SpeechWorkerOutputDirectory></PropertyGroup>
+  <ItemGroup><SpeechWorkerFiles Include="$(SpeechWorkerOutputDirectory)**/*" /></ItemGroup>
   <Copy SourceFiles="@(SpeechWorkerFiles)" DestinationFiles="@(SpeechWorkerFiles->'$(OutDir)SpeechWorker/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
  </Target>
  <Target Name="PublishSpeechWorker" AfterTargets="Publish">
-  <MSBuild Projects="$(MSBuildThisFileDirectory)NoteTaker.SpeechWorker/NoteTaker.SpeechWorker.csproj" Targets="Publish" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)'))SpeechWorker/" />
+  <MSBuild Projects="$(MSBuildThisFileDirectory)NoteTaker.SpeechWorker/NoteTaker.SpeechWorker.csproj" Targets="Publish" RemoveProperties="TargetFramework;WindowsSdkPackageVersion" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)'))SpeechWorker/" />
  </Target>
 </Project>

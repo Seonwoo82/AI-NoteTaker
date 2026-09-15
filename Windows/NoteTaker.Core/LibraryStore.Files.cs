@@ -71,15 +71,59 @@ public sealed partial class LibraryStore
     }
 
     /// <summary>Export the stored WAV byte for byte. Cancellation or failure keeps any existing destination.</summary>
-    public async Task ExportAudioAsync(Recording expected, string destination, CancellationToken token = default)
+    public Task ExportAudioAsync(Recording expected, string destination, CancellationToken token = default)
+        => CopyAudioAsync(expected, destination, false, token);
+
+    public static string AudioFileName(string title)
+    {
+        string name = string.Concat(title.Select(c => char.IsControl(c) || Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim().TrimEnd('.');
+        if (name.Length > 120) name = name[..120].TrimEnd('.');
+        if (name.Length > 0 && char.IsHighSurrogate(name[^1])) name = name[..^1];
+        if (string.IsNullOrWhiteSpace(name)) name = "녹음";
+        if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)) name = "녹음 - " + name;
+        return name + ".wav";
+    }
+
+    public async Task<string> CreateAudioShareCopyAsync(Recording recording, CancellationToken token = default)
+    {
+        if (recording.DeletedAt is not null) throw new InvalidOperationException("최근 삭제된 녹음을 먼저 복원해 주세요.");
+        string directory = SafePath($"Recordings/{recording.Id:D}/SharedAudio/{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, AudioFileName(recording.Title));
+        try { await CopyAudioAsync(recording, path, true, token); return path; }
+        catch { if (!Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory); throw; }
+    }
+
+    // Share targets may read after the source window closes. Keep copies for 24 hours, or until the recording is purged.
+    public void PruneAudioShareCopies(Guid id, DateTimeOffset now)
+    {
+        lock (JsonDisk.Gate)
+        {
+            string parent = SafePath($"Recordings/{id:D}/SharedAudio");
+            if (!Directory.Exists(parent)) return;
+            foreach (string directory in Directory.EnumerateDirectories(parent))
+            {
+                if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out _)) continue;
+                string safe = SafePath(Path.GetRelativePath(Root, directory));
+                if (now - Directory.GetCreationTimeUtc(safe) < TimeSpan.FromDays(1)) continue;
+                string[] files = Directory.GetFiles(safe);
+                if (Directory.EnumerateDirectories(safe).Any()) continue;
+                foreach (string file in files) _ = SafePath(Path.GetRelativePath(Root, file));
+                foreach (string file in files) File.Delete(file);
+                Directory.Delete(safe);
+            }
+        }
+    }
+
+    private async Task CopyAudioAsync(Recording expected, string destination, bool libraryShareCopy, CancellationToken token)
     {
         destination = Path.GetFullPath(destination);
         string fullRoot = Path.TrimEndingDirectorySeparator(Root);
-        if (destination.Equals(fullRoot, StringComparison.OrdinalIgnoreCase) ||
-            destination.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        if (!libraryShareCopy && (destination.Equals(fullRoot, StringComparison.OrdinalIgnoreCase) ||
+            destination.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("녹음 보관 폴더 밖에 오디오를 저장해 주세요.");
         // Resolve every existing destination ancestor to prevent an alias from pointing back into the library.
-        for (string? item = destination; item is not null; item = Path.GetDirectoryName(item))
+        for (string? item = destination; item is not null && !(libraryShareCopy && item.Equals(fullRoot, StringComparison.OrdinalIgnoreCase)); item = Path.GetDirectoryName(item))
             if ((File.Exists(item) || Directory.Exists(item)) && (File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidOperationException("연결된 폴더 대신 실제 저장 폴더를 선택해 주세요.");
         string source = SafePath($"Recordings/{expected.Id:D}/audio.wav");

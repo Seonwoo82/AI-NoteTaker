@@ -28,6 +28,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 Source: https://github.com/dotnet/runtime and https://github.com/dotnet/wpf
 
+## Windows SDK .NET projection and C#/WinRT runtime
+
+The Windows sharing integration uses Microsoft.Windows.SDK.NET.Ref 10.0.19041.57. The published application includes `Microsoft.Windows.SDK.NET.dll` and `WinRT.Runtime.dll`. The NuGet package identifies the Microsoft Windows SDK license at https://aka.ms/WinSDKLicenseURL; its full text is included unchanged in `licenses/WINDOWS-SDK-LICENSE.rtf`. Copyright Microsoft Corporation. All rights reserved. This package is not covered by the .NET MIT notice above.
+
+The C#/WinRT source is MIT licensed, copyright Microsoft Corporation. Its full notice is in `licenses/CSWINRT-LICENSE.txt`. Source: https://github.com/microsoft/CsWinRT . Retain both notices with the Windows distribution.
+
 ## Test-only dependencies
 
 xUnit.net and its Visual Studio runner (Apache-2.0), and Microsoft.NET.Test.Sdk (MIT) are used by the test project. They are not shipped in the application. Exact direct and transitive package versions are recorded in each project's `packages.lock.json`.

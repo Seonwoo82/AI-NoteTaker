@@ -147,7 +147,8 @@ internal static class SmokeSync
     private static async Task Until(Func<bool> predicate) { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20)); while (!predicate()) await Task.Delay(25, timeout.Token); }
     private static async Task StartManual(MainWindow window)
     {
-        ((Popup)window.FindName("SyncPopup")).IsOpen = false; Click(window, "SyncButton"); Click(window, "SyncNowButton");
+        ((Popup)window.FindName("SyncPopup")).IsOpen = false; Click(window, "SyncButton");
+        Require(window.HandleShortcut(System.Windows.Input.Key.S, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift, null), "Sync keyboard command was not handled.");
         await window.CurrentWork.WaitAsync(TimeSpan.FromSeconds(30)); await Until(() => !window.IsSynchronizing);
         ((Popup)window.FindName("SyncPopup")).IsOpen = false;
     }

@@ -110,6 +110,9 @@ public sealed partial class LibraryStore
                 catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
                 { LoadWarnings.Add($"{recording.Title}: 삭제 파일 정리를 완료하지 못했습니다. 다음에 다시 시도합니다."); }
                 result.Add(recording with { IsLocallyPurged = recording.DeletedAt is not null && File.Exists(PurgeMarkerPath(id)) });
+                try { PruneAudioShareCopies(id, now); }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+                { LoadWarnings.Add($"{recording.Title}: 이전 공유용 임시 파일을 정리하지 못했습니다. 다음에 다시 시도합니다."); }
             }
             catch (Exception ex) when (ex is IOException or JsonException or InvalidDataException or UnauthorizedAccessException)
             {

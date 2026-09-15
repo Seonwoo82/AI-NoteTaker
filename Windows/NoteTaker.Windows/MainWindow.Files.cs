@@ -13,6 +13,25 @@ public partial class MainWindow
     private bool libraryDialogOpen;
     internal Task LastLibraryAction { get; private set; } = Task.CompletedTask;
     internal Func<Recording, string?>? AudioExportDestination { get; set; }
+    internal Func<string?>? AudioImportSource { get; set; }
+    internal Action<string>? RevealAudioLocation { get; set; }
+    private WindowsAudioShare? audioShare;
+    internal Action<global::Windows.ApplicationModel.DataTransfer.DataPackage>? AudioSharePresenter { get; set; }
+    private async void ShareAudio_Click(object sender, RoutedEventArgs e) => await (LastLibraryAction = ShareAudioAsync());
+    private async Task ShareAudioAsync()
+    {
+        if (!await StopSyncForForegroundAsync() || selected is not { DeletedAt: null } recording ||
+            runningWork is not null || recorder is not null || transitioning || ModalOperationOpen) return;
+        await RunWorkAsync(async token =>
+        {
+            SetStatus("공유할 오디오를 준비하는 중…");
+            var data = await WindowsAudioShare.PrepareAsync(library, recording, token);
+            token.ThrowIfCancellationRequested();
+            if (AudioSharePresenter is not null) AudioSharePresenter(data);
+            else (audioShare ??= new WindowsAudioShare(this)).Show(data);
+            SetStatus("Windows 공유 창에서 받을 앱을 선택해 주세요.");
+        });
+    }
     private async void PermanentDelete_Click(object sender, RoutedEventArgs e) => await (LastLibraryAction = DeletePermanentlyAsync());
     private async Task DeletePermanentlyAsync()
     {
@@ -44,8 +63,7 @@ public partial class MainWindow
             if (AudioExportDestination is not null) destination = AudioExportDestination(recording);
             else
             {
-                string name = string.Concat(recording.Title.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim().TrimEnd('.');
-                var dialog = new SaveFileDialog { Title = "오디오 내보내기", Filter = "WAV 오디오 (*.wav)|*.wav", DefaultExt = ".wav", AddExtension = true, FileName = string.IsNullOrEmpty(name) ? "녹음.wav" : name + ".wav" };
+                var dialog = new SaveFileDialog { Title = "오디오 내보내기", Filter = "WAV 오디오 (*.wav)|*.wav", DefaultExt = ".wav", AddExtension = true, FileName = LibraryStore.AudioFileName(recording.Title) };
                 destination = dialog.ShowDialog(this) == true ? dialog.FileName : null;
             }
         }

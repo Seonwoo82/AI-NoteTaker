@@ -27,7 +27,15 @@ internal static partial class SmokeUi
             window.AudioExportDestination = _ => destination;
             Click("ExportAudioButton"); await window.LastLibraryAction;
             if (window.LastWorkError is not null || SyncFileTransaction.Revision(destination) != audioHash) throw new InvalidOperationException("WPF audio export changed stored WAV bytes.", window.LastWorkError);
+            global::Windows.ApplicationModel.DataTransfer.DataPackage? shared = null;
+            window.AudioSharePresenter = data => shared = data;
+            Click("ShareAudioButton"); await window.LastLibraryAction;
+            if (window.LastWorkError is not null || shared is null) throw new InvalidOperationException("WPF audio share did not prepare a Windows data package.", window.LastWorkError);
+            var items = await shared.GetView().GetStorageItemsAsync();
+            if (items.Count != 1 || items[0].Path == library.AudioPath(record.Id) || SyncFileTransaction.Revision(items[0].Path) != audioHash || shared.Properties.Title != record.Title)
+                throw new InvalidOperationException("Windows audio share package did not contain the selected recording copy.");
             Click("DeleteButton"); ((ListBox)window.FindName("FilterBox")).SelectedIndex = 2;
+            if (((Button)window.FindName("ShareAudioButton")).IsEnabled) throw new InvalidOperationException("Deleted recording can still be shared.");
             await window.WaveformLoadTask;
             await Confirm(false, Path.Combine(output, "permanent-delete-confirm.png"));
             if (SyncFileTransaction.Revision(library.AudioPath(record.Id)) != audioHash) throw new InvalidOperationException("Cancelled permanent deletion changed the audio.");
@@ -42,6 +50,7 @@ internal static partial class SmokeUi
                 throw new InvalidOperationException("WPF permanent deletion failed.", window.LastWorkError);
             if (((ListBox)window.FindName("RecordingList")).Items.Count != 0 || ((TextBlock)window.FindName("DeletedCount")).Text != "0") throw new InvalidOperationException("Purged tombstone remains visible in trash.");
             if (!File.Exists(library.AudioPath(keep.Id)) || SyncFileTransaction.Revision(destination) != audioHash) throw new InvalidOperationException("Deletion affected another recording or exported file.");
+            if (File.Exists(items[0].Path)) throw new InvalidOperationException("Permanent deletion left an internal audio share copy.");
         }
         finally { await Close(window); }
         window = Open();
@@ -52,7 +61,7 @@ internal static partial class SmokeUi
         }
         finally { await Close(window); }
         JsonDisk.Write(Path.Combine(output, "library-files.json"), new { Passed = true, Library = library.Root, AudioHash = audioHash, Export = destination,
-            Evidence = "Native WPF confirmation/cancel/stale restore, opened audio reader release, hidden tombstone after restart. Export button uses injected destination picker; native OS Save dialog not automated. Only generated fixture audio." });
+            Evidence = "Native WPF confirmation/cancel/stale restore, opened audio reader release, hidden tombstone after restart. Audio-share button supplies one immutable WinRT storage file and purge removes its copy. Export picker and share presenter injected; native Windows sharing tested separately. Only generated fixture audio." });
 
         MainWindow Open()
         {

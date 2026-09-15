@@ -19,6 +19,12 @@ public partial class App : Application
         SessionEnding += (_, _) => { if (MainWindow is NoteTaker.Windows.MainWindow window) window.RequestExit(); };
         try
         {
+            if (e.Args.Length == 2 && e.Args[0] == "--smoke-audio-share")
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                await SmokeAudioShare.RunAsync(Path.GetFullPath(e.Args[1]));
+                Shutdown(0); return;
+            }
             if (e.Args.Length == 2 && e.Args[0] == "--smoke-sharing")
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;

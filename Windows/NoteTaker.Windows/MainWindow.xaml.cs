@@ -272,7 +272,11 @@ public partial class MainWindow : Window
     private void RevealRecording_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null) return;
-        try { Process.Start(new ProcessStartInfo(library.DirectoryFor(selected.Id)) { UseShellExecute = true }); }
+        try
+        {
+            if (RevealAudioLocation is not null) RevealAudioLocation(library.AudioPath(selected.Id));
+            else Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + library.AudioPath(selected.Id) + "\"") { UseShellExecute = true });
+        }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
     private void Recording_RightClick(object sender, MouseButtonEventArgs e)
@@ -292,28 +296,51 @@ public partial class MainWindow : Window
         PermanentDeleteMenuItem.Visibility = PermanentDeleteButton.Visibility;
         PermanentDeleteMenuItem.IsEnabled = PermanentDeleteButton.IsEnabled;
         ExportAudioMenuItem.IsEnabled = ExportAudioButton.IsEnabled;
+        ShareAudioMenuItem.IsEnabled = ShareAudioButton.IsEnabled;
         PopulateMoveMenu(MoveFolderMenuItem);
     }
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Q) { RequestExit(); e.Handled = true; return; }
-        if (CapturePopup.IsOpen && e.Key == Key.Escape) { CapturePopup.IsOpen = false; RecordOptionsButton.Focus(); e.Handled = true; return; }
-        if (Keyboard.Modifiers == ModifierKeys.Control)
+        if (!e.Handled && !e.IsRepeat) e.Handled = HandleShortcut(e.Key, Keyboard.Modifiers, Keyboard.FocusedElement);
+    }
+    internal bool HandleShortcut(Key key, ModifierKeys modifiers, IInputElement? focus)
+    {
+        bool editing = focus is TextBoxBase or PasswordBox or ComboBox;
+        if (modifiers == ModifierKeys.Control && key == Key.Q) { RequestExit(); return true; }
+        if (CapturePopup.IsOpen && key == Key.Escape) { CapturePopup.IsOpen = false; RecordOptionsButton.Focus(); return true; }
+        if (modifiers == ModifierKeys.Control)
         {
-            if (e.Key == Key.F) { SearchBox.Focus(); SearchBox.SelectAll(); }
-            else if (e.Key == Key.N && RecordButton.IsEnabled) Record_Click(sender, e);
-            else if (e.Key == Key.O && ImportButton.IsEnabled) Import_Click(sender, e);
-            else if (e.Key == Key.OemComma && SettingsButton.IsEnabled) Settings_Click(sender, e);
-            else return;
-            e.Handled = true; return;
+            if (key == Key.F) { SearchBox.Focus(); SearchBox.SelectAll(); }
+            else if (key == Key.Enter && StopButton.IsEnabled) Stop_Click(this, new RoutedEventArgs());
+            else if (key == Key.N && !editing && RecordButton.IsEnabled) Record_Click(this, new RoutedEventArgs());
+            else if (key == Key.Left && !editing && !ModalOperationOpen && BackButton.IsEnabled) Back_Click(this, new RoutedEventArgs());
+            else if (key == Key.Right && !editing && !ModalOperationOpen && ForwardButton.IsEnabled) Forward_Click(this, new RoutedEventArgs());
+            else if (key == Key.O && ImportButton.IsEnabled) Import_Click(this, new RoutedEventArgs());
+            else if (key == Key.OemComma && SettingsButton.IsEnabled) Settings_Click(this, new RoutedEventArgs());
+            else return false;
+            return true;
         }
-        if (Keyboard.FocusedElement is TextBoxBase or PasswordBox or ComboBox or ButtonBase or TabItem or MenuItem || CapturePopup.IsOpen) return;
-        if (e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None)
+        if (editing || CapturePopup.IsOpen || ModalOperationOpen) return false;
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
-            if (recorder is not null && !transitioning) Pause_Click(sender, e);
-            else if (PlayButton.IsEnabled) Play_Click(sender, e);
-            e.Handled = true;
+            if (key == Key.E && ExportAudioButton.IsEnabled) ExportAudio_Click(this, new RoutedEventArgs());
+            else if (key == Key.R && RevealAudioButton.IsEnabled) RevealRecording_Click(this, new RoutedEventArgs());
+            else if (key == Key.L && FavoriteButton.IsEnabled && selected?.DeletedAt is null) Favorite_Click(this, new RoutedEventArgs());
+            else if (key == Key.S && SyncConfigured && !SyncBusy) SyncNow_Click(this, new RoutedEventArgs());
+            else return false;
+            return true;
         }
+        if (modifiers != ModifierKeys.None || focus is ButtonBase or TabItem or MenuItem) return false;
+        if (key is Key.F2 or Key.Enter && RenameButton.IsEnabled && selected?.DeletedAt is null) { Rename_Click(this, new RoutedEventArgs()); return true; }
+        if (key == Key.Delete && DeleteButton.IsEnabled && selected?.DeletedAt is null) { Delete_Click(this, new RoutedEventArgs()); return true; }
+        if (key == Key.Space)
+        {
+            if (recorder is not null && !transitioning) Pause_Click(this, new RoutedEventArgs());
+            else if (PlayButton.IsEnabled) Play_Click(this, new RoutedEventArgs());
+            else return false;
+            return true;
+        }
+        return false;
     }
 
     private async void Record_Click(object sender, RoutedEventArgs e)
@@ -413,12 +440,26 @@ public partial class MainWindow : Window
 
     private async void Import_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "녹음 가져오기", Filter = "오디오 파일|*.wav;*.mp3;*.m4a;*.aac;*.wma;*.aiff|모든 파일|*.*" };
-        if (dialog.ShowDialog(this) != true) return;
+        if (runningWork is not null || recorder is not null || transitioning || ModalOperationOpen || closePending || exitRequested) return;
+        string? source;
+        libraryDialogOpen = true;
+        try
+        {
+            UpdateControls();
+            if (AudioImportSource is not null) source = AudioImportSource();
+            else
+            {
+                var dialog = new OpenFileDialog { Title = "녹음 가져오기", Filter = "오디오 파일|*.wav;*.mp3;*.m4a;*.aac;*.wma;*.aiff|모든 파일|*.*" };
+                source = dialog.ShowDialog(this) == true ? dialog.FileName : null;
+            }
+        }
+        catch (Exception ex) { SetStatus(FriendlyError(ex), true); return; }
+        finally { libraryDialogOpen = false; UpdateControls(); }
+        if (source is null || closePending || exitRequested) return;
         await RunWorkAsync(async token =>
         {
             SetStatus("오디오를 가져오는 중…");
-            var imported = await library.ImportAsync(dialog.FileName, token);
+            var imported = await library.ImportAsync(source, token);
             if (folderStore.IsActive(selectedFolder)) imported = folderStore.MoveRecording(library, imported, selectedFolder);
             SelectFolderFilter(imported.FolderId); SearchBox.Text = "";
             ReloadLibrary(imported.Id); SetStatus("오디오를 라이브러리에 저장했습니다.");
@@ -628,10 +669,15 @@ public partial class MainWindow : Window
         DetailPanel.Visibility = recorder is null && !transitioning && selected is not null ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = recorder is null && !transitioning && selected is null ? Visibility.Visible : Visibility.Collapsed;
         bool editable = idle && selected is not null;
-        FavoriteButton.IsEnabled = RenameButton.IsEnabled = DeleteButton.IsEnabled = editable;
+        DeleteButton.IsEnabled = editable;
+        FavoriteButton.IsEnabled = RenameButton.IsEnabled = editable && selected?.DeletedAt is null;
         PermanentDeleteButton.Visibility = selected?.DeletedAt is not null ? Visibility.Visible : Visibility.Collapsed;
         PermanentDeleteButton.IsEnabled = editable && selected?.DeletedAt is not null;
         ExportAudioButton.IsEnabled = editable && File.Exists(library.AudioPath(selected!.Id));
+        ShareAudioButton.IsEnabled = ExportAudioButton.IsEnabled && selected?.DeletedAt is null;
+        RevealAudioButton.IsEnabled = editable;
+        foreach (var button in new[] { RenameButton, FavoriteButton, ShareAudioButton, ExportAudioButton, ClovaExportButton, RevealAudioButton })
+            button.Visibility = selected?.DeletedAt is null ? Visibility.Visible : Visibility.Collapsed;
         GenerateButton.IsEnabled = TranscribeOnlyButton.IsEnabled = SummarizeOnlyButton.IsEnabled = ImportTranscriptButton.IsEnabled = ClovaExportButton.IsEnabled = editable && selected?.DeletedAt is null;
         ShareWebButton.IsEnabled = editable && selected?.DeletedAt is null && notes is not null;
         EnhanceNotesButton.IsEnabled = CleanTranscriptButton.IsEnabled = ShareWebButton.IsEnabled;
@@ -697,6 +743,7 @@ public partial class MainWindow : Window
         await WaveformLoadTask;
         timer.Stop(); player.Dispose();
         desktop?.Dispose();
+        audioShare?.Dispose();
         allowClose = true;
         // Closing may run without any incomplete await; defer the second Close
         // until WPF has left the original Closing event.

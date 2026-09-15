@@ -177,6 +177,7 @@ internal static partial class SmokeUi
         window.Close();
         await closed.Task;
         await VerifyLibraryFilesAsync(output);
+        await VerifyLibraryCommandsAsync(output);
         if (Environment.GetEnvironmentVariable("NOTETAKER_UI_AUDIO_SMOKE") == "1") await RunRecordingControlsAsync(output);
         File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: Apple-style empty, playback, notes, recording, compact, capture popover and light/dark settings rendered. Favorite, delete, restore, search, actual audio waveform, focused 5-minute timeline and stable drag mapping, folder create/move/order/delete preserving audio and playhead, submenu, input mode gating, transcript tab and graceful close passed. Generated audio fixture only; no recording or network used.");
     }
