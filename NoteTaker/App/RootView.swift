@@ -123,6 +123,7 @@ private struct WorkspaceDetailContent: View {
             meetingNotes: container.meetingNotes,
             aiConfiguration: container.aiConfiguration,
             meeting: container.meeting,
+            syncSettings: container.syncSettings,
             evidenceRequest: container.meeting.evidenceRequest
         )
     }
@@ -138,6 +139,7 @@ private struct DetailView: View {
     let meetingNotes: MeetingNotesService
     let aiConfiguration: AIConfiguration
     let meeting: MeetingFeatureContext
+    let syncSettings: SyncSettings
     let evidenceRequest: MeetingEvidenceRequest?
 
     var body: some View {
@@ -154,6 +156,7 @@ private struct DetailView: View {
                     meetingNotes: meetingNotes,
                     aiConfiguration: aiConfiguration,
                     meeting: meeting,
+                    syncSettings: syncSettings,
                     evidenceRequest: evidenceRequest
                 )
             } else {

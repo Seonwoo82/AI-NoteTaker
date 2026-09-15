@@ -6,10 +6,12 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shell;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using NAudio.CoreAudioApi;
 using NoteTaker.Core;
+using NoteTaker.Windows.Components;
 
 namespace NoteTaker.Windows;
 
@@ -506,6 +508,13 @@ public partial class MainWindow : Window
         try { if (!string.IsNullOrWhiteSpace(ExportText())) { Clipboard.SetText(ExportText()); SetStatus("클립보드에 복사했습니다."); } }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
+    private void ShareWeb_Click(object sender, RoutedEventArgs e)
+    {
+        if (selected is null || notes is null) return;
+        var dialog = new WebShareWindow(selected, notes, settings) { Owner = this };
+        _ = dialog.ShowDialog();
+        SetStatus("웹 공유 상태를 확인했습니다.");
+    }
 
     private void UpdateControls()
     {
@@ -529,6 +538,7 @@ public partial class MainWindow : Window
         bool editable = idle && selected is not null;
         FavoriteButton.IsEnabled = RenameButton.IsEnabled = DeleteButton.IsEnabled = editable;
         GenerateButton.IsEnabled = TranscribeOnlyButton.IsEnabled = SummarizeOnlyButton.IsEnabled = ImportTranscriptButton.IsEnabled = ClovaExportButton.IsEnabled = editable && selected?.DeletedAt is null;
+        ShareWebButton.IsEnabled = editable && selected?.DeletedAt is null && notes is not null;
         CopyButton.IsEnabled = ExportButton.IsEnabled = selected is not null && !string.IsNullOrWhiteSpace(ExportText());
         RecordingList.IsEnabled = SearchBox.IsEnabled = FilterBox.IsEnabled = runningWork is null && !transitioning;
         CancelButton.Visibility = runningWork is null ? Visibility.Collapsed : Visibility.Visible;
@@ -588,4 +598,184 @@ public partial class MainWindow : Window
         IOException => "파일을 읽거나 저장할 수 없습니다. 저장 공간과 파일 사용 상태를 확인해 주세요.",
         _ => ex.Message
     };
+}
+
+internal sealed class WebShareWindow : Window
+{
+    private readonly Recording recording;
+    private readonly MeetingNotes notes;
+    private readonly AppSettings settings;
+    private readonly CancellationTokenSource cancellation = new();
+    private readonly TextBlock statusText = new() { TextWrapping = TextWrapping.Wrap, LineHeight = 20 };
+    private readonly TextBox urlBox = new() { IsReadOnly = true, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
+    private readonly Button publishButton = new() { Content = "새 링크 만들기", MinWidth = 110 };
+    private readonly Button copyButton = new() { Content = "링크 복사", MinWidth = 90, IsEnabled = false };
+    private readonly Button openButton = new() { Content = "열기", MinWidth = 70, IsEnabled = false };
+    private readonly Button revokeButton = new() { Content = "공유 중지", MinWidth = 90, IsEnabled = false };
+    private bool knownActive;
+    private string? currentUrl;
+
+    public WebShareWindow(Recording recording, MeetingNotes notes, AppSettings settings)
+    {
+        this.recording = recording;
+        this.notes = notes;
+        this.settings = settings;
+        Title = "웹 공유"; Width = 520; Height = 420; MinWidth = 460; MinHeight = 360;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false; WindowStyle = WindowStyle.None;
+        Style = (Style)FindResource(typeof(Window));
+        WindowChrome.SetWindowChrome(this, new WindowChrome { CaptionHeight = 44, ResizeBorderThickness = new Thickness(6), GlassFrameThickness = new Thickness(0), CornerRadius = new CornerRadius(10), UseAeroCaptionButtons = false });
+
+        var root = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10) };
+        root.SetResourceReference(BorderBrushProperty, "Separator");
+        root.SetResourceReference(BackgroundProperty, "WindowSurface");
+        var grid = new Grid();
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(44) });
+        grid.RowDefinitions.Add(new RowDefinition());
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.Child = grid;
+
+        var header = new Grid();
+        header.SetResourceReference(BackgroundProperty, "ToolbarSurface");
+        var controls = new WindowControls { HorizontalAlignment = HorizontalAlignment.Left };
+        WindowChrome.SetIsHitTestVisibleInChrome(controls, true);
+        header.Children.Add(controls);
+        header.Children.Add(new TextBlock { Text = "웹 공유", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold });
+        grid.Children.Add(header);
+
+        var body = new StackPanel { Margin = new Thickness(24) };
+        body.Children.Add(new TextBlock { Text = recording.Title, FontSize = 18, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+        var explanation = new TextBlock
+        {
+            Text = "링크를 가진 사람은 7일 동안 회의록 스냅샷을 읽을 수 있습니다. 새 링크를 만들면 이전 링크는 바로 비활성화됩니다. 업로드하는 내용은 제목과 회의록 Markdown뿐이며 오디오와 전사문은 보내지 않습니다.",
+            TextWrapping = TextWrapping.Wrap,
+            LineHeight = 20,
+            Margin = new Thickness(0, 10, 0, 16)
+        };
+        explanation.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
+        body.Children.Add(explanation);
+        body.Children.Add(statusText);
+        body.Children.Add(urlBox);
+        Grid.SetRow(body, 1);
+        grid.Children.Add(body);
+
+        var footer = new Border { Padding = new Thickness(24, 14, 24, 14), BorderThickness = new Thickness(0, 1, 0, 0) };
+        footer.SetResourceReference(BorderBrushProperty, "Separator");
+        footer.SetResourceReference(BackgroundProperty, "ToolbarSurface");
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        publishButton.SetResourceReference(StyleProperty, "PrimaryButton");
+        publishButton.Click += Publish_Click;
+        copyButton.Click += Copy_Click;
+        openButton.Click += Open_Click;
+        revokeButton.Click += Revoke_Click;
+        buttons.Children.Add(revokeButton);
+        buttons.Children.Add(new Button { Content = "닫기", IsCancel = true, MinWidth = 70, Margin = new Thickness(8, 0, 0, 0) });
+        buttons.Children.Add(copyButton); copyButton.Margin = new Thickness(8, 0, 0, 0);
+        buttons.Children.Add(openButton); openButton.Margin = new Thickness(8, 0, 0, 0);
+        buttons.Children.Add(publishButton); publishButton.Margin = new Thickness(8, 0, 0, 0);
+        footer.Child = buttons;
+        Grid.SetRow(footer, 2);
+        grid.Children.Add(footer);
+
+        Content = root;
+        Loaded += async (_, _) => await LoadStatusAsync();
+        Closed += (_, _) => cancellation.Cancel();
+    }
+
+    private WebShareClient CreateClient()
+    {
+        if (string.IsNullOrWhiteSpace(settings.SharingServerUrl))
+            throw new InvalidOperationException("설정에서 웹 공유 서버 주소를 저장해 주세요.");
+        if (!Uri.TryCreate(settings.SharingServerUrl, UriKind.Absolute, out var uri))
+            throw new InvalidOperationException("웹 공유 서버 주소를 확인해 주세요.");
+        return new WebShareClient(uri, SettingsStore.ReadSharingToken(settings));
+    }
+
+    private async Task LoadStatusAsync()
+    {
+        await RunAsync("공유 상태를 확인하는 중…", async client =>
+        {
+            var status = await client.GetStatusAsync(recording.Id, cancellation.Token);
+            currentUrl = null;
+            urlBox.Visibility = Visibility.Collapsed;
+            copyButton.IsEnabled = openButton.IsEnabled = false;
+            knownActive = status.Active;
+            if (status.Active)
+                SetStatus("현재 웹에 공유되어 있습니다. 원본 링크는 처음 만든 기기와 세션에서만 다시 볼 수 있지만, 여기에서 공유를 중지하거나 새 링크로 교체할 수 있습니다." + ExpiryText(status.ExpiresAt));
+            else
+                SetStatus("현재 활성화된 웹 공유 링크가 없습니다.");
+        });
+    }
+
+    private async void Publish_Click(object sender, RoutedEventArgs e)
+    {
+        await RunAsync("회의록 스냅샷을 업로드하는 중…", async client =>
+        {
+            var publication = await client.PublishAsync(recording.Id, recording.Title, notes.Markdown, cancellation.Token);
+            currentUrl = publication.Url;
+            knownActive = true;
+            urlBox.Text = publication.Url;
+            urlBox.Visibility = Visibility.Visible;
+            SetStatus("새 웹 공유 링크를 만들었습니다. 이전 링크는 더 이상 열리지 않습니다." + ExpiryText(publication.ExpiresAt));
+        });
+    }
+
+    private async void Revoke_Click(object sender, RoutedEventArgs e)
+    {
+        await RunAsync("웹 공유를 중지하는 중…", async client =>
+        {
+            await client.RevokeAsync(recording.Id, cancellation.Token);
+            currentUrl = null;
+            knownActive = false;
+            urlBox.Visibility = Visibility.Collapsed;
+            SetStatus("웹 공유를 중지했습니다. 이미 저장된 복사본은 회수할 수 없습니다.");
+        });
+    }
+
+    private void Copy_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentUrl is null) return;
+        Clipboard.SetText(currentUrl);
+        SetStatus("링크를 클립보드에 복사했습니다.");
+    }
+
+    private void Open_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentUrl is null) return;
+        Process.Start(new ProcessStartInfo(currentUrl) { UseShellExecute = true });
+    }
+
+    private async Task RunAsync(string progress, Func<WebShareClient, Task> action)
+    {
+        SetBusy(true);
+        SetStatus(progress);
+        try
+        {
+            using var client = CreateClient();
+            await action(client);
+        }
+        catch (OperationCanceledException) { SetStatus("웹 공유 작업을 취소했습니다.", true); }
+        catch (Exception ex) { SetStatus(ex.Message, true); }
+        finally { SetBusy(false); }
+    }
+
+    private void SetBusy(bool busy)
+    {
+        publishButton.IsEnabled = !busy;
+        if (busy)
+        {
+            revokeButton.IsEnabled = copyButton.IsEnabled = openButton.IsEnabled = false;
+            return;
+        }
+        copyButton.IsEnabled = openButton.IsEnabled = currentUrl is not null;
+        revokeButton.IsEnabled = knownActive;
+    }
+
+    private void SetStatus(string text, bool error = false)
+    {
+        statusText.Text = text;
+        statusText.SetResourceReference(TextBlock.ForegroundProperty, error ? "RecordRed" : "Muted");
+    }
+
+    private static string ExpiryText(DateTimeOffset? expiresAt)
+        => expiresAt is null ? "" : $" 만료: {expiresAt.Value.LocalDateTime:yyyy.MM.dd HH:mm}";
 }

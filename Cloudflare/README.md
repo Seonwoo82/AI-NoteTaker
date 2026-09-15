@@ -1,6 +1,6 @@
 # AI-NoteTaker Cloudflare Sync
 
-This Worker stores voice-note metadata, recording folders, completed meeting-note descriptors, shared AI preferences, text profile data, meeting intelligence descriptors, and manual meeting edits in Cloudflare D1. Immutable audio, completed meeting notes, and meeting intelligence documents live in a private R2 bucket for a personal iOS/macOS install.
+This Worker stores voice-note metadata, recording folders, completed meeting-note descriptors, shared AI preferences, text profile data, meeting intelligence descriptors, manual meeting edits, and optional web-share capability records in Cloudflare D1. Immutable audio, completed meeting notes, meeting intelligence documents, and web-share snapshots live in a private R2 bucket for a personal iOS/macOS/Windows install.
 
 Use your own Cloudflare account and deployment. Copy the database ID returned by Wrangler into `wrangler.toml`; store the sync token as a Worker secret. Local `.dev.vars` and Wrangler state are ignored by Git.
 
@@ -44,7 +44,7 @@ The app settings should use the deployed Worker HTTPS origin and the same token.
 
 ## HTTP Contract
 
-All routes require `Authorization: Bearer <SYNC_TOKEN>`.
+All `/v1/*` routes require `Authorization: Bearer <SYNC_TOKEN>`. Public web-share pages under `/s/<token>` never redirect to authentication.
 
 - `GET /v1/health` returns `{ "ok": true, "schemaVersion": 1 }` after DB and R2 binding checks.
 - `GET /v1/folders?cursor=<UUID>` returns up to 100 folder metadata records, including deletion tombstones, ordered by uppercase UUID with nullable `nextCursor`.
@@ -63,8 +63,12 @@ All routes require `Authorization: Bearer <SYNC_TOKEN>`.
 - `GET /v1/recordings/<UUID>/intelligence/<audioVersion>/<revision>` returns the exact completed JSON bytes from `recordings/<UUID>/intelligence/<audioVersion>/<revision>.json` in private R2.
 - `GET /v1/meeting-edits?after=<sequence>` lists append-only manual edit entries as `{ "entries": [{ "sequence": number, "edit": document }], "nextCursor": number|null }`, ordered by sequence.
 - `PUT /v1/meeting-edits/<UUID>` accepts one immutable manual edit document. Repeating the same ID with the same payload succeeds and returns the existing entry; repeating the same ID with a different payload returns `409 edit_conflict`.
+- `PUT /v1/shares/<UUID>` accepts `{ "title": string, "markdown": string }` and returns `{ "url": "https://.../s/<token>", "expiresAt": unixMilliseconds }`. The source UUID is accepted case-insensitively and normalized. The token is 32 random bytes encoded as base64url; D1 stores only its SHA-256 hash. Creating a new share for the same source immediately disables the previous public token.
+- `GET /v1/shares/<UUID>` returns `{ "active": true, "expiresAt": unixMilliseconds }` while a non-expired share exists, otherwise `{ "active": false }`. It never returns the token, object key, markdown, or private content.
+- `DELETE /v1/shares/<UUID>` is idempotent and returns `204`, immediately revoking the public page.
+- `GET /s/<token>` returns escaped, responsive HTML for active, unexpired snapshots. Missing, malformed, expired, and revoked tokens return the same generic 404 page.
 
-Responses include `Cache-Control: no-store` so private metadata, audio, and documents are not cached by intermediary clients. The health route reads both the `recordings` and `meeting_notes` tables and performs an R2 metadata lookup; a missing migration or broken bucket binding fails health. Apply all migrations before deploying the Worker.
+Responses include `Cache-Control: no-store` so private metadata, audio, documents, and public share pages are not cached by intermediary clients. Public share pages also send a strict CSP, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, and `X-Robots-Tag: noindex, nofollow, noarchive`. The health route reads core D1 tables, including `web_shares`, and performs an R2 metadata lookup; a missing migration or broken bucket binding fails health. Apply all migrations before deploying the Worker.
 
 ## Limits And Conflicts
 
@@ -72,7 +76,7 @@ Metadata is limited to 64 KiB. Chunked metadata bodies are read incrementally an
 
 Metadata conflicts use last-edit-wins by the lexicographic tuple `(modifiedAt, mutationID)`. `modifiedAt` is Unix milliseconds and `mutationID` is a canonical uppercase UUID. The higher tuple wins atomically in D1; stale clients receive and should adopt the returned winner. This depends on device clocks being reasonably close. Audio is immutable for this scope, and cloud audio or tombstones are not purged automatically.
 
-Completed notes are limited to 2 MiB and use `(generatedAtMillis, revision)` conflict order. Meeting intelligence documents are limited to 4 MiB and use `(modifiedAt, mutationID)` conflict order while still storing immutable content-addressed R2 objects. Clients verify size, schema, recording/audio version, references, and SHA-256 before atomic publication. A failed transfer preserves the local document. `ai-transcript.json` is an unfinished generation cache and remains local; the complete transcript already travels inside `meeting-notes.json`. OpenRouter API keys remain device-local and are never uploaded. AI model IDs, output language, and the requested automatic-generation preference sync separately through D1.
+Completed notes are limited to 2 MiB and use `(generatedAtMillis, revision)` conflict order. Meeting intelligence documents are limited to 4 MiB and use `(modifiedAt, mutationID)` conflict order while still storing immutable content-addressed R2 objects. Web-share uploads are limited to 1 MiB plus 8 KiB of JSON envelope, with markdown itself limited to 1 MiB UTF-8 and titles trimmed to 300 Unicode code points. Clients verify size, schema, recording/audio version, references, and SHA-256 before atomic publication. A failed transfer preserves the local document. `ai-transcript.json` is an unfinished generation cache and remains local; the complete transcript already travels inside `meeting-notes.json`. OpenRouter API keys remain device-local and are never uploaded. AI model IDs, output language, and the requested automatic-generation preference sync separately through D1.
 
 ## Profile And Meeting Intelligence
 

@@ -22,6 +22,9 @@ public partial class SettingsWindow : Window
         LanguageBox.SelectedIndex = settings.Language == "en" ? 1 : settings.Language == "source" ? 2 : 0;
         KeyHint.Text = settings.ProtectedApiKey is null ? "키는 현재 Windows 계정으로 암호화해 저장합니다." : "저장된 키가 있습니다. 빈칸으로 두면 기존 키를 유지합니다.";
         KeyStatus.Text = settings.ProtectedApiKey is null ? "미설정" : "저장됨";
+        SharingUrlBox.Text = settings.SharingServerUrl;
+        SharingTokenHint.Text = settings.ProtectedSharingSyncToken is null ? "토큰은 현재 Windows 계정으로 암호화해 저장합니다." : "저장된 토큰이 있습니다. 빈칸으로 두면 기존 토큰을 유지합니다.";
+        SharingTokenStatus.Text = settings.ProtectedSharingSyncToken is null ? "미설정" : "저장됨";
         TranscriptionProviderBox.SelectedIndex = settings.TranscriptionProvider == "openrouter" ? 1 : settings.TranscriptionProvider == "qwen" ? 2 : 0;
         QwenAsrModelBox.SelectedIndex = settings.QwenAsrModel == "0.6b" ? 1 : 0;
         SummaryProviderBox.SelectedIndex = settings.SummaryProvider == "openrouter" ? 1 : 0;
@@ -97,14 +100,21 @@ public partial class SettingsWindow : Window
         {
             var selected = ReadSelection();
             if (selected.SummaryProvider == "ollama") _ = OllamaSummarizer.LocalAddress(selected.OllamaAddress);
+            string sharingUrl = SharingUrlBox.Text.Trim();
+            if (sharingUrl.Length > 0 && (!Uri.TryCreate(sharingUrl, UriKind.Absolute, out var shareUri) || shareUri.Scheme != Uri.UriSchemeHttps ||
+                !string.IsNullOrEmpty(shareUri.UserInfo) || !string.IsNullOrEmpty(shareUri.Query) || !string.IsNullOrEmpty(shareUri.Fragment)))
+            { ErrorText.Text = "웹 공유 서버 주소는 https:// 호스트만 입력해 주세요."; return; }
             Result = selected with
             {
                 SummaryModel = model, TranscriptionModel = transcription,
                 Language = LanguageBox.SelectedIndex == 1 ? "en" : LanguageBox.SelectedIndex == 2 ? "source" : "ko",
                 ProtectedApiKey = DeleteKeyBox.IsChecked == true ? null : string.IsNullOrWhiteSpace(ApiKeyBox.Password)
-                    ? Result.ProtectedApiKey : SettingsStore.ProtectKey(ApiKeyBox.Password)
+                    ? Result.ProtectedApiKey : SettingsStore.ProtectKey(ApiKeyBox.Password),
+                SharingServerUrl = sharingUrl,
+                ProtectedSharingSyncToken = DeleteSharingTokenBox.IsChecked == true ? null : string.IsNullOrWhiteSpace(SharingTokenBox.Password)
+                    ? Result.ProtectedSharingSyncToken : SettingsStore.ProtectKey(SharingTokenBox.Password)
             };
-            ApiKeyBox.Clear(); DialogResult = true;
+            ApiKeyBox.Clear(); SharingTokenBox.Clear(); DialogResult = true;
         }
         catch (Exception ex) { ErrorText.Text = ex.Message; }
     }

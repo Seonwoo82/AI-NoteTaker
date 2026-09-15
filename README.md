@@ -15,9 +15,16 @@ AI-NoteTaker는 SwiftUI로 만든 macOS·iOS 개인용 음성 노트 앱입니�
 
 - [작업 예정 기능 목록](docs/FEATURE-BACKLOG.md)
 - [Cloudflare 배포 및 API 가이드](Cloudflare/README.md)
+- [Mac·iPhone·Windows 회의록 웹 공유](docs/WEB-SHARING.md)
 - [서드파티 라이선스 고지](THIRD-PARTY-NOTICES.md)
 
 ## 주요 기능
+
+### 회의록 웹 공유 — Mac·iPhone·Windows
+
+완성된 회의록의 **웹으로 공유**에서 7일 동안 열람할 수 있는 링크를 만듭니다. 받는 사람은 앱 설치나 로그인 없이 브라우저에서 읽을 수 있습니다. 제목과 회의록 본문만 공유하며, 녹음과 전체 전사문은 업로드하지 않습니다. 새 링크를 만들면 이전 링크가 종료되고, **공유 해제**로 만료 전에도 접근을 중단할 수 있습니다.
+
+기존 Cloudflare Worker에 공유 기능과 D1 마이그레이션을 배포해야 합니다. Mac/iPhone은 저장된 동기화 서버 설정을, Windows는 별도의 공유 서버 설정을 사용합니다. [설정·운영 안내](docs/WEB-SHARING.md)
 
 ### 회의 녹음과 라이브러리
 

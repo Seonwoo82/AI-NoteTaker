@@ -125,4 +125,12 @@ public sealed class SettingsStore(string root)
         catch (Exception ex) when (ex is CryptographicException or FormatException)
         { throw new InvalidOperationException("저장된 API 키를 읽을 수 없습니다. 이 Windows 계정에서 키를 다시 저장해 주세요."); }
     }
+    public static string ReadSharingToken(AppSettings settings)
+    {
+        if (string.IsNullOrEmpty(settings.ProtectedSharingSyncToken))
+            throw new InvalidOperationException("웹 공유 동기화 토큰을 설정해 주세요.");
+        try { return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(settings.ProtectedSharingSyncToken), null, DataProtectionScope.CurrentUser)); }
+        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        { throw new InvalidOperationException("저장된 웹 공유 토큰을 읽을 수 없습니다. 이 Windows 계정에서 토큰을 다시 저장해 주세요."); }
+    }
 }

@@ -183,6 +183,12 @@ class MemoryStatement {
       }
       return { ok: 1 };
     }
+    if (this.sql.includes("FROM web_shares") && this.sql.includes("LIMIT 1")) {
+      if (!this.db.hasSchema) {
+        throw new Error("no such table: web_shares");
+      }
+      return { ok: 1 };
+    }
     if (
       this.sql.includes("FROM recordings") &&
       this.sql.includes("audio_version") &&

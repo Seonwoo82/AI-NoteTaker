@@ -31,6 +31,7 @@ public sealed class AppleIcon : Control
         ["sidebar"] = Geometry.Parse("M3,4 H21 V20 H3 Z M9,4 V20 M5,8 H7 M5,12 H7"),
         ["settings"] = Geometry.Parse("M10,2 H14 L15,5 L18,6 L21,5 L23,9 L20,11 V14 L22,17 L19,21 L16,19 L14,20 L13,23 H9 L8,20 L5,18 L2,19 L0,15 L3,13 V10 L1,7 L4,3 L7,5 L9,4 Z M16,12 A4,4 0 1 1 8,12 A4,4 0 1 1 16,12"),
         ["document"] = Geometry.Parse("M5,2 H15 L20,7 V22 H5 Z M15,2 V7 H20 M8,11 H17 M8,15 H17 M8,19 H14"),
+        ["link"] = Geometry.Parse("M10,7 L11,6 A5,5 0 0 1 18,13 L16,15 A5,5 0 0 1 9,15 M14,17 L13,18 A5,5 0 0 1 6,11 L8,9 A5,5 0 0 1 15,9"),
         ["key"] = Geometry.Parse("M11,8 A5,5 0 1 1 1,8 A5,5 0 1 1 11,8 M11,8 H23 M18,8 V13 M22,8 V12"),
         ["refresh"] = Geometry.Parse("M20,8 A9,9 0 1 0 20,17 M20,3 V9 H14"),
         ["info"] = Geometry.Parse("M22,12 A10,10 0 1 1 2,12 A10,10 0 1 1 22,12 M12,10 V18 M12,6 V7"),

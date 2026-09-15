@@ -89,6 +89,7 @@ targets:
           - Info.plist
           - NoteTakerTests.swift
           - SmokeRecordCommandTests.swift
+      - path: ../NoteTakerTests/WebShareClientTests.swift
     dependencies:
       - target: NoteTakerIOS
     info:

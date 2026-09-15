@@ -43,6 +43,8 @@ public sealed record AppSettings
     public string TranscriptionModel { get; init; } = "openai/whisper-large-v3";
     public string Language { get; init; } = "ko";
     public string? ProtectedApiKey { get; init; }
+    public string SharingServerUrl { get; init; } = "";
+    public string? ProtectedSharingSyncToken { get; init; }
 }
 
 public sealed record TranscriptSegment(double StartSeconds, double EndSeconds, string Text, string? Speaker = null);

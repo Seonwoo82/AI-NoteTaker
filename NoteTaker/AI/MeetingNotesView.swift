@@ -4,6 +4,7 @@ struct MeetingNotesView: View {
     let recording: Recording
     let service: MeetingNotesService
     @Bindable var configuration: AIConfiguration
+    let syncSettings: SyncSettings?
     @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -14,15 +15,19 @@ struct MeetingNotesView: View {
     @State private var selectedTab = NotesTab.minutes
     @State private var selectedTranscriptMode = TranscriptDisplayMode.cleaned
     @State private var showingRegenerateConfirmation = false
+    @State private var showingWebShare = false
+    @State private var showSyncSettingsAfterShareDismiss = false
     @State private var copied = false
     @State private var selectedOutlineBlock: Int?
 
     init(recording: Recording, service: MeetingNotesService, configuration: AIConfiguration,
+         syncSettings: SyncSettings? = nil,
          resolvedTranscript: MeetingTranscript? = nil, participantPreparationProgress: ParticipantPreparationProgress? = nil,
          initiallyShowsTranscript: Bool = false, initiallyShowsOriginalTranscript: Bool = false) {
         self.recording = recording
         self.service = service
         self.configuration = configuration
+        self.syncSettings = syncSettings
         self.resolvedTranscript = resolvedTranscript
         self.participantPreparationProgress = participantPreparationProgress
         _selectedTab = State(initialValue: initiallyShowsTranscript ? .transcript : .minutes)
@@ -78,6 +83,8 @@ struct MeetingNotesView: View {
         .onChange(of: recording.id) { oldID, _ in
             if showingEnhancement { service.cancel(oldID) }
             showingEnhancement = false
+            showingWebShare = false
+            showSyncSettingsAfterShareDismiss = false
             copied = false
             selectedTab = .minutes
             selectedTranscriptMode = .cleaned
@@ -102,6 +109,20 @@ struct MeetingNotesView: View {
                     showingEnhancement = false
                 },
                 onClose: { showingEnhancement = false })
+        }
+        .sheet(isPresented: $showingWebShare, onDismiss: {
+            if showSyncSettingsAfterShareDismiss {
+                showSyncSettingsAfterShareDismiss = false
+                configuration.settingsTab = "sync"
+                openSettings()
+            }
+        }) {
+            if let syncSettings, let document {
+                WebShareSheet(recording: recording, document: document, syncSettings: syncSettings) {
+                    showSyncSettingsAfterShareDismiss = true
+                    showingWebShare = false
+                }
+            }
         }
         .confirmationDialog(
             String(localized: "Regenerate Minutes?"),
@@ -222,6 +243,14 @@ struct MeetingNotesView: View {
                 }
                 .disabled(!configuration.isTranscriptCleanupConfigured)
                 .accessibilityIdentifier("ai-clean-transcript")
+                if syncSettings != nil {
+                    Button {
+                        showingWebShare = true
+                    } label: {
+                        Label(String(localized: "Share to Web"), systemImage: "link")
+                    }
+                    .accessibilityIdentifier("ai-web-share")
+                }
             }
         }
         .buttonStyle(.bordered)

@@ -1,3 +1,5 @@
+import { WebShareHttpError, handlePublicShare, handleShareManagement } from "./web-sharing.mjs";
+
 const SCHEMA_VERSION = 1;
 const PAGE_SIZE = 100;
 const METADATA_LIMIT_BYTES = 64 * 1024;
@@ -93,7 +95,7 @@ export default {
     try {
       return await handleRequest(request, env);
     } catch (error) {
-      if (error instanceof HttpError) {
+      if (error instanceof HttpError || error instanceof WebShareHttpError) {
         return jsonError(error.status, error.code, error.message, error.headers);
       }
       return jsonError(500, "internal_error", "The sync service could not complete the request.");
@@ -102,9 +104,20 @@ export default {
 };
 
 async function handleRequest(request, env) {
+  const url = new URL(request.url);
+  if (url.pathname === "/s" || url.pathname.startsWith("/s/")) {
+    if (request.method === "GET" || request.method === "HEAD") {
+      const response = await handlePublicShare(env, url.pathname.startsWith("/s/") ? url.pathname.slice("/s/".length) : "");
+      if (request.method === "HEAD") {
+        return new Response(null, { status: response.status, headers: response.headers });
+      }
+      return response;
+    }
+    return handlePublicShare(env, "");
+  }
+
   await requireAuthorization(request, env);
 
-  const url = new URL(request.url);
   if (url.pathname === "/v1/health" && request.method === "GET") {
     return health(env);
   }
@@ -134,6 +147,11 @@ async function handleRequest(request, env) {
 
   if (url.pathname === "/v1/meeting-edits" && request.method === "GET") {
     return listMeetingEdits(env, url);
+  }
+
+  const shareMatch = url.pathname.match(/^\/v1\/shares\/([^/]+)$/);
+  if (shareMatch) {
+    return handleShareManagement(request, env, shareMatch[1]);
   }
 
   if (url.pathname === "/v1/ai-settings" && request.method === "GET") {
@@ -550,6 +568,7 @@ async function health(env) {
   await env.DB.prepare("SELECT id FROM recordings ORDER BY id ASC LIMIT 1").first();
   await env.DB.prepare("SELECT id FROM recording_folders ORDER BY id ASC LIMIT 1").first();
   await env.DB.prepare("SELECT recording_id FROM meeting_notes ORDER BY sync_key ASC LIMIT 1").first();
+  await env.DB.prepare("SELECT source_id FROM web_shares ORDER BY source_id ASC LIMIT 1").first();
   await env.AUDIO.head(".healthcheck");
   return json({ ok: true, schemaVersion: SCHEMA_VERSION });
 }

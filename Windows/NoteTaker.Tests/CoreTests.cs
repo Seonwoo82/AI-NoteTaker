@@ -313,3 +313,142 @@ public sealed class AiTests
         Assert.Equal(existing, JsonDisk.Read<MeetingNotes>(library.NotesPath(record.Id)));
     }
 }
+
+public sealed class WebShareTests
+{
+    private static readonly Guid RecordingId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+
+    [Fact] public async Task PublishUsesUppercaseSourceIdDedicatedTokenAndMinutesOnlyPayload()
+    {
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token", new StubHandler(async (request, token) =>
+        {
+            Assert.Equal(HttpMethod.Put, request.Method);
+            Assert.Equal("https://share.example.test/v1/shares/AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE", request.RequestUri!.AbsoluteUri);
+            Assert.Equal("Bearer", request.Headers.Authorization!.Scheme);
+            Assert.Equal("sync-token", request.Headers.Authorization.Parameter);
+            var body = await request.Content!.ReadAsStringAsync(token);
+            Assert.Equal("{\"title\":\"회의 제목\",\"markdown\":\"# 회의록\\n\\n결정 사항\"}", body);
+            Assert.DoesNotContain("audio", body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("transcript", body, StringComparison.OrdinalIgnoreCase);
+            return StubHandler.Json("{\"url\":\"https://share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expiresAt\":1790000000000}");
+        }));
+
+        var result = await client.PublishAsync(RecordingId, "  회의 제목  ", "# 회의록\n\n결정 사항", default);
+
+        Assert.Equal("https://share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", result.Url);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1790000000000), result.ExpiresAt);
+    }
+
+    [Fact] public async Task StatusAndRevokeUseAuthenticatedManagementContractWithoutRawUrl()
+    {
+        var calls = new List<(HttpMethod Method, string Path)>();
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token", new StubHandler((request, _) =>
+        {
+            calls.Add((request.Method, request.RequestUri!.PathAndQuery));
+            Assert.Equal("sync-token", request.Headers.Authorization!.Parameter);
+            return Task.FromResult(request.Method == HttpMethod.Get
+                ? StubHandler.Json("{\"active\":true,\"expiresAt\":1790000000000}")
+                : new HttpResponseMessage(HttpStatusCode.NoContent));
+        }));
+
+        var status = await client.GetStatusAsync(RecordingId, default);
+        await client.RevokeAsync(RecordingId, default);
+
+        Assert.True(status.Active);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1790000000000), status.ExpiresAt);
+        Assert.Equal([(HttpMethod.Get, "/v1/shares/AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"),
+            (HttpMethod.Delete, "/v1/shares/AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")], calls);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"active\":true}")]
+    [InlineData("{\"active\":true,\"expiresAt\":0}")]
+    public async Task StatusRequiresExplicitActiveAndExpiryWhenActive(string responseBody)
+    {
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token",
+            new StubHandler((_, _) => Task.FromResult(StubHandler.Json(responseBody))));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.GetStatusAsync(RecordingId, default));
+    }
+
+    [Fact] public async Task RedirectResponsesAreFailuresAndDoNotLeakProviderBody()
+    {
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token",
+            new StubHandler((_, _) => Task.FromResult(StubHandler.Json("private redirect body", HttpStatusCode.Redirect))));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.PublishAsync(RecordingId, "회의", "내용", default));
+
+        Assert.Contains("리디렉션", exception.Message);
+        Assert.DoesNotContain("private redirect body", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("https://evil.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("https://share.example.test/other/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("https://share.example.test/s/short")]
+    [InlineData("https://share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?copy=1")]
+    [InlineData("https://user:pass@share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task PublishRejectsUnexpectedReturnedShareUrls(string returnedUrl)
+    {
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token",
+            new StubHandler((_, _) => Task.FromResult(StubHandler.Json($"{{\"url\":\"{returnedUrl}\",\"expiresAt\":1790000000000}}"))));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.PublishAsync(RecordingId, "회의", "내용", default));
+    }
+
+    [Fact] public async Task RevokeRequiresNoContentContract()
+    {
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token",
+            new StubHandler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK))));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RevokeAsync(RecordingId, default));
+    }
+
+    [Fact] public void SharingSettingsRequireHttpsServerAndDedicatedToken()
+    {
+        var settings = new AppSettings
+        {
+            SharingServerUrl = "http://share.example.test",
+            ProtectedApiKey = SettingsStore.ProtectKey("openrouter-key"),
+            ProtectedSharingSyncToken = SettingsStore.ProtectKey("sync-token")
+        };
+
+        Assert.Throws<InvalidOperationException>(() => SettingsStore.ReadSharingToken(settings with { ProtectedSharingSyncToken = null }));
+        Assert.Equal("sync-token", SettingsStore.ReadSharingToken(settings));
+        Assert.Throws<InvalidOperationException>(() => new WebShareClient(new Uri(settings.SharingServerUrl), SettingsStore.ReadSharingToken(settings)));
+        Assert.Throws<InvalidOperationException>(() => new WebShareClient(new Uri("https://share.example.test/prefix/"), "sync-token"));
+        Assert.Throws<InvalidOperationException>(() => new WebShareClient(new Uri("https://sync-token@share.example.test/"), "sync-token"));
+        Assert.Throws<InvalidOperationException>(() => new WebShareClient(new Uri("https://share.example.test/?token=sync-token"), "sync-token"));
+    }
+
+    [Fact] public async Task PublishValidatesServerSidePayloadLimitsBeforeSending()
+    {
+        int sends = 0;
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token",
+            new StubHandler((_, _) => { sends++; return Task.FromResult(StubHandler.Json("{}")); }));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.PublishAsync(RecordingId, "", "내용", default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.PublishAsync(RecordingId, new string('가', 301), "내용", default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.PublishAsync(RecordingId, "회의", "", default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.PublishAsync(RecordingId, "회의", new string('a', 1024 * 1024 + 1), default));
+        Assert.Equal(0, sends);
+    }
+
+    [Fact] public async Task KoreanMarkdownNearOneMiBIsSentWithoutUnicodeEscaping()
+    {
+        var markdown = new string('가', 1024 * 1024 / Encoding.UTF8.GetByteCount("가"));
+        using var client = new WebShareClient(new Uri("https://share.example.test/"), "sync-token", new StubHandler(async (request, token) =>
+        {
+            var bodyBytes = await request.Content!.ReadAsByteArrayAsync(token);
+            var body = Encoding.UTF8.GetString(bodyBytes);
+            Assert.Contains("가가가", body);
+            Assert.DoesNotContain("\\uac00", body, StringComparison.OrdinalIgnoreCase);
+            Assert.InRange(bodyBytes.Length, 1, 1024 * 1024 + 8192);
+            return StubHandler.Json("{\"url\":\"https://share.example.test/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expiresAt\":1790000000000}");
+        }));
+
+        await client.PublishAsync(RecordingId, "회의", markdown, default);
+    }
+}

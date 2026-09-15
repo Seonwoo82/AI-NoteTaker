@@ -7,6 +7,7 @@ struct RecordingDetailTabsView: View {
     let meetingNotes: MeetingNotesService
     let aiConfiguration: AIConfiguration
     let meeting: MeetingFeatureContext
+    let syncSettings: SyncSettings
     var evidenceRequest: MeetingEvidenceRequest? = nil
 
     @Environment(\.openSettings) private var openSettings
@@ -33,6 +34,7 @@ struct RecordingDetailTabsView: View {
                 audioDetail
             case .notes:
                 MeetingNotesView(recording: recording, service: meetingNotes, configuration: aiConfiguration,
+                    syncSettings: syncSettings,
                     resolvedTranscript: meeting.resolved(recording)?.transcript,
                     participantPreparationProgress: meeting.analysis.participantPreparationProgress(for: recording.id))
             case .meeting:

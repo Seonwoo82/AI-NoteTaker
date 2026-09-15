@@ -48,6 +48,14 @@
      <TextBlock Text="음성 인식 모델" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,13,0,5" /><TextBox x:Name="TranscriptionModelBox" AutomationProperties.Name="음성 인식 모델 ID" />
      <TextBlock Text="전사 모델은 audio/transcriptions를 지원해야 합니다." Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,8,0,0" />
     </StackPanel></Border>
+    <Border Style="{StaticResource SettingsCard}" Margin="0,0,0,16"><StackPanel>
+     <Grid><StackPanel Orientation="Horizontal"><c:AppleIcon Kind="link" Width="16" Height="16" Margin="0,0,7,0" /><TextBlock Text="웹 공유" FontWeight="SemiBold" FontSize="13" /></StackPanel><Border Background="{DynamicResource SegmentSurface}" CornerRadius="9" Padding="7,2" HorizontalAlignment="Right"><TextBlock x:Name="SharingTokenStatus" Text="미설정" FontSize="10" Foreground="{DynamicResource Muted}" /></Border></Grid>
+     <TextBlock Text="개인 Cloudflare 배포의 HTTPS 주소와 SYNC_TOKEN을 입력합니다. OpenRouter 키와 별도로 저장하며, 회의록 공유에만 사용합니다." Foreground="{DynamicResource Muted}" LineHeight="19" FontSize="11" Margin="0,9,0,12" />
+     <TextBlock Text="공유 서버 주소" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,0,0,5" /><TextBox x:Name="SharingUrlBox" AutomationProperties.Name="웹 공유 서버 주소" />
+     <TextBlock Text="SYNC_TOKEN" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,13,0,5" /><PasswordBox x:Name="SharingTokenBox" AutomationProperties.Name="웹 공유 동기화 토큰" />
+     <TextBlock x:Name="SharingTokenHint" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,8,0,12" />
+     <CheckBox x:Name="DeleteSharingTokenBox" Content="저장된 웹 공유 토큰 삭제" />
+    </StackPanel></Border>
     <Border Style="{StaticResource SettingsCard}"><Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="180" /></Grid.ColumnDefinitions><TextBlock Text="출력 언어" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" /><ComboBox Grid.Column="1" x:Name="LanguageBox" AutomationProperties.Name="회의록 출력 언어"><ComboBoxItem Content="한국어" /><ComboBoxItem Content="English" /><ComboBoxItem Content="원문 언어" /></ComboBox></Grid></Border>
     <TextBlock x:Name="ErrorText" Foreground="{DynamicResource RecordRed}" Margin="0,12,0,0" />
    </StackPanel>
