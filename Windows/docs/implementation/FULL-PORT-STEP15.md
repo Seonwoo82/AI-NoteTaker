@@ -26,6 +26,16 @@ WinRT 공유 API를 위해 WPF 앱만 `net10.0-windows10.0.19041.0`으로 지정
 
 이 단계의 코드가 포함된 새 ZIP과 완료/동기화 단축키의 통합 검증은 아래 배포 결과에 기록한다. 기존 단계 14 ZIP에는 새 시스템 공유 기능이 없다. 실제 사용자 마이크, 다른 앱으로 파일 전송, Apple 실기기 및 공개 Cloudflare 서버는 이번 검사에 사용하지 않았다.
 
+## 현재 후보 ZIP의 검증 결과
+
+공유 경로 수정을 반영한 후보는 `AI-NoteTaker-0.4.0-win-x64.zip`, `0.4.0+7f7e4f51621b9d51d37795b3d29e1281bb2af37d`, 657,292,868바이트다. SHA256: `76079C4AF88DFA260E9F294F3FA033888D0E521543CCF79C7B10CD5B7B1FE012`.
+
+새 `Windows/artifacts/verify-step15-3d484db0` 폴더의 UI·Whisper·Qwen·트레이·파일 입력 녹음·참여자·프로필·회의 분석·회의록 보완 **9개가 통과**했다. Ctrl+Enter로 녹음을 완료하고 실제 Whisper/Ollama 자동 생성을 마치는 경로도 포함한다. `step15-core-package.json` 및 ZIP 옆 `.verification.json`은 네이티브 오디오 공유 1개가 남아 있으므로 `Passed: false`와 `Pending`을 명시한다. 이전 ZIP의 성공 보고서를 현재 ZIP의 성공으로 재사용하지 않는다. 정상 검증 스크립트도 실패 시 해시·완료 항목·실패 원인을 먼저 저장하도록 보완했다.
+
+같은 새 ZIP의 `sync-step15-cache-portable/result.json`은 실제 WPF/Worker/SQLite에서 자동/수동·Ctrl+Shift+S·모달 대기·완료 재진입 차단·오프라인 재시작·취소 대기·오디오 버전 갱신 검증 통과다. R2는 파일 시스템 대체 구현이며 배포된 서버 검증이 아니다.
+
+추가 실제 출력 장치 검사 **1개 통과**: `test-step15/selected-output.trx`. 생성한 무음 WAV의 두 선택 구간을 NAudio 출력 장치에서 끝까지 처리하고 최종 위치·일반 재생 복귀·일시정지를 확인했다. 마이크/환경 오디오/실제 회의 파일을 사용하지 않았으며 사람이 들은 음성 품질의 증거는 아니다. 이 opt-in 검사 추가 후 장치 검사 항목은 6개이며, 앞선 전체 227개 통과/5개 건너뜀 기록과 실행 시점을 구분한다.
+
 ## 포터블 검사에서 발견한 긴 경로
 
 첫 후보 `326e194`의 새 압축 해제 위치 `verify-package-d8f14660`에서 공유 파일 경로가 265자가 되어 `StorageFile.GetFileFromPathAsync`가 실패했다. 오류를 비대화형 smoke 로그에 기록하는 목록에서도 신규 모드를 빠뜨려 메시지 창이 떠 있었으므로 함께 수정했다. 확장 경로 접두사도 실제 Windows API에서 같은 오류가 났다(`audio-share-step15-long/error.txt`). 짧은 사용자 임시 캐시를 도입한 뒤 `audio-share-step15-active/prepared.json`에서 원본 271자·공유 경로 150자와 실제 WinRT 파일 준비를 확인했다. 긴 제목/깊은 라이브러리/잠긴 사본의 purge 재시도 회귀 검사도 추가했다.

@@ -32,6 +32,22 @@ public sealed class HardwareTests
     public async Task SystemAudioCapturePreservesWallClockAcrossPause() => await CaptureAsync(RecordingMode.SystemAudio, playTone: false);
 
     [AudioHardwareFact, Trait("Category", "Hardware")]
+    public async Task SelectedSpeechRangesFinishOnRealOutputWithoutPlayingInterveningTimeline()
+    {
+        using var folder = new TestFolder(); string path = Path.Combine(folder.Root, "selected-silence.wav");
+        TestFolder.Wave(path, 5, 0); // Device output only: no microphone or environmental audio.
+        using var player = new AudioPlayer(); player.Load(path);
+        player.PlayRanges([new(.25, .5), new(3, 3.25)]);
+        Assert.True(player.HasRangePlayback); Assert.True(player.IsPlaying);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (player.IsPlaying && DateTime.UtcNow < deadline) await Task.Delay(20);
+        Assert.False(player.IsPlaying); Assert.InRange(player.Position, 3.249, 3.251);
+        player.StopRanges(); Assert.False(player.HasRangePlayback);
+        player.Seek(1); player.Toggle(); Assert.True(player.IsPlaying);
+        player.Toggle(); Assert.False(player.IsPlaying);
+    }
+
+    [AudioHardwareFact, Trait("Category", "Hardware")]
     public async Task MicrophoneCaptureStartsPausesAndFinalizesWave() => await CaptureAsync(RecordingMode.Microphone, playTone: false);
 
     [AudioHardwareFact, Trait("Category", "Hardware")]
