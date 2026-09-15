@@ -36,6 +36,8 @@ internal static class SmokeProfile
             await SmokeUi.CaptureAsync(window, Path.Combine(output, "profile-light.png"));
             ((TabControl)window.FindName("ProfileTabs")).SelectedIndex = 1;
             await Start(window); await SmokeUi.CaptureAsync(window, Path.Combine(output, "enrollment-light.png"));
+            await WaitUntil(() => ((TextBlock)window.FindName("EnrollmentInputStatus")).Text == $"마이크 입력 감지 · {captures.Last().DetectedInputSeconds:0.0}초", TimeSpan.FromSeconds(3));
+            if (captures.Last().DetectedInputSeconds < 1 || ((ProgressBar)window.FindName("EnrollmentLevel")).Value < 0) throw new InvalidOperationException("Enrollment did not report measured input duration.");
             Click(window, "FinishEnrollmentButton"); await window.CurrentOperation;
             if (window.LastError is not null) throw window.LastError;
             voice = store.LoadVoice() ?? throw new InvalidOperationException("Voice was not enrolled.");
@@ -76,7 +78,7 @@ internal static class SmokeProfile
         if (OwnerVoicePolicy.Classify(same.ModelId, same.Embedding, voice) != OwnerSpeechState.Owner || OwnerVoicePolicy.Classify(other.ModelId, other.Embedding, voice) == OwnerSpeechState.Owner)
             throw new InvalidOperationException($"Held-out live voice check failed: same={sameScore:F4}, other={otherScore:F4}.");
         await AutomaticAnalysis(root, output, publicSpeech, modelRoot);
-        JsonDisk.Write(Path.Combine(output, "result.json"), new { Passed = true, LiveSameSpeakerCosine = sameScore, LiveOtherSpeakerCosine = otherScore, LiveInferenceSeconds = liveSeconds,
+        JsonDisk.Write(Path.Combine(output, "result.json"), new { Passed = true, MeasuredEnrollmentInputVisible = true, LiveSameSpeakerCosine = sameScore, LiveOtherSpeakerCosine = otherScore, LiveInferenceSeconds = liveSeconds,
             Scope = "Real WPF profile/enrollment/cancel/close/delete/failure plus Sherpa enrollment and stdin live inference. Real automatic Whisper/Sherpa then Ollama meeting analysis after file capture. Public Chinese speech only; no microphone or physical playback. No Korean meeting accuracy claim." });
     }
     private static async Task AutomaticAnalysis(string root, string output, string fixture, string modelRoot)
@@ -159,7 +161,7 @@ internal static class SmokeProfile
         }
         return stream.ToArray();
     }
-    private sealed class FileCapture(string fixture) : IRecordingSession, IRecentAudioSource
+    private sealed class FileCapture(string fixture) : IRecordingSession, IRecentAudioSource, IMicrophoneInputActivity
     {
         public RecentAudioWindow? RecentWindow { get; set; }
         public RecentAudioWindow? RecentAudio() => IsPaused || Stopped ? null : RecentWindow;
@@ -169,8 +171,17 @@ internal static class SmokeProfile
         public bool IsPaused { get; private set; }
         public float MicrophoneLevel => .12f;
         public float SystemLevel => 0;
+        private MicrophoneInputActivity? activity;
+        public double DetectedInputSeconds => activity?.DetectedSeconds ?? 0;
+        public float InputRms => activity?.Rms ?? 0;
         public Task StartAsync(string path, RecordingMode mode, string? microphoneId, string? outputId)
-        { File.Copy(fixture, path); using var reader = new WaveFileReader(path); DurationSeconds = reader.TotalTime.TotalSeconds; return Task.CompletedTask; }
+        {
+            File.Copy(fixture, path); using var reader = new WaveFileReader(path); DurationSeconds = reader.TotalTime.TotalSeconds;
+            var pcm = new SampleToWaveProvider16(reader.ToSampleProvider()); activity = new(pcm.WaveFormat.SampleRate, pcm.WaveFormat.Channels);
+            byte[] buffer = new byte[pcm.WaveFormat.AverageBytesPerSecond]; int read;
+            while ((read = pcm.Read(buffer, 0, buffer.Length)) > 0) activity.Append(buffer.AsSpan(0, read));
+            return Task.CompletedTask;
+        }
         public void TogglePause() => IsPaused = !IsPaused;
         public Task<double> StopAsync() { Stopped = true; return Task.FromResult(DurationSeconds); }
         public ValueTask DisposeAsync() { Stopped = true; return ValueTask.CompletedTask; }

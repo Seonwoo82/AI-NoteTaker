@@ -9,6 +9,8 @@ public sealed class VoiceEnrollmentSession(string root, string modelRoot, Func<I
     public bool IsRecording => recording is not null;
     public double Duration => recording?.DurationSeconds ?? 0;
     public float Level => recording?.MicrophoneLevel ?? 0;
+    public double? DetectedInputSeconds => recording is IMicrophoneInputActivity signal ? signal.DetectedInputSeconds : null;
+    public float MeterLevel => recording is IMicrophoneInputActivity signal ? MicrophoneInputActivity.Meter(signal.InputRms) : Level;
     public string? Failure => recording?.Failure;
 
     public async Task StartAsync(string? microphoneId, IProgress<string> progress, CancellationToken token)

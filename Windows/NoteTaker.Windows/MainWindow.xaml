@@ -179,8 +179,13 @@
    <Border Style="{StaticResource SettingsCard}" Width="300" Margin="8" Padding="18"><StackPanel x:Name="CaptureOptions">
     <TextBlock Text="녹음 설정" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,15" />
     <TextBlock Text="녹음할 소리" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,0,0,5" /><ComboBox x:Name="ModeBox" SelectedIndex="0" SelectionChanged="Mode_Changed" AutomationProperties.Name="녹음 모드"><ComboBoxItem Content="마이크 + 시스템" /><ComboBoxItem Content="마이크만" /><ComboBoxItem Content="시스템 오디오만" /></ComboBox>
-    <TextBlock Text="마이크" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" /><ComboBox x:Name="MicrophoneBox" DisplayMemberPath="Name" AutomationProperties.Name="마이크 장치" />
-    <TextBlock Text="출력 장치" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" /><ComboBox x:Name="OutputBox" DisplayMemberPath="Name" AutomationProperties.Name="출력 장치" />
+    <TextBlock Text="마이크" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" /><ComboBox x:Name="MicrophoneBox" DisplayMemberPath="Name" SelectionChanged="CaptureDevice_Changed" AutomationProperties.Name="마이크 장치" />
+    <TextBlock Text="출력 장치" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" /><ComboBox x:Name="OutputBox" DisplayMemberPath="Name" SelectionChanged="CaptureDevice_Changed" AutomationProperties.Name="출력 장치" />
+    <TextBlock Text="마이크 음량" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" />
+    <DockPanel><TextBlock DockPanel.Dock="Right" Width="38" TextAlignment="Right" Text="{Binding ElementName=MicrophoneGainSlider, Path=Value, StringFormat={}{0:0.00}}" FontFamily="Consolas" /><Slider x:Name="MicrophoneGainSlider" Minimum="0" Maximum="2" Value="1" TickFrequency="0.05" IsSnapToTickEnabled="True" SmallChange="0.05" LargeChange="0.25" ValueChanged="CaptureGain_Changed" AutomationProperties.Name="마이크 녹음 음량" /></DockPanel>
+    <TextBlock Text="시스템 소리 음량" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" />
+    <DockPanel><TextBlock DockPanel.Dock="Right" Width="38" TextAlignment="Right" Text="{Binding ElementName=SystemGainSlider, Path=Value, StringFormat={}{0:0.00}}" FontFamily="Consolas" /><Slider x:Name="SystemGainSlider" Minimum="0" Maximum="2" Value="1" TickFrequency="0.05" IsSnapToTickEnabled="True" SmallChange="0.05" LargeChange="0.25" ValueChanged="CaptureGain_Changed" AutomationProperties.Name="시스템 녹음 음량" /></DockPanel>
+    <TextBlock Text="1.00은 기본 음량, 0.00은 음소거입니다." FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,8,0,0" />
     <Button x:Name="RefreshDevicesButton" Content="장치 새로고침" Click="RefreshDevices_Click" Margin="0,16,0,0" HorizontalAlignment="Left" />
     <TextBlock Text="선택한 출력 장치의 전체 소리를 녹음합니다." FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,12,0,0" />
    </StackPanel></Border>

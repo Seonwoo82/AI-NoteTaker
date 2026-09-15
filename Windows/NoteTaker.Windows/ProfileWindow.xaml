@@ -28,6 +28,8 @@
       <TextBlock x:Name="VoiceProfileStatus" FontWeight="SemiBold" FontSize="15" /><TextBlock Text="조용한 곳에서 혼자 10~30초 동안 아래 문장을 읽어 주세요." Margin="0,10,0,12" />
       <Border Background="{DynamicResource AccentSoft}" Padding="16" CornerRadius="8"><TextBlock Text="안녕하세요. 앞으로 회의에서 제가 말한 내용을 쉽게 찾기 위해 목소리를 등록합니다. 오늘 회의의 목표와 주요 안건을 차근차근 살펴보고, 결정한 내용과 다음에 할 일을 함께 정리하겠습니다." FontSize="15" LineHeight="25" /></Border>
       <TextBlock x:Name="EnrollmentClock" Text="00:00 / 00:30" FontFamily="Consolas" FontSize="22" Margin="0,18,0,12" TextAlignment="Center" /><ProgressBar x:Name="EnrollmentLevel" Height="6" />
+      <TextBlock x:Name="EnrollmentInputStatus" Text="마이크 입력 감지 · 0.0초" FontSize="11" TextAlignment="Center" Foreground="{DynamicResource Muted}" Margin="0,8,0,0" />
+      <TextBlock Text="입력 감지 시간에는 주변 소리도 포함될 수 있습니다. 등록할 때 말소리를 별도로 확인합니다." FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,6,0,0" />
       <WrapPanel HorizontalAlignment="Center" Margin="0,18,0,0"><Button x:Name="StartEnrollmentButton" Content="목소리 녹음 시작" Style="{StaticResource PrimaryButton}" Click="StartEnrollment_Click" Margin="0,0,8,8" /><Button x:Name="FinishEnrollmentButton" Content="등록 완료" Click="FinishEnrollment_Click" IsEnabled="False" Margin="0,0,8,8" /><Button x:Name="CancelEnrollmentButton" Content="등록 취소" Click="CancelEnrollment_Click" IsEnabled="False" Margin="0,0,0,8" /></WrapPanel>
       <Button x:Name="DeleteVoiceButton" Content="목소리 프로필 삭제" Click="DeleteVoice_Click" Style="{StaticResource LinkButton}" Foreground="{DynamicResource RecordRed}" HorizontalAlignment="Center" />
      </StackPanel></Border>

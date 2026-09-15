@@ -39,7 +39,7 @@ public partial class ProfileWindow : Window
         try { var voice = store.LoadVoice(); VoiceProfileStatus.Text = voice is null ? "아직 등록하지 않았습니다" : $"목소리 등록됨 · {voice.EnrolledAt.LocalDateTime:yyyy.MM.dd HH:mm}"; }
         catch (Exception ex) { VoiceProfileStatus.Text = "이 목소리 프로필은 다시 등록해야 합니다."; ProfileStatus.Text = ex.Message; }
         StartEnrollmentButton.Content = File.Exists(store.VoicePath) ? "목소리 다시 등록" : "목소리 녹음 시작";
-        EnrollmentClock.Text = $"{Recording.FormatTime(enrollment.Duration)} / 00:30"; EnrollmentLevel.Value = enrollment.Level; UpdateControls();
+        UpdateEnrollmentSignal(); UpdateControls();
     }
     private void UpdateControls()
     {
@@ -93,13 +93,20 @@ public partial class ProfileWindow : Window
     }
     private void Timer_Tick(object? sender, EventArgs e)
     {
-        EnrollmentClock.Text = $"{Recording.FormatTime(enrollment.Duration)} / 00:30"; EnrollmentLevel.Value = enrollment.Level;
+        UpdateEnrollmentSignal();
         UpdateControls();
         if (!busy && !cancelling && !closing && enrollment.IsRecording)
         {
             if (enrollment.Failure is not null) { string failure = enrollment.Failure; Begin(async _ => { await enrollment.DisposeAsync(); ProfileStatus.Text = failure; RefreshVoice(); }); }
             else if (enrollment.Duration >= 30) FinishEnrollment();
         }
+    }
+    private void UpdateEnrollmentSignal()
+    {
+        EnrollmentClock.Text = $"{Recording.FormatTime(enrollment.Duration)} / 00:30";
+        EnrollmentLevel.Value = enrollment.MeterLevel;
+        EnrollmentInputStatus.Text = enrollment.DetectedInputSeconds is { } seconds ? $"마이크 입력 감지 · {seconds:0.0}초" :
+            enrollment.IsRecording ? "이 입력 소스는 감지 시간을 제공하지 않습니다." : "마이크 입력 감지 · 0.0초";
     }
     private void DeleteVoice_Click(object sender, RoutedEventArgs e)
     {

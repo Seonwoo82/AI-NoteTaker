@@ -52,9 +52,11 @@ public partial class MainWindow : Window
         this.recordingFactory = recordingFactory ?? (() => new AudioRecorder());
         this.aiModelRoot = aiModelRoot ?? library.Root;
         settingsStore = new SettingsStore(library.Root);
+        capturePreferencesStore = new CapturePreferencesStore(library.Root);
         settings = settingsStore.Load();
         folderStore = new RecordingFolderStore(library.Root);
         InitializeComponent();
+        LoadCapturePreferences();
         LoadFolderAppearance();
         PlaybackSlider.SeekRequested += SeekTo;
         OverviewWaveform.SeekRequested += SeekTo;
@@ -201,7 +203,9 @@ public partial class MainWindow : Window
                 bool stale = transcript is not null && (notes.TranscriptHash is not null
                     ? notes.TranscriptHash != MeetingNotesService.TranscriptContentHash(transcript)
                     : File.GetLastWriteTimeUtc(library.TranscriptPath(recording.Id)) > notes.CreatedAt.UtcDateTime.AddSeconds(1));
-                NotesMeta.Text = recording.Subtitle + $"  ·  {notes.Model}" + (stale ? "  ·  전사문이 바뀌었습니다. 다시 정리해 주세요." : "");
+                string cost = notes.CostUsd is >= 0 ? "  ·  제공자 보고 비용 US$ " + notes.CostUsd.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) : "";
+                NotesMeta.Text = $"생성 {notes.CreatedAt.LocalDateTime:yyyy.MM.dd HH:mm}  ·  녹음 {Recording.FormatTime(recording.DurationSeconds)}  ·  {notes.Model}" + cost +
+                    (stale ? "  ·  전사문이 바뀌었습니다. 다시 정리해 주세요." : "");
             }
             GenerateButton.Content = notes is null ? "회의록 생성" : "다시 생성";
         }
@@ -220,10 +224,11 @@ public partial class MainWindow : Window
 
     private void RefreshDevices()
     {
+        refreshingDevices = true;
         try
         {
-            string? mic = (MicrophoneBox.SelectedItem as AudioDevice)?.Id;
-            string? output = (OutputBox.SelectedItem as AudioDevice)?.Id;
+            string? mic = (MicrophoneBox.SelectedItem as AudioDevice)?.Id ?? capturePreferences.MicrophoneId;
+            string? output = (OutputBox.SelectedItem as AudioDevice)?.Id ?? capturePreferences.OutputId;
             var microphones = AudioRecorder.GetDevices(DataFlow.Capture);
             var outputs = AudioRecorder.GetDevices(DataFlow.Render);
             MicrophoneBox.ItemsSource = microphones;
@@ -233,10 +238,11 @@ public partial class MainWindow : Window
             SetStatus("오디오 장치 목록을 확인했습니다.");
         }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
+        finally { refreshingDevices = false; }
     }
     private void RefreshDevices_Click(object sender, RoutedEventArgs e) => RefreshDevices();
     private RecordingMode Mode => ModeBox.SelectedIndex switch { 1 => RecordingMode.Microphone, 2 => RecordingMode.SystemAudio, _ => RecordingMode.Mixed };
-    private void Mode_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) UpdateControls(); }
+    private void Mode_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) { SaveCapturePreferences(); UpdateControls(); } }
 
     private async Task LoadWaveformAsync(Recording recording)
     {
@@ -362,6 +368,7 @@ public partial class MainWindow : Window
             activeRecording = new Recording { Title = $"회의 {DateTime.Now:MM월 dd일 HH:mm}", Mode = Mode, IsRecording = true, FolderId = folderStore.IsActive(selectedFolder) ? selectedFolder : null };
             library.Save(activeRecording);
             recorder = recordingFactory();
+            if (recorder is IConfigurableRecordingSession configurable) configurable.ConfigureGains((float)MicrophoneGainSlider.Value, (float)SystemGainSlider.Value);
             UpdateControls();
             await recorder.StartAsync(library.AudioPath(activeRecording.Id), Mode, micId, outputId);
             StartLiveOwner();
@@ -662,6 +669,8 @@ public partial class MainWindow : Window
         SystemRail.Visibility = Mode == RecordingMode.Microphone ? Visibility.Collapsed : Visibility.Visible;
         MicrophoneBox.IsEnabled = Mode != RecordingMode.SystemAudio;
         OutputBox.IsEnabled = Mode != RecordingMode.Microphone;
+        MicrophoneGainSlider.IsEnabled = idle && Mode != RecordingMode.SystemAudio;
+        SystemGainSlider.IsEnabled = idle && Mode != RecordingMode.Microphone;
         PauseButton.IsEnabled = recorder is not null && !transitioning && !recorder.IsPaused;
         ResumeButton.IsEnabled = recorder is not null && !transitioning && recorder.IsPaused;
         StopButton.IsEnabled = recorder is not null && !transitioning;

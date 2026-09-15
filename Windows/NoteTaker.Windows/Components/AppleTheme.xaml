@@ -8,6 +8,13 @@
  <SolidColorBrush x:Key="AccentSoft" Color="#E6F0FD" /><SolidColorBrush x:Key="RecordRed" Color="#FF3B30" />
  <SolidColorBrush x:Key="OnAccent" Color="#FFFFFF" /><SolidColorBrush x:Key="WaveformInk" Color="#37373A" />
  <Style x:Key="FocusRing" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate><Border Margin="-3" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="7" Opacity=".75" /></ControlTemplate></Setter.Value></Setter></Style>
+ <Style TargetType="Slider"><Setter Property="Height" Value="22" /><Setter Property="IsMoveToPointEnabled" Value="True" /><Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider">
+  <Grid Background="Transparent"><Track x:Name="PART_Track" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+   <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static Slider.DecreaseLarge}" Focusable="False" Height="4" VerticalAlignment="Center"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="{DynamicResource Accent}" CornerRadius="2" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+   <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static Slider.IncreaseLarge}" Focusable="False" Height="4" VerticalAlignment="Center"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="{DynamicResource HoverSurface}" CornerRadius="2" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+   <Track.Thumb><Thumb Width="15" Height="15"><Thumb.Template><ControlTemplate TargetType="Thumb"><Ellipse Fill="#FAFAFA" Stroke="#D8D8DB" StrokeThickness="1" /></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+  </Track></Grid><ControlTemplate.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".4" /></Trigger></ControlTemplate.Triggers>
+ </ControlTemplate></Setter.Value></Setter></Style>
  <Style TargetType="Window"><Setter Property="Icon" Value="/AI-NoteTaker;component/Assets/App.ico" /><Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, Malgun Gothic" /><Setter Property="FontSize" Value="12" /><Setter Property="Foreground" Value="{DynamicResource Ink}" /><Setter Property="Background" Value="{DynamicResource WindowSurface}" /><Setter Property="UseLayoutRounding" Value="True" /><Setter Property="TextOptions.TextFormattingMode" Value="Display" /></Style>
  <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap" /></Style>
  <Style TargetType="Button">

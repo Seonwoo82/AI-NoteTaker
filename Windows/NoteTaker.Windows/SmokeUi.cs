@@ -63,6 +63,11 @@ internal static partial class SmokeUi
         JsonDisk.Write(library.TranscriptPath(recording.Id), new TranscriptCache("fixture", "fixture", "ko", ["이번 회의에서는 Windows 녹음 흐름을 살펴보겠습니다. 마이크와 시스템 소리가 함께 저장되는지 확인하고, 다음 주에는 긴 회의 전사 결과를 검토합시다."], true));
         window.ReloadLibrary(recording.Id);
         // Exercise the real WPF event wiring using the isolated fixture library.
+        var noteMetadata = (TextBlock)window.FindName("NotesMeta");
+        if (noteMetadata.Text.Contains("제공자 보고 비용")) throw new InvalidOperationException("Unreported AI cost was shown as a known amount.");
+        JsonDisk.Write(library.NotesPath(recording.Id), JsonDisk.Read<MeetingNotes>(library.NotesPath(recording.Id))! with { CostUsd = .0125m });
+        window.ReloadLibrary(recording.Id);
+        if (!noteMetadata.Text.Contains("생성 ") || !noteMetadata.Text.Contains("US$ 0.0125")) throw new InvalidOperationException("Minutes creation time or reported provider cost is missing.");
         var favorite = (Button)window.FindName("FavoriteButton");
         favorite.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         if (library.Load().Single().IsFavorite) throw new InvalidOperationException("Favorite action was not saved.");
@@ -178,6 +183,7 @@ internal static partial class SmokeUi
         await closed.Task;
         await VerifyLibraryFilesAsync(output);
         await VerifyLibraryCommandsAsync(output);
+        await VerifyCapturePreferencesAsync(output);
         if (Environment.GetEnvironmentVariable("NOTETAKER_UI_AUDIO_SMOKE") == "1") await RunRecordingControlsAsync(output);
         File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: Apple-style empty, playback, notes, recording, compact, capture popover and light/dark settings rendered. Favorite, delete, restore, search, actual audio waveform, focused 5-minute timeline and stable drag mapping, folder create/move/order/delete preserving audio and playhead, submenu, input mode gating, transcript tab and graceful close passed. Generated audio fixture only; no recording or network used.");
     }

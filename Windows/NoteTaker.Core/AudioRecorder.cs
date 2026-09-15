@@ -19,12 +19,25 @@ public interface IRecordingSession : IAsyncDisposable
     Task<double> StopAsync();
 }
 
-public sealed class AudioRecorder : IRecordingSession, IRecentAudioSource
+public sealed class AudioRecorder : IRecordingSession, IRecentAudioSource, IConfigurableRecordingSession, IMicrophoneInputActivity
 {
     private readonly object gate = new();
     private readonly List<WasapiCapture> captures = [];
     private readonly List<MMDevice> devices = [];
     private readonly List<BufferedWaveProvider> buffers = [];
+    private readonly List<float> sourceGains = [];
+    private readonly MicrophoneInputActivity microphoneActivity = new(AudioFiles.SampleRate, 2);
+    private float microphoneGain = 1, systemGain = 1;
+    public double DetectedInputSeconds { get { lock (gate) return Math.Min(clock.Elapsed.TotalSeconds, microphoneActivity.DetectedSeconds); } }
+    public float InputRms { get { lock (gate) return !paused && Stopwatch.GetElapsedTime(lastMicrophoneSample).TotalMilliseconds < 300 ? microphoneActivity.Rms : 0; } }
+    public void ConfigureGains(float microphone, float system)
+    {
+        lock (gate)
+        {
+            if (started) throw new InvalidOperationException("녹음이 끝난 뒤 음량을 변경해 주세요.");
+            microphoneGain = CapturePreferences.Gain(microphone); systemGain = CapturePreferences.Gain(system);
+        }
+    }
     private readonly Stopwatch clock = new();
     private readonly RecentAudioBuffer recentAudio = new();
     public RecentAudioWindow? RecentAudio() { lock (gate) return paused || stopping ? null : recentAudio.Snapshot(); }
@@ -93,6 +106,7 @@ public sealed class AudioRecorder : IRecordingSession, IRecentAudioSource
             BufferDuration = TimeSpan.FromSeconds(5), ReadFully = true, DiscardOnBufferOverflow = false
         };
         buffers.Add(buffer);
+        float gain = loopback ? systemGain : microphoneGain; sourceGains.Add(gain);
         capture.DataAvailable += (_, args) =>
         {
             lock (gate)
@@ -101,9 +115,9 @@ public sealed class AudioRecorder : IRecordingSession, IRecentAudioSource
                 try
                 {
                     buffer.AddSamples(args.Buffer, 0, args.BytesRecorded);
-                    var peak = PcmMixer.Peak(args.Buffer.AsSpan(0, args.BytesRecorded));
+                    var peak = Math.Min(1, PcmMixer.Peak(args.Buffer.AsSpan(0, args.BytesRecorded)) * gain);
                     if (loopback) { systemLevel = peak; Volatile.Write(ref lastSystemSample, Stopwatch.GetTimestamp()); }
-                    else { microphoneLevel = peak; Volatile.Write(ref lastMicrophoneSample, Stopwatch.GetTimestamp()); }
+                    else { microphoneActivity.Append(args.Buffer.AsSpan(0, args.BytesRecorded)); microphoneLevel = peak; Volatile.Write(ref lastMicrophoneSample, Stopwatch.GetTimestamp()); }
                 }
                 catch (Exception) { Failure = "오디오 처리가 지연되어 녹음을 중단했습니다. 저장된 부분을 확인해 주세요."; }
             }
@@ -167,7 +181,7 @@ public sealed class AudioRecorder : IRecordingSession, IRecentAudioSource
             int count = (int)Math.Min(960, targetFrames - writtenFrames) * 4;
             foreach (var (buffer, index) in buffers.Select((buffer, index) => (buffer, index)))
                 buffer.Read(source[index], 0, count);
-            PcmMixer.Mix(source, mixed, count);
+            PcmMixer.Mix(source, mixed, count, sourceGains);
             writer.Write(mixed, 0, count);
             writtenFrames += count / 4;
             recentAudio.Append(mixed.AsSpan(0, count), (double)writtenFrames / AudioFiles.SampleRate);
@@ -203,7 +217,7 @@ public sealed class AudioRecorder : IRecordingSession, IRecentAudioSource
                 {
                     writer = null;
                     foreach (var device in devices) device.Dispose();
-                    captures.Clear(); devices.Clear(); buffers.Clear();
+                    captures.Clear(); devices.Clear(); buffers.Clear(); sourceGains.Clear();
                     recentAudio.Clear();
                 }
             }
@@ -216,15 +230,17 @@ public sealed class AudioRecorder : IRecordingSession, IRecentAudioSource
 
 public static class PcmMixer
 {
-    public static void Mix(IReadOnlyList<byte[]> sources, byte[] output, int count)
+    public static void Mix(IReadOnlyList<byte[]> sources, byte[] output, int count, IReadOnlyList<float>? gains = null)
     {
         if (sources.Count == 0 || count < 0 || count % 2 != 0 || count > output.Length || sources.Any(x => x.Length < count))
             throw new ArgumentException("PCM 믹서 버퍼 크기가 올바르지 않습니다.");
+        if (gains is not null && (gains.Count != sources.Count || gains.Any(g => !float.IsFinite(g) || g is < 0 or > 2)))
+            throw new ArgumentException("녹음 음량 설정이 올바르지 않습니다.");
         for (int offset = 0; offset < count; offset += 2)
         {
-            int sum = 0;
-            foreach (var source in sources) sum += BinaryPrimitives.ReadInt16LittleEndian(source.AsSpan(offset, 2));
-            BinaryPrimitives.WriteInt16LittleEndian(output.AsSpan(offset, 2), (short)(sum / sources.Count));
+            double sum = 0;
+            for (int i = 0; i < sources.Count; i++) sum += BinaryPrimitives.ReadInt16LittleEndian(sources[i].AsSpan(offset, 2)) * (double)(gains?[i] ?? 1);
+            BinaryPrimitives.WriteInt16LittleEndian(output.AsSpan(offset, 2), (short)Math.Clamp(sum / sources.Count, short.MinValue, short.MaxValue));
         }
     }
     public static float Peak(ReadOnlySpan<byte> buffer)
