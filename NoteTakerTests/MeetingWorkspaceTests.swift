@@ -104,6 +104,98 @@ struct MeetingWorkspaceTests {
         #expect(resolved.receivedRequests.map(\.id) == ["action-2"])
     }
 
+    @Test("virtual owner targets resolve legacy corrections without changing source data")
+    func materializesOwnerOnlyForValidTurnCorrections() throws {
+        let document = try fixtureDocument()
+        let edits = [
+            edit(kind: .speakerName, targetID: "owner", value: "My name", modifiedAt: 9),
+            edit(kind: .turnSpeaker, targetID: "turn-2", value: "owner", modifiedAt: 10)
+        ]
+        let resolved = try document.resolved(edits: edits)
+        #expect(resolved.unresolvedEditCount == 0)
+        #expect(resolved.ownerTurns.map(\.id) == ["turn-2"])
+        #expect(resolved.transcript.speakers.last?.name == "My name")
+        #expect(resolved.transcript.speakers.last?.manuallyAssigned == true)
+        #expect(resolved.source == document)
+        try resolved.transcript.validate(duration: 12)
+
+        let missing = try document.resolved(edits: [
+            edit(kind: .turnSpeaker, targetID: "missing-turn", value: "owner", modifiedAt: 10)
+        ])
+        #expect(!missing.transcript.speakers.contains { $0.id == "owner" })
+        #expect(missing.unresolvedEditCount == 1)
+        let overwritten = try document.resolved(edits: edits + [
+            edit(kind: .turnSpeaker, targetID: "turn-2", value: "speaker-a", modifiedAt: 11)
+        ])
+        #expect(!overwritten.transcript.speakers.contains { $0.id == "owner" })
+        #expect(overwritten.transcript.turns[1].speakerID == "speaker-a")
+    }
+
+    @Test("one displayed owner identity aggregates acoustic and manual turns without merging raw records")
+    func groupsOwnerIdentityAndPreservesEditTargets() throws {
+        let document = try fixtureDocument()
+        let corrections = [
+            edit(kind: .turnSpeaker, targetID: "turn-2", value: "owner", modifiedAt: 10),
+            edit(kind: .speakerOwner, targetID: "speaker-a", value: "true", modifiedAt: 11)
+        ]
+        let resolved = try document.resolved(edits: corrections)
+        let owner = try #require(resolved.speakerIdentities.first { $0.isOwner })
+        #expect(resolved.speakerIdentities.count == 2)
+        #expect(owner.speakerIDs == ["speaker-a", "owner"])
+        #expect(resolved.turns(for: owner).map(\.id) == ["turn-1", "turn-2"])
+        #expect(resolved.speakerIdentity(for: "speaker-a") == resolved.speakerIdentity(for: "owner"))
+        #expect(resolved.transcript.speakers.count == 3)
+        #expect(resolved.insights?.actions.first?.actorSpeakerID == "speaker-a")
+        #expect(resolved.speakerAssignmentChoices.filter { $0.isOwner }.count == 1)
+        #expect(owner.contains(speakerID: "speaker-a"))
+        #expect(owner.contains(speakerID: "owner"))
+
+        let renamed = try document.resolved(edits: corrections + owner.speakerIDs.map {
+            edit(kind: .speakerName, targetID: $0, value: "My name", modifiedAt: 12)
+        })
+        #expect(renamed.transcript.speakers.filter(\.isOwner).allSatisfy { $0.name == "My name" })
+        let unmarked = try document.resolved(edits: corrections + owner.speakerIDs.map {
+            edit(kind: .speakerOwner, targetID: $0, value: "false", modifiedAt: 12)
+        })
+        #expect(unmarked.ownerTurns.isEmpty)
+        #expect(unmarked.unresolvedEditCount == 0)
+        #expect(unmarked.transcript.turns.map(\.speakerID) == ["speaker-a", "owner", "speaker-b", "speaker-b"])
+    }
+
+    @Test("unused legacy owner rows are absent from the speaker list but remain assignment targets")
+    func excludesUnusedRowsWithoutHidingActualSpeakers() throws {
+        let document = try fixtureDocument(extraSpeakers: [
+            MeetingSpeaker(id: "owner", name: "My name", isOwner: true),
+            MeetingSpeaker(id: "unused", name: "Unused group", isOwner: false)
+        ])
+        let resolved = try document.resolved(edits: [])
+        #expect(resolved.speakerIdentities.flatMap(\.speakerIDs) == ["speaker-a", "speaker-b"])
+        #expect(resolved.speakerAssignmentChoices.filter { $0.isOwner }.first?.assignmentSpeakerID == "owner")
+        #expect(resolved.transcript.speakers.count == 4)
+
+        let noOwner = try fixtureDocument().resolved(edits: [])
+        #expect(noOwner.speakerIdentities.count == 2)
+        let virtual = try #require(noOwner.speakerAssignmentChoices.first { $0.isOwner })
+        #expect(virtual.speakerIDs.isEmpty)
+        #expect(virtual.assignmentSpeakerID == "owner")
+    }
+
+    @Test("unmarked canonical owner and a recognized owner have distinct display and assignment identities")
+    func unmarkedCanonicalOwnerDoesNotCollideWithOwnerIdentity() throws {
+        let document = try fixtureDocument(ownerSpeakerIDs: ["speaker-a"], extraSpeakers: [
+            MeetingSpeaker(id: "owner", name: "Different person", isOwner: false)
+        ])
+        let resolved = try document.resolved(edits: [
+            edit(kind: .turnSpeaker, targetID: "turn-2", value: "owner", modifiedAt: 10)
+        ])
+        #expect(resolved.speakerIdentities.count == 3)
+        #expect(Set(resolved.speakerIdentities.map(\.id)).count == 3)
+        let owner = try #require(resolved.speakerIdentity(for: "speaker-a"))
+        #expect(owner.assignmentSpeakerID == "speaker-a")
+        #expect(!owner.contains(speakerID: "owner"))
+        #expect(resolved.speakerIdentity(for: "owner")?.isOwner == false)
+    }
+
     @Test("document and edit validation enforce linkage backend values and encoded cap")
     func validatesDocumentAndEdits() throws {
         var document = try fixtureDocument()
@@ -162,14 +254,14 @@ struct MeetingWorkspaceTests {
         #expect(excludingLatest.openActions.map(\.recordingID) == [recordingID])
     }
 
-    private func fixtureDocument(recordingID: UUID? = nil, projectName: String = "Project Apollo", ownerSpeakerIDs: Set<String> = []) throws -> MeetingIntelligenceDocument {
+    private func fixtureDocument(recordingID: UUID? = nil, projectName: String = "Project Apollo", ownerSpeakerIDs: Set<String> = [], extraSpeakers: [MeetingSpeaker] = []) throws -> MeetingIntelligenceDocument {
         let id = recordingID ?? self.recordingID
         let transcript = MeetingTranscript(recordingID: id, audioVersion: 2,
             transcriptionModelID: "openai/gpt-4o-transcribe:online",
             speakers: [
                 MeetingSpeaker(id: "speaker-a", name: "Speaker A", isOwner: ownerSpeakerIDs.contains("speaker-a")),
                 MeetingSpeaker(id: "speaker-b", name: "Speaker B", isOwner: ownerSpeakerIDs.contains("speaker-b"))
-            ],
+            ] + extraSpeakers,
             turns: [
                 TranscriptTurn(id: "turn-1", start: 0, end: 2, speakerID: "speaker-a", text: "I will send the draft tomorrow."),
                 TranscriptTurn(id: "turn-2", start: 2, end: 4, speakerID: "speaker-b", text: "Can you review the budget?"),

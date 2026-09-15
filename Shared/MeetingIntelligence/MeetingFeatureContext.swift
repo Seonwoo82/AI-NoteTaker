@@ -72,6 +72,11 @@ final class MeetingFeatureContext {
             self.errorMessage = error.localizedDescription
         }
         voice.onAvailabilityChanged = { [weak self] _ in self?.refreshVoiceObservation() }
+        profile.onLocalVoiceChanged = { [weak self] in
+            guard let self else { return }
+            self.analysis.scheduleOwnerAttributionReapplication()
+            self.refreshVoiceObservation()
+        }
         self.enrollmentCapture.onInterrupted = { [weak self] in
             guard let self else { return }
             self.cancelEnrollment()
@@ -89,7 +94,10 @@ final class MeetingFeatureContext {
         edits.onChange = { [weak sync] in sync?.requestAutomaticSync() }
     }
 
-    func load(_ recording: Recording) async { _ = await store.load(recording) }
+    func load(_ recording: Recording) async {
+        _ = await store.load(recording)
+        await analysis.scheduleOwnerAttributionRefresh(recording: recording).value
+    }
 
     func restoreLocalVoiceModels() async {
         guard !isTerminating else { return }
@@ -100,7 +108,7 @@ final class MeetingFeatureContext {
     func loadLibrary() async {
         for recording in library.recordings where recording.deletedAt == nil {
             guard !Task.isCancelled else { return }
-            await load(recording)
+            _ = await store.load(recording)
             await Task.yield()
         }
     }
@@ -132,12 +140,21 @@ final class MeetingFeatureContext {
               let document = store.document(for: recording.id) else { throw MeetingStorageError.audioVersionMismatch }
         // Reject invalid targets before durable publication. Missing older targets
         // may still remain in the log after re-transcription, without changing raw text.
+        let resolved = try? document.resolved(edits: edits.edits(for: recording.id, audioVersion: recording.audioVersion))
+        let resolvedSpeakerIDs = Set((resolved?.transcript.speakers ?? document.transcript.speakers).map(\.id))
         switch kind {
         case .speakerName, .speakerOwner:
-            guard document.transcript.speakers.contains(where: { $0.id == targetID }) else { throw MeetingStorageError.invalidEditPage }
+            guard document.transcript.speakers.contains(where: { $0.id == targetID })
+                    || (targetID == "owner" && resolvedSpeakerIDs.contains("owner")) else {
+                throw MeetingStorageError.invalidEditPage
+            }
         case .turnSpeaker:
             guard document.transcript.turns.contains(where: { $0.id == targetID }),
-                  value.isEmpty || document.transcript.speakers.contains(where: { $0.id == value }) else { throw MeetingStorageError.invalidEditPage }
+                  value.isEmpty
+                    || document.transcript.speakers.contains(where: { $0.id == value })
+                    || (value == "owner" && resolvedSpeakerIDs.contains("owner")) else {
+                throw MeetingStorageError.invalidEditPage
+            }
         case .actionStatus:
             guard document.insights?.actions.contains(where: { $0.id == targetID }) == true else { throw MeetingStorageError.invalidEditPage }
         case .projectName: break

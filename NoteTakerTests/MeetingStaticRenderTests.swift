@@ -6,6 +6,34 @@ import XCTest
 
 @MainActor
 final class MeetingStaticRenderMacTests: XCTestCase {
+    func testMeetingTransitionsSettleWithNativeWindowSizing() throws {
+        let fixture = try MeetingStaticFixture.make()
+        let state = MeetingNativeLayoutState()
+        let hostingView = NSHostingView(rootView: MeetingNativeLayoutFixture(state: state, fixture: fixture))
+        XCTAssertTrue(hostingView.sizingOptions.contains(.minSize))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1_100, height: 700),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = hostingView
+        defer { window.close() }
+
+        for section in MeetingConversationTab.allCases {
+            state.showsMeeting = false
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.03))
+            state.section = section
+            state.showsMeeting = true
+            for width in [1_100.0, 900.0, 1_240.0, 960.0] {
+                window.setContentSize(NSSize(width: width, height: 700))
+                hostingView.updateConstraintsForSubtreeIfNeeded()
+                hostingView.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.08))
+                XCTAssertTrue(hostingView.fittingSize.width.isFinite)
+                XCTAssertLessThan(hostingView.fittingSize.width, 2_000)
+            }
+        }
+    }
+
     func testSharedMeetingViewsRenderKoreanDarkSnapshots() throws {
         let fixture = try MeetingStaticFixture.make()
         let profileStore = MeetingProfileStore(root: temporaryProfileRoot())
@@ -236,6 +264,45 @@ final class MeetingStaticRenderMacTests: XCTestCase {
         case missingBriefingDecision
         case missingBriefingAction
         case missingBriefingQuestion
+    }
+}
+
+@MainActor
+private final class MeetingNativeLayoutState: ObservableObject {
+    @Published var showsMeeting = false
+    @Published var section: MeetingConversationTab = .transcript
+}
+
+private struct MeetingNativeLayoutFixture: View {
+    @ObservedObject var state: MeetingNativeLayoutState
+    let fixture: MeetingStaticFixture
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: 260)
+            Divider()
+            VStack(spacing: 0) {
+                Picker("Recording Detail", selection: $state.showsMeeting) {
+                    Text("Audio").tag(false)
+                    Text("AI Meeting").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 520)
+                .padding(.vertical, 12)
+                if state.showsMeeting {
+                    MeetingConversationView(content: fixture.resolvedDocument, status: "분석이 완료되었습니다.",
+                        isBusy: false, hasAPIKey: true, editable: true, initialSection: state.section,
+                        profile: fixture.profile, onAnalyze: {}, onCancel: {}, onOpenAISettings: {}, onOpenProfile: {},
+                        onPlayTurns: { _ in }, onEdit: { _, _, _ in })
+                } else {
+                    Text("Recording").frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 900, minHeight: 560)
+        .environment(\.colorScheme, .dark)
+        .environment(\.locale, Locale(identifier: "ko_KR"))
     }
 }
 

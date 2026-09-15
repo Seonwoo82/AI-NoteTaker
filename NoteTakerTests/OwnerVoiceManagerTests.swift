@@ -12,6 +12,19 @@ import Testing
 @MainActor
 @Suite("Owner voice manager")
 struct OwnerVoiceManagerTests {
+    @Test("real held-out score boundaries recognize owner without promoting ambiguous other speech")
+    func defaultsSeparateVerifiedOwnerAndOtherScores() {
+        let reference = LocalVoiceProfile(modelID: "m", embedding: [1, 0], enrolledAt: .now, sampleDuration: 13.3)
+        let cases: [(Float, OwnerSpeechState)] = [
+            (0.760, .owner), (0.658, .owner), (0.440, .uncertain),
+            (0.3924, .uncertain), (0.237, .other)
+        ]
+        for (score, expected) in cases {
+            let embedding: [Float] = [score, sqrt(1 - score * score)]
+            #expect(OwnerVoicePolicy().classify(embedding: embedding, profile: reference, modelID: "m") == expected)
+        }
+    }
+
     @Test("fourteen seconds of quiet speech remains enrollable with pauses")
     func quietSpeechWithPausesIsNotRejectedByWholeClipAverage() async throws {
         let root = temporaryDirectory()
@@ -287,6 +300,117 @@ struct OwnerVoiceManagerTests {
 
         #expect(backend.embeddingCallCount == 2)
         #expect(backend.lastEmbeddingInput?.samples.first == 0.6)
+    }
+
+    @Test("quiet speech accepted by enrollment also reaches live owner classification")
+    func quietSpeechReachesLiveClassification() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MeetingProfileStore(root: root)
+        try store.saveVoiceProfile(LocalVoiceProfile(modelID: "fake-speaker-v1", embedding: [1, 0],
+            enrolledAt: .now, sampleDuration: 14), allowedDimensions: 2...2)
+        let backend = FakeSpeakerAnalysisService(embeddingResult: [1, 0])
+        let manager = OwnerVoiceManager(profile: store, backend: backend)
+        await manager.prepareModels()
+        manager.startListening()
+        defer { manager.stopListening() }
+
+        for index in 0..<6 {
+            let samples = (0..<8_000).map { Float(sin(Double($0) * 2 * .pi * 180 / 16_000)) * 0.004 }
+            manager.audioHandler(LiveAudioSamples(samples: samples, sampleRate: 16_000,
+                startTime: Double(index) * 0.5))
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        await waitForState(manager, .owner)
+    }
+
+    @Test("a brief quiet interval preserves speech context while presenting silence")
+    func briefPausePreservesListeningContext() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MeetingProfileStore(root: root)
+        try store.saveVoiceProfile(LocalVoiceProfile(modelID: "fake-speaker-v1", embedding: [1, 0],
+            enrolledAt: .now, sampleDuration: 14), allowedDimensions: 2...2)
+        let backend = FakeSpeakerAnalysisService(embeddingResult: [1, 0])
+        let manager = OwnerVoiceManager(profile: store, backend: backend)
+        await manager.prepareModels()
+        manager.startListening()
+        defer { manager.stopListening() }
+
+        for index in 0..<5 {
+            manager.audioHandler(LiveAudioSamples(samples: speechSamples(count: 8_000, amplitude: index == 4 ? 0 : 0.2),
+                sampleRate: 16_000, startTime: Double(index) * 0.5))
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(manager.state == .silence)
+        manager.audioHandler(LiveAudioSamples(samples: speechSamples(count: 8_000, amplitude: 0.2),
+            sampleRate: 16_000, startTime: 2.5))
+        await waitForState(manager, .owner)
+        #expect(backend.lastEmbeddingInput?.samples.count == 48_000)
+        #expect(backend.lastEmbeddingInput?.samples[32_000] == 0)
+    }
+
+    @Test("continuous arrivals do not starve fresh delayed owner results")
+    func continuousAudioPublishesDelayedResults() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MeetingProfileStore(root: root)
+        try store.saveVoiceProfile(LocalVoiceProfile(modelID: "fake-speaker-v1", embedding: [1, 0],
+            enrolledAt: .now, sampleDuration: 10), allowedDimensions: 2...2)
+        let backend = FakeSpeakerAnalysisService(embeddingResult: [1, 0])
+        backend.holdEmbedding = true
+        let manager = OwnerVoiceManager(profile: store, backend: backend,
+            policy: OwnerVoicePolicy(listeningWindowDuration: 0.5))
+        await manager.prepareModels()
+        manager.startListening()
+        defer { manager.stopListening(); backend.releaseEmbedding() }
+        manager.audioHandler(LiveAudioSamples(samples: speechSamples(count: 8_000, amplitude: 0.2),
+            sampleRate: 16_000, startTime: 0))
+        await backend.waitForEmbeddingCallCount(1)
+
+        for index in 1...4 {
+            manager.audioHandler(LiveAudioSamples(samples: speechSamples(count: 8_000, amplitude: 0.2),
+                sampleRate: 16_000, startTime: Double(index) * 0.5))
+            backend.embeddingResult = index.isMultiple(of: 2) ? [0, 1] : [1, 0]
+            backend.releaseNextEmbedding()
+            await backend.waitForEmbeddingCallCount(index + 1)
+            #expect(manager.state == (index.isMultiple(of: 2) ? .other : .owner))
+        }
+    }
+
+    @Test("delayed owner results cannot cross silence capture changes or freshness limits",
+        arguments: ["silence", "gap", "backward", "sampleRate", "audioAge", "wallClockAge", "profile"])
+    func delayedResultsRespectInputBoundaries(_ boundary: String) async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MeetingProfileStore(root: root)
+        try store.saveVoiceProfile(LocalVoiceProfile(modelID: "fake-speaker-v1", embedding: [1, 0],
+            enrolledAt: .now, sampleDuration: 10), allowedDimensions: 2...2)
+        let backend = FakeSpeakerAnalysisService(embeddingResult: [1, 0])
+        backend.holdEmbedding = true
+        let manager = OwnerVoiceManager(profile: store, backend: backend,
+            policy: OwnerVoicePolicy(listeningWindowDuration: 0.5, staleAfter: boundary == "wallClockAge" ? 0.03 : 1.2))
+        await manager.prepareModels()
+        manager.startListening()
+        defer { manager.stopListening(); backend.releaseEmbedding() }
+        manager.audioHandler(LiveAudioSamples(samples: speechSamples(count: 8_000, amplitude: 0.2),
+            sampleRate: 16_000, startTime: 0))
+        await backend.waitForEmbeddingCallCount(1)
+
+        if boundary == "wallClockAge" {
+            try await Task.sleep(for: .milliseconds(60))
+        } else if boundary == "profile" {
+            try store.saveVoiceProfile(LocalVoiceProfile(modelID: "fake-speaker-v1", embedding: [0, 1],
+                enrolledAt: .now, sampleDuration: 10), allowedDimensions: 2...2)
+        } else {
+            let sampleRate: Double = boundary == "sampleRate" ? 32_000 : 16_000
+            let start: Double = boundary == "gap" ? 2 : (boundary == "backward" ? 0 : 0.5)
+            manager.audioHandler(LiveAudioSamples(samples: speechSamples(count: boundary == "audioAge" ? 24_000 : 8_000,
+                amplitude: boundary == "silence" ? 0 : 0.2), sampleRate: sampleRate, startTime: start))
+        }
+        backend.releaseNextEmbedding()
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(manager.state != .owner)
     }
 
     @Test("policy classification is reusable for batch owner attribution")
@@ -588,6 +712,13 @@ private final class FakeSpeakerAnalysisService: SpeakerAnalysisServing, @uncheck
             try? await Task.sleep(for: .milliseconds(1))
         }
         Issue.record("Timed out waiting for embedding call")
+    }
+
+    func releaseNextEmbedding() {
+        let continuation = lock.withLock {
+            heldEmbeddings.isEmpty ? nil : heldEmbeddings.removeFirst()
+        }
+        continuation?.resume()
     }
 
     func releaseEmbedding() {

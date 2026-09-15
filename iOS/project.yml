@@ -46,8 +46,8 @@ targets:
         CFBundleDisplayName: AI-NoteTaker
         CFBundleIdentifier: com.seonwoo.notetaker.ios
         CFBundleName: AI-NoteTaker
-        CFBundleShortVersionString: "1.6.1"
-        CFBundleVersion: "18"
+        CFBundleShortVersionString: "1.7.0"
+        CFBundleVersion: "19"
         NSMicrophoneUsageDescription: AI-NoteTaker needs microphone access to record your voice notes.
         NSSpeechRecognitionUsageDescription: AI-NoteTaker uses on-device speech recognition to create transcripts.
         UILaunchScreen: {}
@@ -95,6 +95,7 @@ targets:
       - path: ../NoteTakerTests/LocalAIConfigurationTests.swift
       - path: ../NoteTakerTests/LocalAIPipelineTests.swift
       - path: ../NoteTakerTests/LocalAISettingsRenderTests.swift
+      - path: ../NoteTakerTests/OfflineSpeakerBackendTests.swift
     dependencies:
       - target: NoteTakerIOS
     info:

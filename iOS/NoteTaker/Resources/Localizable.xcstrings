@@ -1,6 +1,28 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Cached speaker models are incomplete. Prepare voice models again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장된 화자 모델이 불완전합니다. 음성 모델을 다시 준비해 주세요."
+          }
+        }
+      }
+    },
+    "Saved meeting owner attribution could not be refreshed locally: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "저장된 회의에 내 목소리를 적용하지 못했습니다: %@"
+          }
+        }
+      }
+    },
     "%lld days left": {
       "extractionState": "manual",
       "localizations": {

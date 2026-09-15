@@ -83,9 +83,12 @@ final class MeetingAnalysisService {
     private let chunker: any MeetingAudioChunking
     @ObservationIgnored private var queue: [Job] = []
     @ObservationIgnored private var activeTask: Task<Void, Never>?
+    @ObservationIgnored private var ownerAttributionSweepTask: Task<Void, Never>?
+    @ObservationIgnored private var ownerAttributionRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var activeID: UUID?
     @ObservationIgnored private var transcriptPreparationID: UUID?
     @ObservationIgnored private var tokens: [UUID: UUID] = [:]
+    private var ownerAttributionIssues: [UUID: String] = [:]
     @ObservationIgnored var onTranscriptReady: ((Recording) -> Void)?
     @ObservationIgnored var onFinished: ((Recording, Bool) -> Void)?
     private var states: [UUID: AnalysisProgress] = [:]
@@ -168,8 +171,80 @@ final class MeetingAnalysisService {
         cancelAll()
     }
 
+    @discardableResult
+    func scheduleOwnerAttributionReapplication() -> Task<Void, Never> {
+        ownerAttributionSweepTask?.cancel()
+        ownerAttributionRefreshTask?.cancel()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.reapplyOwnerAttributionForSavedMeetings()
+            } catch is CancellationError {
+            } catch {
+                // Per-record local repair failures are recorded separately.
+            }
+        }
+        ownerAttributionSweepTask = task
+        return task
+    }
+
+    @discardableResult
+    func scheduleOwnerAttributionRefresh(recording: Recording) -> Task<Void, Never> {
+        ownerAttributionRefreshTask?.cancel()
+        let pendingSweep = ownerAttributionSweepTask
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            if let pendingSweep { await pendingSweep.value }
+            guard !Task.isCancelled else { return }
+            await self.refreshOwnerAttribution(recording: recording)
+        }
+        ownerAttributionRefreshTask = task
+        return task
+    }
+
+    func reapplyOwnerAttributionForSavedMeetings() async throws {
+        let documents = await store.allDocuments()
+        for document in documents {
+            try Task.checkCancellation()
+            guard let recording = library.recording(id: document.recordingID),
+                  recording.deletedAt == nil,
+                  recording.audioVersion == document.audioVersion else { continue }
+            do {
+                _ = try await reapplyOwnerAttributionIfNeeded(recording: recording, document: document)
+                clearOwnerAttributionIssue(for: recording.id)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                recordOwnerAttributionIssue(error, for: recording.id)
+            }
+            await Task.yield()
+        }
+    }
+
+    func refreshOwnerAttribution(recording: Recording) async {
+        do {
+            guard !isRunning(for: recording.id), transcriptPreparationID != recording.id else { return }
+            guard let current = library.recording(id: recording.id),
+                  current.deletedAt == nil,
+                  current.audioVersion == recording.audioVersion,
+                  let document = await store.load(current) ?? store.document(for: current.id) else { return }
+            _ = try await reapplyOwnerAttributionIfNeeded(recording: current, document: document)
+            clearOwnerAttributionIssue(for: current.id)
+        } catch is CancellationError {
+        } catch {
+            recordOwnerAttributionIssue(error, for: recording.id)
+        }
+    }
+
+    func ownerAttributionIssue(for id: UUID) -> String? {
+        ownerAttributionIssues[id]
+    }
+
     func status(for id: UUID) -> String {
-        (states[id] ?? .idle).displayStatus
+        let phase = states[id] ?? .idle
+        if phase == .idle || phase == .completed,
+           let issue = ownerAttributionIssues[id] { return issue }
+        return phase.displayStatus
     }
 
     func isRunning(for id: UUID) -> Bool {
@@ -319,12 +394,96 @@ final class MeetingAnalysisService {
         try Task.checkCancellation()
         guard let current = library.recording(id: recording.id), current.deletedAt == nil,
               current.audioVersion == recording.audioVersion else { throw CancellationError() }
-        guard let document = loaded ?? store.document(for: recording.id),
+        guard var document = loaded ?? store.document(for: recording.id),
               document.transcript.transcriptionModelID == modelID else {
             return nil
         }
+        if shouldRefreshOwnerAttributionForReusableTranscript(document, recording: current) {
+            document = try await reapplyOwnerAttributionIfNeeded(recording: current, document: document)
+        }
         return try document.resolved(edits: edits.edits(for: recording.id,
             audioVersion: recording.audioVersion)).transcript
+    }
+
+    private func shouldRefreshOwnerAttributionForReusableTranscript(
+        _ document: MeetingIntelligenceDocument,
+        recording: Recording
+    ) -> Bool {
+        if profile.localVoice != nil { return true }
+        if FileManager.default.fileExists(atPath: ownerAttributionSidecarURL(for: recording.id).path) { return true }
+        return document.transcript.speakers.contains { $0.isOwner && !$0.manuallyAssigned }
+    }
+
+    @discardableResult
+    private func reapplyOwnerAttributionIfNeeded(
+        recording: Recording,
+        document: MeetingIntelligenceDocument
+    ) async throws -> MeetingIntelligenceDocument {
+        try Task.checkCancellation()
+        guard let source = try store.localDocumentWithData(for: recording),
+              source.document == document else {
+            return store.document(for: recording.id) ?? document
+        }
+        let data = source.data
+        let sourceRevision = source.descriptor.revision
+        let result: OwnerAttributionResult
+        if let sidecar = try? loadBounded(OwnerAttributionSidecar.self,
+              from: ownerAttributionSidecarURL(for: recording.id),
+              maximumBytes: Self.maximumOwnerAttributionSidecarBytes),
+           OwnerAttribution.sidecarIsReusable(sidecar, for: document, documentData: data,
+              embeddingModelID: speakerBackend.embeddingModelID) {
+            result = try OwnerAttribution.reapply(document: document, sidecar: sidecar,
+                profile: profile.profile, localVoice: profile.localVoice)
+        } else {
+            try await speakerBackend.prepare()
+            try Task.checkCancellation()
+            let diarization = try await speakerBackend.diarize(audioURL: library.audioURL(for: recording))
+            result = try OwnerAttribution.reapply(document: document, documentData: data,
+                diarization: diarization, profile: profile.profile,
+                localVoice: profile.localVoice, embeddingModelID: speakerBackend.embeddingModelID)
+        }
+        guard let latest = try store.localDocumentWithData(for: recording),
+              latest.document == document,
+              latest.descriptor.revision == sourceRevision else {
+            return store.document(for: recording.id) ?? document
+        }
+        guard result.changed else {
+            let currentSidecar = OwnerAttributionSidecar(recordingID: result.sidecar.recordingID,
+                audioVersion: result.sidecar.audioVersion,
+                documentRevision: sourceRevision,
+                embeddingModelID: result.sidecar.embeddingModelID,
+                profileFingerprint: OwnerAttribution.profileFingerprint(profile.localVoice),
+                speakers: result.sidecar.speakers,
+                turnRawSpeakerIDs: result.sidecar.turnRawSpeakerIDs)
+            try writeCache(currentSidecar, to: ownerAttributionSidecarURL(for: recording.id),
+                maximumBytes: Self.maximumOwnerAttributionSidecarBytes)
+            return document
+        }
+        let published = MeetingIntelligenceDocument(schemaVersion: result.document.schemaVersion,
+            recordingID: result.document.recordingID,
+            audioVersion: result.document.audioVersion,
+            modifiedAt: publishTimestamp(after: document.modifiedAt),
+            mutationID: UUID(),
+            projectName: result.document.projectName,
+            transcript: result.document.transcript,
+            insights: result.document.insights,
+            actionStates: result.document.actionStates,
+            analysisModelID: result.document.analysisModelID)
+        try await store.save(published)
+        guard store.document(for: recording.id)?.mutationID == published.mutationID else {
+            return store.document(for: recording.id) ?? document
+        }
+        let savedData = try store.data(for: published)
+        let savedSidecar = OwnerAttributionSidecar(recordingID: result.sidecar.recordingID,
+            audioVersion: result.sidecar.audioVersion,
+            documentRevision: Self.sha256Hex(savedData),
+            embeddingModelID: result.sidecar.embeddingModelID,
+            profileFingerprint: OwnerAttribution.profileFingerprint(profile.localVoice),
+            speakers: result.sidecar.speakers,
+            turnRawSpeakerIDs: result.sidecar.turnRawSpeakerIDs)
+        try writeCache(savedSidecar, to: ownerAttributionSidecarURL(for: recording.id),
+            maximumBytes: Self.maximumOwnerAttributionSidecarBytes)
+        return published
     }
 
     private func saveTranscriptOnlyDocumentIfNeeded(_ transcript: MeetingTranscript, job: Job) async throws {
@@ -612,6 +771,10 @@ final class MeetingAnalysisService {
         library.paths.directory(for: id).appending(path: "ai-transcript.json")
     }
 
+    private func ownerAttributionSidecarURL(for id: UUID) -> URL {
+        library.paths.directory(for: id).appending(path: ".owner-attribution.json")
+    }
+
     private func preservedActionStates(previous: MeetingIntelligenceDocument?, insights: MeetingInsights) -> [String: String] {
         guard let previous else { return [:] }
         let newActionIDs = Set(insights.actions.map(\.id))
@@ -648,6 +811,10 @@ final class MeetingAnalysisService {
         return "\(prefix)-\(digest)"
     }
 
+    private static func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     private func publishTimestamp(after previous: Int64?) -> Int64 {
         let now = millisecondsSince1970()
         guard let previous else { return now }
@@ -664,6 +831,15 @@ final class MeetingAnalysisService {
         return raw.replacingOccurrences(of: key, with: "[redacted]")
     }
 
+    private func recordOwnerAttributionIssue(_ error: any Error, for id: UUID) {
+        let raw = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+        ownerAttributionIssues[id] = String(localized: "Saved meeting owner attribution could not be refreshed locally: \(raw)")
+    }
+
+    private func clearOwnerAttributionIssue(for id: UUID) {
+        ownerAttributionIssues[id] = nil
+    }
+
     private func languageInstruction(_ language: String) -> String {
         switch language {
         case "en":
@@ -677,6 +853,7 @@ final class MeetingAnalysisService {
 
     private static let maximumTimedCacheBytes = 4 * 1_024 * 1_024
     private static let maximumPlainTranscriptCacheBytes = 1 * 1_024 * 1_024
+    private static let maximumOwnerAttributionSidecarBytes = 1 * 1_024 * 1_024
 }
 
 nonisolated struct DetailedTimedTranscriptCache: Codable, Equatable, Sendable {

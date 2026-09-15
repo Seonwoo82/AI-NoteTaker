@@ -29,13 +29,7 @@ nonisolated enum TranscriptAssembler {
             duration: duration
         )
         let usedSpeakers = Set(turns.compactMap(\.speakerID))
-        var speakers = speakerMapper.speakers.filter { usedSpeakers.contains($0.id) || $0.id == "owner" }
-        // A manual assignment target is available even before voice enrollment.
-        // No turn is attributed to this speaker without acoustic evidence or an edit.
-        if !speakers.contains(where: { $0.id == "owner" }) {
-            let name = ownerName.trimmingCharacters(in: .whitespacesAndNewlines)
-            speakers.append(MeetingSpeaker(id: "owner", name: name.isEmpty ? "Me" : name, isOwner: true))
-        }
+        let speakers = speakerMapper.speakers.filter { usedSpeakers.contains($0.id) }
         let transcript = MeetingTranscript(recordingID: recordingID, audioVersion: audioVersion,
             transcriptionModelID: transcriptionModelID, speakers: speakers, turns: turns)
         try transcript.validate(duration: duration)
@@ -207,7 +201,9 @@ private nonisolated struct SpeakerMapper {
             let isOwner = ownerVoice.map {
                 policy.classify(embedding: speaker.embedding, profile: $0, modelID: embeddingModelID) == .owner
             } ?? false
-            let mappedID = isOwner ? "owner" : Self.uniqueSpeakerID(for: speaker.id, usedIDs: &usedIDs)
+            // Owner recognition changes presentation, never acoustic identity or
+            // the boundaries and stable IDs of manually corrected turns.
+            let mappedID = Self.uniqueSpeakerID(for: speaker.id, usedIDs: &usedIDs)
             mappedIDs[speaker.id] = mappedID
             if !speakers.contains(where: { $0.id == mappedID }) {
                 speakers.append(MeetingSpeaker(id: mappedID,

@@ -289,7 +289,7 @@ struct MeetingConversationView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Circle()
-                    .fill(color(for: turn.speakerID))
+                    .fill(color(for: turn.speakerID == nil ? nil : speaker.id))
                     .frame(width: 10, height: 10)
                     .accessibilityHidden(true)
                 Text(speaker.displayName)
@@ -342,7 +342,7 @@ struct MeetingConversationView: View {
         .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
         .overlay(alignment: .leading) {
             Rectangle()
-                .fill(color(for: turn.speakerID))
+                .fill(color(for: turn.speakerID == nil ? nil : speaker.id))
                 .frame(width: 3)
                 .clipShape(RoundedRectangle(cornerRadius: 2))
                 .accessibilityHidden(true)
@@ -618,13 +618,13 @@ struct MeetingConversationView: View {
         MeetingConversationCard {
             sectionTitle(String(localized: "Speaker Correction"), systemImage: "person.2.badge.gearshape")
 
-            if content.transcript.speakers.isEmpty {
+            if content.speakerIdentities.isEmpty {
                 Text(String(localized: "No speaker groups were detected."))
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("meeting-speakers-empty")
             } else {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(content.transcript.speakers, id: \.id) { speaker in
+                    ForEach(content.speakerIdentities) { speaker in
                         speakerEditor(speaker, content: content)
                     }
                 }
@@ -632,12 +632,12 @@ struct MeetingConversationView: View {
         }
     }
 
-    private func speakerEditor(_ speaker: MeetingSpeaker, content: MeetingResolvedDocument) -> some View {
-        let turns = content.transcript.turns.filter { $0.speakerID == speaker.id }
+    private func speakerEditor(_ speaker: MeetingSpeakerIdentity, content: MeetingResolvedDocument) -> some View {
+        let turns = content.turns(for: speaker)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
                 Circle()
-                    .fill(color(for: speaker.id))
+                    .fill(color(for: speaker.isOwner ? "owner" : speaker.assignmentSpeakerID))
                     .frame(width: 12, height: 12)
                 TextField(String(localized: "Speaker Name"), text: bindingForSpeakerName(speaker))
                     .textFieldStyle(.roundedBorder)
@@ -672,12 +672,14 @@ struct MeetingConversationView: View {
     }
 
     @ViewBuilder
-    private func speakerSummaryControls(_ speaker: MeetingSpeaker, turnCount: Int) -> some View {
+    private func speakerSummaryControls(_ speaker: MeetingSpeakerIdentity, turnCount: Int) -> some View {
         Label(String(localized: "\(turnCount) turns"), systemImage: "quote.bubble")
             .font(.caption)
             .foregroundStyle(.secondary)
         Button {
-            onEdit(.speakerOwner, speaker.id, speaker.isOwner ? "false" : "true")
+            for id in speaker.speakerIDs {
+                onEdit(.speakerOwner, id, speaker.isOwner ? "false" : "true")
+            }
         } label: {
             Label(speaker.isOwner ? String(localized: "Unmark Me") : String(localized: "Mark Me"),
                   systemImage: speaker.isOwner ? "person.crop.circle.badge.xmark" : "person.crop.circle.badge.checkmark")
@@ -688,11 +690,18 @@ struct MeetingConversationView: View {
 
     private func turnSpeakerMenu(_ turn: TranscriptTurn, content: MeetingResolvedDocument) -> some View {
         Menu {
-            ForEach(turnSpeakerChoices(content), id: \.id) { speaker in
+            ForEach(content.speakerAssignmentChoices) { speaker in
                 Button {
-                    onEdit(.turnSpeaker, turn.id, speaker.id)
+                    let target = speaker.assignmentSpeakerID
+                    if speaker.isOwner,
+                       content.transcript.speakers.first(where: { $0.id == target })?.isOwner == false {
+                        onEdit(.speakerOwner, target, "true")
+                    }
+                    if !speaker.contains(speakerID: turn.speakerID) {
+                        onEdit(.turnSpeaker, turn.id, target)
+                    }
                 } label: {
-                    Label(speaker.displayName, systemImage: speaker.id == turn.speakerID ? "checkmark" : "person")
+                    Label(assignmentChoiceName(speaker), systemImage: speaker.contains(speakerID: turn.speakerID) ? "checkmark" : "person")
                 }
                 .disabled(!editable)
             }
@@ -806,24 +815,18 @@ struct MeetingConversationView: View {
 
     private func speaker(for id: String?, in content: MeetingResolvedDocument) -> SpeakerDisplay {
         guard let id,
-              let speaker = content.transcript.speakers.first(where: { $0.id == id }) else {
+              let speaker = content.speakerIdentity(for: id) else {
             return SpeakerDisplay(id: id ?? "unknown", displayName: String(localized: "Unknown Speaker"), isOwner: false)
         }
-        return SpeakerDisplay(id: speaker.id, displayName: speaker.name, isOwner: speaker.isOwner)
+        return SpeakerDisplay(id: speaker.isOwner ? "owner" : id, displayName: speaker.name, isOwner: speaker.isOwner)
     }
 
-    private func turnSpeakerChoices(_ content: MeetingResolvedDocument) -> [SpeakerDisplay] {
-        var choices = content.transcript.speakers.map {
-            SpeakerDisplay(id: $0.id, displayName: $0.isOwner ? "\($0.name) (\(String(localized: "Me")))" : $0.name, isOwner: $0.isOwner)
-        }
-        let ownerID = content.transcript.speakers.first(where: \.isOwner)?.id ?? "owner"
-        if !choices.contains(where: { $0.id == ownerID }) {
-            choices.insert(SpeakerDisplay(id: ownerID, displayName: ownerDescription, isOwner: true), at: 0)
-        }
-        return choices
+    private func assignmentChoiceName(_ speaker: MeetingSpeakerIdentity) -> String {
+        if speaker.speakerIDs.isEmpty { return ownerDescription }
+        return speaker.isOwner ? "\(speaker.name) (\(String(localized: "Me")))" : speaker.name
     }
 
-    private func bindingForSpeakerName(_ speaker: MeetingSpeaker) -> Binding<String> {
+    private func bindingForSpeakerName(_ speaker: MeetingSpeakerIdentity) -> Binding<String> {
         Binding(
             get: { speakerNameDrafts[speaker.id] ?? speaker.name },
             set: { speakerNameDrafts[speaker.id] = $0 }
@@ -834,11 +837,13 @@ struct MeetingConversationView: View {
         onEdit(.projectName, "", String(projectDraft.prefix(256)))
     }
 
-    private func saveSpeakerName(_ speaker: MeetingSpeaker) {
+    private func saveSpeakerName(_ speaker: MeetingSpeakerIdentity) {
         let value = speakerNameDrafts[speaker.id] ?? speaker.name
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        onEdit(.speakerName, speaker.id, String(trimmed.prefix(256)))
+        for id in speaker.speakerIDs {
+            onEdit(.speakerName, id, String(trimmed.prefix(256)))
+        }
     }
 
 
@@ -865,7 +870,7 @@ struct MeetingConversationView: View {
             speakerNameDrafts = [:]
             return
         }
-        speakerNameDrafts = Dictionary(uniqueKeysWithValues: content.transcript.speakers.map { ($0.id, $0.name) })
+        speakerNameDrafts = Dictionary(uniqueKeysWithValues: content.speakerIdentities.map { ($0.id, $0.name) })
     }
 
     private func color(for speakerID: String?) -> Color {
