@@ -526,7 +526,7 @@ describe("Cloudflare web sharing", () => {
     const child = spawnSync(
       process.env.PYTHON ?? "python3",
       [
-        "-c",
+        "-X", "utf8", "-c",
         `
 import sqlite3
 conn = sqlite3.connect(':memory:')

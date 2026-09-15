@@ -24,7 +24,7 @@ c.commit(); print(json.dumps(rows))`;
 // Hooks pause network/database boundaries; all authorization SQL executes for real.
 function database(path, hooks = {}) {
   const execute = (sql, values = [], script = false) => {
-    const result = spawnSync(process.env.PYTHON ?? "python3", ["-c", python], {
+    const result = spawnSync(process.env.PYTHON ?? "python3", ["-X", "utf8", "-c", python], {
       input: JSON.stringify({ path, sql, values, script }), encoding: "utf8",
     });
     assert.equal(result.status, 0, result.stderr);

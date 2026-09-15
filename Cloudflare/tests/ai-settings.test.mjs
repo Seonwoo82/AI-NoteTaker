@@ -17,7 +17,7 @@ else: rows=[dict(r) for r in c.execute(x['sql'],x.get('values',[]))]
 c.commit(); print(json.dumps(rows))`;
 function database(path) {
   const execute = (sql, values = [], script = false) => {
-    const r = spawnSync(process.env.PYTHON ?? 'python3', ['-c', python], { input: JSON.stringify({ path, sql, values, script }), encoding: 'utf8' });
+    const r = spawnSync(process.env.PYTHON ?? 'python3', ['-X', 'utf8', '-c', python], { input: JSON.stringify({ path, sql, values, script }), encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
     return JSON.parse(r.stdout);
   };
@@ -199,6 +199,6 @@ assert c.execute('SELECT * FROM ai_devices ORDER BY device_id').fetchall()==[('m
 try: c.execute("INSERT INTO ai_devices VALUES ('bad','other',1)")
 except sqlite3.IntegrityError: pass
 else: raise AssertionError('Platform check was lost')`;
-  const result = spawnSync(process.env.PYTHON ?? 'python3', ['-c', program], { input: JSON.stringify({ before, after }), encoding: 'utf8' });
+  const result = spawnSync(process.env.PYTHON ?? 'python3', ['-X', 'utf8', '-c', program], { input: JSON.stringify({ before, after }), encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
 });

@@ -613,7 +613,7 @@ describe("Cloudflare sync worker", () => {
     const child = spawnSync(
       process.env.PYTHON ?? "python3",
       [
-        "-c",
+        "-X", "utf8", "-c",
         `
 import json
 import sqlite3
@@ -840,7 +840,7 @@ print('recording_folders upsert sql ok')
     const child = spawnSync(
       process.env.PYTHON ?? "python3",
       [
-        "-c",
+        "-X", "utf8", "-c",
         `
 import json
 import sqlite3
@@ -1219,7 +1219,7 @@ print('worker-generated upsert sql ok')
     const child = spawnSync(
       process.env.PYTHON ?? "python3",
       [
-        "-c",
+        "-X", "utf8", "-c",
         `
 import sqlite3
 import sys
