@@ -14,7 +14,7 @@ Windows 소스·프로젝트 설정·의존성·테스트·문서·배포 스크
 
 ## 실행
 
-최신 upstream 병합, 빈 녹음 보호와 공유 오류 처리를 포함하는 단계 19 후보입니다. Windows 시스템 공유 문제는 미해결이며, 사용자의 데스크톱 사용 요청에 따라 이 후보의 앱 실행 검증은 보류했습니다. 최종 검증 완료 릴리스가 아닙니다. 파일 무결성·버전·해시는 ZIP 옆 `.verification.json`을 참고하세요.
+최신 upstream 병합, 빈 녹음 보호와 공유 오류 처리를 포함하는 단계 19 후보입니다. 데스크톱 사용 허용 후 새 압축 해제본의 전체 13개 실행 게이트 중 **12개가 통과하고 Windows 시스템 오디오 공유가 실패**했습니다. 파일 탐색기에서도 공유 창이 열리지 않아 원인을 조사 중이며 최종 검증 완료 릴리스는 아닙니다. 버전·해시·실행 결과는 ZIP 옆 `.verification.json`, 파일 무결성 결과는 `.static-verification.json`을 참고하세요. [실행 검증과 공유 비교](docs/implementation/FULL-PORT-STEP20.md)
 
 ```text
 Windows/artifacts/step19/0.4.0/portable-win-x64/AI-NoteTaker.exe
@@ -130,6 +130,6 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 # whisper 대신 qwen, 추가 옵션 small(0.6B), cpu, cancel-resume(120초 초과 파일)
 ```
 
-최신 소스의 비장치 자동 테스트는 **241개 통과/실패 0**이며 실제 장치 테스트 6개는 필터로 제외했습니다. WPF Release 빌드도 경고·오류 없이 통과했습니다. 최신 완료/복구·공유 수정의 WPF 실행과 새 ZIP의 13개 실행 게이트는 아직 수행하지 않았습니다. 이전 ZIP의 선택 구간 출력·폴더 드래그 결과와 구분하며 Windows 시스템 공유 창 timeout은 미해결입니다. 사용자의 데스크톱 사용 요청 이후 창을 여는 검증은 중단했습니다. [단계 19](docs/implementation/FULL-PORT-STEP19.md)에 최신 병합·빈 녹음 보호·검증 범위를 기록했습니다.
+최신 소스의 비장치 자동 테스트는 **241개 통과/실패 0**이며 실제 장치 테스트 6개는 필터로 제외했습니다. WPF Release 빌드도 경고·오류 없이 통과했습니다. 최신 ZIP의 UI·재생 보호·Whisper·Qwen·트레이·파일 기반 녹음·참여자·프로필·회의 분석·문서 보완·동기화·웹 공유 12개 실행 경로는 통과했고, 마지막 Windows 시스템 공유는 timeout으로 실패했습니다. 실제 사용자 마이크·배포 서버·Apple 기기 검증과 구분합니다. [단계 20](docs/implementation/FULL-PORT-STEP20.md)에 실행 결과를, [단계 19](docs/implementation/FULL-PORT-STEP19.md)에 최신 병합·빈 녹음 보호를 기록했습니다.
 
 명령·아이콘은 [단계 15](docs/implementation/FULL-PORT-STEP15.md), 녹음 음량과 등록 입력 표시는 [단계 17](docs/implementation/FULL-PORT-STEP17.md), 지속 웹 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)을 참고하세요. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
