@@ -125,6 +125,12 @@ final class VoiceRecorder {
                 liveAudioHandler: liveAudioHandler
             ) { [weak self] in
                 guard let self, let library = self.interruptionLibrary else { return }
+                switch self.state {
+                case let .recording(current), let .paused(current):
+                    guard current.id == id else { return }
+                default:
+                    return
+                }
                 _ = await self.finish(library: library)
             }
             let active = ActiveRecording(
@@ -208,6 +214,9 @@ final class VoiceRecorder {
 
         do {
             let result = try await active.session.finish()
+            guard result.duration.isFinite, result.duration > 0 else {
+                throw VoiceRecorderError.noAudioCaptured
+            }
             let pending = PendingRecording(
                 id: active.id,
                 title: active.title,
@@ -327,17 +336,19 @@ final class VoiceRecorder {
             mode: active.mode,
             outputURL: active.outputURL,
             createdAt: active.createdAt,
-            duration: duration > 0 ? duration : max(clock.now.timeIntervalSince(active.createdAt), 0.1),
+            duration: duration,
             warnings: ["Recovered playable audio after finalization error."]
         )
     }
 
     private func playableDuration(at url: URL) -> TimeInterval? {
-        guard let player = try? AVAudioPlayer(contentsOf: url) else { return nil }
-        if player.duration.isFinite, player.duration > 0 {
-            return player.duration
-        }
-        return nil
+        guard let file = try? AVAudioFile(forReading: url), file.length > 0,
+              file.processingFormat.sampleRate.isFinite, file.processingFormat.sampleRate > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 1) else { return nil }
+        do { try file.read(into: buffer, frameCount: 1) } catch { return nil }
+        guard buffer.frameLength > 0 else { return nil }
+        let duration = Double(file.length) / file.processingFormat.sampleRate
+        return duration.isFinite && duration > 0 ? duration : nil
     }
 
     private func startElapsedClock() {
@@ -430,6 +441,7 @@ nonisolated enum VoiceRecorderError: Error, Equatable, LocalizedError, Sendable 
     case unsupportedMode(CaptureMode)
     case fileMissingAfterFinish
     case encoderFailed
+    case noAudioCaptured
 
     var errorDescription: String? {
         switch self {
@@ -441,6 +453,8 @@ nonisolated enum VoiceRecorderError: Error, Equatable, LocalizedError, Sendable 
             return String(localized: "The recording could not be finalized.")
         case .encoderFailed:
             return String(localized: "The recording encoder could not finish the audio file.")
+        case .noAudioCaptured:
+            return String(localized: "No audio was captured. Check your microphone and try again.")
         }
     }
 }
@@ -450,7 +464,6 @@ private final class AVFoundationRecordingSession: NSObject, VoiceRecordingSessio
     let canPause = true
 
     private let recorder: AVAudioRecorder
-    private let startedAt: Date
     private let interruptionObserver: NSObjectProtocol?
     private var interruptionHandler: (@MainActor @Sendable () async -> Void)?
     private var finishContinuation: CheckedContinuation<Bool, Never>?
@@ -458,12 +471,10 @@ private final class AVFoundationRecordingSession: NSObject, VoiceRecordingSessio
 
     private init(
         recorder: AVAudioRecorder,
-        startedAt: Date,
         interruptionObserver: NSObjectProtocol?,
         interruptionHandler: @escaping @MainActor @Sendable () async -> Void
     ) {
         self.recorder = recorder
-        self.startedAt = startedAt
         self.interruptionObserver = interruptionObserver
         self.interruptionHandler = interruptionHandler
         super.init()
@@ -516,7 +527,6 @@ private final class AVFoundationRecordingSession: NSObject, VoiceRecordingSessio
 
         return AVFoundationRecordingSession(
             recorder: recorder,
-            startedAt: Date(),
             interruptionObserver: observer,
             interruptionHandler: interruptionHandler
         )
@@ -548,9 +558,11 @@ private final class AVFoundationRecordingSession: NSObject, VoiceRecordingSessio
 
         let asset = AVURLAsset(url: recorder.url)
         let duration = try await asset.load(.duration).seconds
-        let fallbackDuration = Date().timeIntervalSince(startedAt)
+        guard duration.isFinite, duration > 0 else {
+            throw VoiceRecorderError.noAudioCaptured
+        }
         return VoiceRecordingResult(
-            duration: duration.isFinite && duration > 0 ? duration : fallbackDuration,
+            duration: duration,
             warnings: []
         )
     }
