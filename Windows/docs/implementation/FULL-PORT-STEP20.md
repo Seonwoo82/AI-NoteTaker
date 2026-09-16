@@ -32,3 +32,9 @@ Windows 빌드 26200.9457에서 ShellExperienceHost와 Client.CBS 패키지는 �
 [Microsoft의 공유 소스 문서](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/integrate-sharesheet-send)는 WPF의 packaged/unpackaged 앱 모두 HWND별 interop을 사용하도록 설명하며 현재 구현도 이 경로를 따른다. 탐색기에서의 재현은 앱 외부 문제 가능성을 보여주지만 앱 구현의 정상 작동을 대신 증명하지는 않는다.
 
 Windows 공유 UI 프로세스 `ShellExperienceHost`만 한 번 재시작하는 제안을 사용자에게 확인 요청했다. 앱 바깥의 시스템 프로세스에 영향을 주므로 답변 전에는 실행하지 않는다. 현재까지 Windows 프로세스 종료·패키지 재등록·보안/개인정보 설정 변경은 하지 않았다. 원인 해결과 실제 공유 요청 성공 전까지 Draft와 미완료 판정을 유지한다.
+
+## 추가 수동 검증의 중단
+
+같은 후보를 `Windows/artifacts/native-step21/library`의 격리 무음 fixture로 실행해 녹음을 폴더 A에 드래그했다. UI의 녹음 1개 표시와 저장된 `folderId=a4e75c42-1541-46f8-942d-3a2747b3f01d`를 확인했다. 이어 폴더 순서를 바꾸려던 중 사용자가 물리 Escape 키로 Computer Use를 중단했다. 저장 순서는 A/B/C 그대로였으며 정렬·앱 재실행 후 보존은 확인하지 않았다. 이는 중단된 검증이지 정렬 기능 실패 판정이 아니다.
+
+이후 화면·입력 조작을 멈추고 저장 파일만 읽어 결과를 기록했다. 사용자가 다시 데스크톱 조작을 허용하기 전에는 자동으로 재개하지 않는다. 공유 UI 프로세스 재시작도 승인되지 않았고 실행하지 않았다. 12개 실행 경로의 통과와 시스템 공유 실패, Draft 상태는 유지한다.
