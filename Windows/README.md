@@ -23,6 +23,8 @@ Windows/artifacts/step19/AI-NoteTaker-0.4.0-win-x64.zip
 
 ZIP을 **폴더째 풀고** `AI-NoteTaker.exe`를 실행하세요. 옆의 DLL·runtimes 폴더도 필요합니다. .NET 런타임이 포함되어 별도 SDK 설치는 필요 없습니다. 이전 버전이 열려 있다면 닫고 새 버전을 실행합니다. 서명된 설치 프로그램과 자동 업데이트는 아직 없습니다.
 
+빈 녹음의 완료 거부·재녹음·종료·재시작은 패키지 DLL을 직접 로드하는 별도 WPF 검사에서도 통과했습니다. 개발 검증 명령은 `./Windows/verify-recording-completion.ps1 -PackageDirectory <압축을 푼 폴더>`이며 Windows와 .NET 10 SDK가 필요합니다. [검사 범위와 결과](docs/implementation/FULL-PORT-STEP21.md)
+
 검증 환경: Windows 11 x64, i7-13700F, RTX 4070 Ti 12GB. Whisper CPU는 AVX2/FMA/F16C 지원이 필요합니다. Windows ARM은 실행 검증하지 않았으며 Qwen 자동 설치는 x64 전용입니다. NVIDIA GPU가 없으면 GPU 사용을 끄고 CPU로 실행할 수 있지만 느립니다.
 
 ## 무료 전사·회의록 시작
