@@ -21,8 +21,6 @@ internal static class SmokeAudioShare
             ShowInTaskbar = true, WindowStartupLocation = WindowStartupLocation.CenterScreen };
         owner.Show();
         using var share = new WindowsAudioShare(owner);
-        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        share.DataRequested += () => requested.TrySetResult();
         try
         {
             var package = await WindowsAudioShare.PrepareAsync(library, library.Load().Single(), default);
@@ -31,8 +29,7 @@ internal static class SmokeAudioShare
                 throw new InvalidOperationException("Share package changed the audio.");
             owner.Activate(); await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             JsonDisk.Write(Path.Combine(output, "prepared.json"), new { OwnerActive = owner.IsActive, SourcePathLength = library.AudioPath(recording.Id).Length, StoragePathLength = files[0].Path.Length });
-            share.Show(package);
-            await requested.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await share.ShowAsync(package);
             await Dispatcher.Yield(DispatcherPriority.ContextIdle);
             JsonDisk.Write(Path.Combine(output, "result.json"), new { Passed = true, NativeDataRequested = true, FileCount = files.Count,
                 FileName = files[0].Name, SourcePathLength = library.AudioPath(recording.Id).Length, StoragePathLength = files[0].Path.Length, AudioHash = SyncFileTransaction.Revision(files[0].Path),

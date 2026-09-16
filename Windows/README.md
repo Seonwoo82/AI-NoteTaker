@@ -14,7 +14,7 @@ Windows 소스·프로젝트 설정·의존성·테스트·문서·배포 스크
 
 ## 실행
 
-이 PC의 최신 검증 후보입니다. Windows 시스템 공유 검증은 아직 통과하지 않았습니다.
+이 PC의 최신 검증 후보입니다. Windows 시스템 공유 검증은 아직 통과하지 않았으며, 단계 18의 공유 오류 처리 수정은 아래 ZIP에 포함되지 않습니다.
 
 ```text
 Windows/artifacts/step17/0.4.0/portable-win-x64/AI-NoteTaker.exe
@@ -69,7 +69,7 @@ Qwen3-ASR은 설정의 전사 엔진에서 선택할 수 있습니다. 언어를
 - WAV·MP3·M4A 등 Windows에서 디코딩 가능한 오디오를 가져올 수 있습니다. 제목 검색·이름 변경·즐겨찾기·최근 삭제·복원과 Markdown 복사/내보내기를 지원합니다.
 - 최근 삭제된 녹음은 30일 동안 복원할 수 있습니다. 30일이 지나면 앱 시작/목록 갱신 때 파일을 정리합니다. **영구 삭제…**로 확인 후 바로 정리할 수도 있습니다. 이 기기의 오디오·문서·수정 이력과 식별 가능한 동기화 복사본을 지우고 삭제 메타데이터는 동기화용으로 남깁니다. 서버·다른 기기·앱 밖으로 내보낸 사본은 별도로 유지됩니다.
 - 녹음 화면 또는 우클릭 메뉴의 **오디오 내보내기…**는 보관된 WAV를 변환 없이 복사합니다. 가져오기 전에 사용한 MP3 등의 컨테이너를 되돌리는 기능은 아닙니다. 파일 저장이 실패하거나 취소되면 기존 내보내기 파일을 보존합니다.
-- **오디오 공유…**는 Windows 공유 창에서 받을 앱을 선택하는 기능입니다. 제목이 붙은 WAV 사본을 전달하며 내부 공유 사본은 24시간 이후 목록 갱신 시 정리됩니다. 실제로 받은 앱에 저장된 사본은 이 앱에서 지우지 않습니다.
+- **오디오 공유…**는 Windows 공유 창에서 받을 앱을 선택하는 기능입니다. 제목이 붙은 WAV 사본을 준비하며 내부 공유 사본은 24시간 이후 목록 갱신 시 정리됩니다. 현재 검증 PC에서 시스템 공유 창이 응답하지 않는 문제가 남아 있습니다. 개발 소스에는 응답 대기·취소·timeout 안내를 추가했으며 **오디오 내보내기**로 WAV를 저장할 수 있습니다. 실제로 받은 앱에 저장된 사본은 이 앱에서 지우지 않습니다. [현재 공유 상태](docs/implementation/FULL-PORT-STEP18.md)
 - `Ctrl+N` 녹음, `Ctrl+Enter` 완료, `Ctrl+O` 가져오기, `Ctrl+F` 검색, `Ctrl+,` 설정, `Space` 재생/일시정지. `Ctrl+←/→` 15초 이동, 파형에서 `Home/End` 처음/끝. `F2`/`Enter` 이름 변경, `Delete` 최근 삭제로 이동. 글을 편집하는 동안 녹음/라이브러리 편집·재생 이동 단축키는 동작하지 않습니다.
 - `Ctrl+Shift+E` 오디오 내보내기, `Ctrl+Shift+R` 탐색기에서 오디오 선택, `Ctrl+Shift+L` 즐겨찾기, `Ctrl+Shift+S` 동기화. Windows 창과 EXE에는 원본 저장소의 앱 아이콘을 적용했습니다. [명령·오디오 공유 검증](docs/implementation/FULL-PORT-STEP15.md)
 - 시스템 녹음은 선택한 출력 장치의 전체 소리입니다. 온라인 회의는 이어폰을 권장합니다. 마이크가 차단되면 Windows 개인정보 설정에서 데스크톱 앱 접근을 허용하세요.
@@ -130,4 +130,6 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 # whisper 대신 qwen, 추가 옵션 small(0.6B), cpu, cancel-resume(120초 초과 파일)
 ```
 
-현재 개발 소스의 자동 테스트 230개가 통과했습니다. 실제 장치 테스트 6개는 일반 test에서 건너뛰며, 생성 무음 파일의 선택 구간 출력 검사는 별도로 실행해 통과했습니다. Windows 시스템 공유는 긴 경로 수정을 반영한 배포 검증을 진행 중입니다. 명령·아이콘과 공유 검사 상태는 [단계 15](docs/implementation/FULL-PORT-STEP15.md), 녹음 음량과 등록 입력 표시는 [단계 17](docs/implementation/FULL-PORT-STEP17.md), 지속 웹 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3의 모델 비교·취소/재개·90분 분할·배포 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)에 구분해서 기록합니다. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).
+단계 17 전체 자동 테스트는 230개 통과/장치 6개 건너뜀이며, 생성 무음 파일의 선택 구간 출력 검사는 별도로 통과했습니다. 이후 단계 18 공유 요청 수정은 관련 headless 테스트 12개와 WPF Release 빌드가 통과했고 새 WPF 회귀 검사는 아직 실행하지 않았습니다. 두 테스트 수는 중복을 포함하므로 합산하지 않습니다. 실제 폴더 안팎 이동·앞뒤 정렬은 확인했으며, Windows 시스템 공유 창 timeout은 미해결입니다. 사용자의 데스크톱 사용 요청 이후 창을 여는 검증은 중단했습니다. [단계 18](docs/implementation/FULL-PORT-STEP18.md)에 현재 상태를 기록했습니다.
+
+명령·아이콘은 [단계 15](docs/implementation/FULL-PORT-STEP15.md), 녹음 음량과 등록 입력 표시는 [단계 17](docs/implementation/FULL-PORT-STEP17.md), 지속 웹 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)을 참고하세요. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).

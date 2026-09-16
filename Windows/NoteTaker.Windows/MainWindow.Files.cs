@@ -16,7 +16,7 @@ public partial class MainWindow
     internal Func<string?>? AudioImportSource { get; set; }
     internal Action<string>? RevealAudioLocation { get; set; }
     private WindowsAudioShare? audioShare;
-    internal Action<global::Windows.ApplicationModel.DataTransfer.DataPackage>? AudioSharePresenter { get; set; }
+    internal Func<global::Windows.ApplicationModel.DataTransfer.DataPackage, CancellationToken, Task>? AudioSharePresenter { get; set; }
     private async void ShareAudio_Click(object sender, RoutedEventArgs e) => await (LastLibraryAction = ShareAudioAsync());
     private async Task ShareAudioAsync()
     {
@@ -24,12 +24,20 @@ public partial class MainWindow
             runningWork is not null || recorder is not null || transitioning || ModalOperationOpen) return;
         await RunWorkAsync(async token =>
         {
-            SetStatus("공유할 오디오를 준비하는 중…");
-            var data = await WindowsAudioShare.PrepareAsync(library, recording, token);
-            token.ThrowIfCancellationRequested();
-            if (AudioSharePresenter is not null) AudioSharePresenter(data);
-            else (audioShare ??= new WindowsAudioShare(this)).Show(data);
-            SetStatus("Windows 공유 창에서 받을 앱을 선택해 주세요.");
+            try
+            {
+                SetStatus("공유할 오디오를 준비하는 중…");
+                var data = await WindowsAudioShare.PrepareAsync(library, recording, token);
+                token.ThrowIfCancellationRequested();
+                SetStatus("Windows 공유 창을 기다리는 중…");
+                if (AudioSharePresenter is not null) await AudioSharePresenter(data, token);
+                else await (audioShare ??= new WindowsAudioShare(this)).ShowAsync(data, token);
+                SetStatus("Windows에 공유할 오디오를 전달했습니다. 받을 앱을 선택해 주세요.");
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            { SetStatus("오디오 공유 요청을 취소했습니다."); }
+            catch (System.Runtime.InteropServices.COMException ex)
+            { throw new InvalidOperationException("Windows 오디오 공유를 준비하거나 열지 못했습니다. 다시 시도하거나 ‘오디오 내보내기’를 이용해 주세요.", ex); }
         });
     }
     private async void PermanentDelete_Click(object sender, RoutedEventArgs e) => await (LastLibraryAction = DeletePermanentlyAsync());

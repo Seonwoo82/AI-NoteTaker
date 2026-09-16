@@ -10,10 +10,10 @@
 | --- | --- | --- |
 | 녹음·가져오기·재생·삭제/복원·무료 AI·Clova 파일 연동 | 구현·230개 회귀·새 ZIP 핵심 10개 검사 통과 | 원본과 이전 성공 문서 보존, 개별 소스 음량·모드/장치 재시작 보존. 생성 PCM/공개 음성 fixture와 실제 사용자 장치를 구분. [단계 17](docs/implementation/FULL-PORT-STEP17.md) |
 | 영구 삭제·30일 삭제 보관·오디오 내보내기 | 구현·221개 전체 테스트·WPF/Worker·후보 패키지 검증 | 기기 로컬 purge 표식과 삭제 메타데이터 보존, 원격 오디오/회의록/참여자 수정 이력 복원, 확인/취소/오래된 확인 거부, 저장된 WAV 바이트 복사. [단계 14](docs/implementation/FULL-PORT-STEP14.md) |
-| 오디오 파일 시스템 공유 | 구현·개발 API 검사 통과, 배포 재검증 중 | 제목 있는 WAV 사본·원본 보존·24시간 정리·영구 삭제 연결. 첫 개발 실행은 DataRequested 통과. ZIP에서 긴 경로 오류를 발견해 짧은 임시 캐시로 수정했고, 이후 네이티브 이벤트 timeout은 조사 중. 보안 안내창을 치운 뒤 재확인 필요. 받는 앱 선택/전송은 하지 않음. [단계 15](docs/implementation/FULL-PORT-STEP15.md) |
+| 오디오 파일 시스템 공유 | 구현·오류 처리 보완, 네이티브 공유 미해결 | 제목 있는 WAV 사본·원본 보존·24시간 정리·영구 삭제 연결. 긴 경로 수정 후 보안 안내창이 없는 상태에서도 DataRequested timeout 재현. 공식 SDK 어댑터와 요청별 timeout/취소/중복 콜백 처리 추가, 관련 headless 12개 통과. 새 WPF 검사는 데스크톱 사용 요청으로 미실행. [단계 18](docs/implementation/FULL-PORT-STEP18.md) |
 | 앱 명령과 배포 아이콘 | 구현·WPF 명령/실제 EXE 아이콘 검증 | LibraryCommands의 완료·내보내기·탐색기·동기화·즐겨찾기·이름 변경·15초 이동에 대응. 편집 중 보호와 휴지통 명령 보호. 원본 AppIcon 자산을 WPF/EXE에 포함. 물리 키 입력은 별도. [단계 15](docs/implementation/FULL-PORT-STEP15.md) |
 | 5분 집중 파형과 전체 개요 | 구현·단위·WPF 검증 | 절대 시간 탐색, 15분 실제 생성 WAV 해상도, 드래그 중 고정 범위, 시작/끝·비정상 값 테스트, 2시간 범위 WPF 렌더링. 아래 검증 기록 참조 |
-| 녹음 폴더 | 구현·저장·WPF·Worker 동기화 검증 | 생성/이름/삭제/이동/정렬/접기·펼치기, 삭제 시 오디오 보존, 선택·재생 유지, 재시작 후 지속. 폴더 내 녹음은 파일 입력 WPF 캡처 흐름, 폴더 내 가져오기는 Ctrl+O의 실제 가져오기 경로로 검증. 드래그 실제 포인터와 OS 파일 선택창 조작은 별도 |
+| 녹음 폴더 | 구현·저장·WPF·Worker 동기화·물리 드래그 검증 | 생성/이름/삭제/이동/정렬/접기·펼치기, 삭제 시 오디오 보존, 선택·재생 유지, 재시작 후 지속. 폴더 내 녹음은 파일 입력 WPF 캡처 흐름, 가져오기는 Ctrl+O의 가져오기 경로로 검증. 단계 18 실제 포인터로 폴더 안팎 이동·앞뒤 정렬과 저장 JSON 확인. OS 파일 선택창 조작은 별도 |
 | 트레이·전역 단축키·자동 AI | 구현·Windows API·실제 AI 검증 | Shell 트레이 등록, 창 숨김/복원, 3개 키 등록/해제, HWND 단축키 메시지, 명시적 종료 확인. 파일 입력의 녹음 중 트레이 유지·pause/resume·폴더 유지, 자동 생성 off/키 실패/종료 제외, 실제 Whisper/Ollama 완료 확인. 실제 장치 장시간 트레이 녹음·물리 키 입력은 별도 |
 | 모델 선택·긴 회의 예산 | 구현·단위/WPF·공개 API 검증 | 텍스트/전사 목록 병합·검색, 별도 보완 모델, 출력/문맥 상한과 reasoning 예산, 분할 입력의 JSON/UTF-8 한도, 키 제거 시 선택 보존. 실제 긴 회의·클라우드 유료 추론은 추가 검증 |
 | F-001 참여자 구분 | 상세 시간·그룹 재연결 구현, 실제 모델/WPF 검증 | Whisper 원본 UTF-8 토큰과 상세 시간 조합, cloud verbose timestamps/fallback, 기존 전사 보존·상세 캐시 재개, 음성 특징에 따른 안정적 화자 ID 구현. 같은 음성의 인원 지정 재분석에서 수동 이름 유지 확인. 애매한 그룹 분할/합침은 미연결 수정으로 표시. 최대 6시간 구간 처리 검증 완료. 한국어 실제 다자 회의·장시간 정확도/성능 검증은 남음 |
@@ -31,13 +31,15 @@
 | 6시간 화자 분석 | 구간 처리·실제 모델 fixture 검증 | 5분 구간+2초 문맥, 음성 특징에 의한 전체 참여자 연결, 원본 시간·해시 보존. 자동/4명 지정으로 6시간 파일·구간 경계·4시간 이후·취소 확인, 최대 약 815MiB. 대부분 무음인 검증 파일이며 자연 회의 속도/정확도 증거와 구분 |
 | 배포·문서·PR | 미완료 | 독립 Windows 버전/폴더형 self-contained ZIP, 새 폴더에서 실행 검증, 기능별 증거/제약 문서와 GitHub PR |
 
-현재 `4922af1` 후보 ZIP의 새 압축 해제 폴더에서 핵심 10개 검사와 같은 EXE의 WPF/Worker 동기화·웹 공유 2개 검사가 통과했다. Windows 시스템 공유 게이트가 남아 전체 배포 보고서의 `Passed`는 false다. 해시·버전·증거는 [단계 17](docs/implementation/FULL-PORT-STEP17.md), 원본 요구사항별 구현과 검증 범위는 [전체 이식 감사](docs/implementation/FULL-PORT-AUDIT.md)에 기록했다. `verify-package.ps1 -AllFeatures`에도 재생 보호·동기화·웹 공유를 포함했으며 보안 안내창이 치워진 뒤 네이티브 공유까지 전체 실행해야 한다.
+현재 `4922af1` 후보 ZIP의 새 압축 해제 폴더에서 핵심 10개 검사와 같은 EXE의 WPF/Worker 동기화·웹 공유 2개 검사가 통과했다. 같은 EXE의 실제 폴더 드래그도 확인했으나 Windows 시스템 공유 게이트가 남아 전체 배포 보고서의 `Passed`는 false다. 해시·버전·증거는 [단계 17](docs/implementation/FULL-PORT-STEP17.md), 이후 공유 오류 처리와 물리 드래그는 [단계 18](docs/implementation/FULL-PORT-STEP18.md), 요구사항별 범위는 [전체 이식 감사](docs/implementation/FULL-PORT-AUDIT.md)에 기록했다. 단계 18 소스와 최신 문서는 현재 ZIP에 포함되지 않는다. 데스크톱을 다시 사용할 수 있을 때 새 WPF 검사·네이티브 공유를 확인하고 새 ZIP으로 `verify-package.ps1 -AllFeatures` 전체 경로를 실행해야 한다.
 
 근거: 루트 README.md, docs/FEATURE-BACKLOG.md (F-001–010과 후속 릴리스), NoteTaker/Playback, Shared/MeetingIntelligence, NoteTaker/Sync, Shared/WebSharing, Cloudflare/README.md.
 
 Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은 사용자 기능을 제공한다. 멀티기기 동시 녹음의 자동 병합·음성 인증은 upstream의 명시적 제외 범위를 따른다. 일반 고객용 회원/결제/다중 고객 서버는 현재 upstream 기능에 없으며 별도 상품화 과제다.
 
 ## 진행 기록
+
+- 2026-09-16: 실제 폴더 안팎 이동·앞뒤 순서 변경을 확인했다. 보안 안내창 종료 후에도 시스템 공유 timeout이 재현됐다. 공식 SDK 어댑터와 요청별 응답·취소·오류 처리를 추가했고 창 없는 관련 12개 테스트와 Release 빌드가 통과했다. 이후 데스크톱 사용 요청에 따라 네이티브 조작을 멈췄으며 새 WPF 검사·새 ZIP·최종 공유 검증은 남아 있다. [단계 18](docs/implementation/FULL-PORT-STEP18.md).
 
 - 2026-09-16: 최신 upstream을 다시 대조해 개별 마이크/시스템 음량, 모드·장치 설정 보존, 목소리 등록의 PCM 입력 감지 시간, 회의록 생성 시각·보고 비용 표시를 추가했다. Release 230개 통과/장치 6개 건너뜀. 실제 WPF 설정·파일 입력 녹음·PCM 결과·재시작과 공개 음성의 프로필/실시간 owner/자동 분석이 통과했다. [단계 17](docs/implementation/FULL-PORT-STEP17.md). 새 배포와 남은 네이티브 UI 검증을 진행한다.
 

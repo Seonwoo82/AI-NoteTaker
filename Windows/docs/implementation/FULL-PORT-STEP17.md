@@ -1,5 +1,7 @@
 # 녹음 음량과 목소리 등록 입력 표시
 
+> 이 문서는 단계 17 당시 기록이다. 이후 실제 폴더 드래그 확인, 보안 안내창 종료 후에도 재현된 시스템 공유 timeout과 요청 오류 처리 수정은 [단계 18](FULL-PORT-STEP18.md)을 참고한다. 단계 17 ZIP에는 단계 18 코드가 포함되지 않는다.
+
 2026-09-16. upstream `2aaf0532e48016b32571c7929984a8f474e812ee`를 다시 fetch하고 현재 Windows 브랜치에 포함되어 있음을 확인했다. Apple의 `NoteTaker/Settings/AppSettings.swift`, `SettingsView.swift`와 목소리 등록 1.4.1 요구사항을 대조해 남아 있던 개별 음량 조절과 입력 감지 시간 표시를 추가했다.
 
 ## 녹음 설정과 적용

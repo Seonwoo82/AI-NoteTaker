@@ -28,7 +28,18 @@ internal static partial class SmokeUi
             Click("ExportAudioButton"); await window.LastLibraryAction;
             if (window.LastWorkError is not null || SyncFileTransaction.Revision(destination) != audioHash) throw new InvalidOperationException("WPF audio export changed stored WAV bytes.", window.LastWorkError);
             global::Windows.ApplicationModel.DataTransfer.DataPackage? shared = null;
-            window.AudioSharePresenter = data => shared = data;
+            window.AudioSharePresenter = (_, _) => Task.FromException(new InvalidOperationException("공유 창 응답 실패 검증"));
+            Click("ShareAudioButton"); await window.LastLibraryAction;
+            if (window.LastWorkError is not InvalidOperationException ||
+                !((TextBlock)window.FindName("StatusText")).Text.Contains("공유 창 응답 실패 검증") ||
+                !((Button)window.FindName("ShareAudioButton")).IsEnabled)
+                throw new InvalidOperationException("Failed native share was reported as success or blocked a retry.");
+            window.AudioSharePresenter = (_, _) => Task.FromException(new System.Runtime.InteropServices.COMException("fixture share failure"));
+            Click("ShareAudioButton"); await window.LastLibraryAction;
+            var failedShareStatus = ((TextBlock)window.FindName("StatusText")).Text;
+            if (window.LastWorkError is not InvalidOperationException || !failedShareStatus.Contains("오디오 공유") || failedShareStatus.Contains("마이크"))
+                throw new InvalidOperationException("Native share error incorrectly directed the user to microphone permissions.");
+            window.AudioSharePresenter = (data, _) => { shared = data; return Task.CompletedTask; };
             Click("ShareAudioButton"); await window.LastLibraryAction;
             if (window.LastWorkError is not null || shared is null) throw new InvalidOperationException("WPF audio share did not prepare a Windows data package.", window.LastWorkError);
             var items = await shared.GetView().GetStorageItemsAsync();
