@@ -11,6 +11,71 @@ import Testing
 #endif
 
 @MainActor
+@Test("VoiceRecorder rejects zero or invalid backend durations without publishing or deleting audio",
+      arguments: [Double.zero, -1, .nan, .infinity, -.infinity])
+func voiceRecorderRejectsInvalidBackendDuration(_ duration: Double) async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueVoiceLibraryRoot(), arguments: [])
+    defer { try? FileManager.default.removeItem(at: paths.libraryRoot) }
+    let store = await LibraryStore.open(paths: paths)
+    let id = UUID()
+    let original = Data("unfinished audio bytes".utf8)
+    let recorder = VoiceRecorder(backend: StubRecordingBackend(fixedID: id,
+        result: .success(duration: duration, audioData: original)))
+
+    await recorder.start(library: store, mode: .micOnly)
+    let saved = await recorder.finish(library: store)
+    let retried = await recorder.finish(library: store)
+
+    #expect(saved == nil)
+    #expect(retried == nil)
+    #expect(store.recordings.isEmpty)
+    #expect(!recorder.isRecording && !recorder.isBusy && !recorder.hasPendingRecording)
+    #expect(recorder.errorMessage != nil)
+    #expect(!FileManager.default.fileExists(atPath: paths.metadataURL(for: id).path))
+    #expect(try Data(contentsOf: audioURL(for: id, paths: paths)) == original)
+}
+
+@MainActor
+@Test("VoiceRecorder recovers genuine audio when a backend reports an invalid duration")
+func voiceRecorderRecoversAudioWithInvalidBackendDuration() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueVoiceLibraryRoot(), arguments: [])
+    defer { try? FileManager.default.removeItem(at: paths.libraryRoot) }
+    let store = await LibraryStore.open(paths: paths)
+    let id = UUID()
+    let original = try validSilentM4AData()
+    let recorder = VoiceRecorder(backend: StubRecordingBackend(fixedID: id,
+        result: .success(duration: .nan, audioData: original)))
+
+    await recorder.start(library: store, mode: .micOnly)
+    #expect(await recorder.finish(library: store) == nil)
+    #expect(recorder.hasPendingRecording)
+    let saved = try #require(await recorder.finish(library: store))
+    #expect(saved.duration.isFinite && saved.duration > 0)
+    #expect(saved.warnings.contains("Recovered playable audio after finalization error."))
+    #expect(try Data(contentsOf: audioURL(for: id, paths: paths)) == original)
+}
+
+@MainActor
+@Test("VoiceRecorder never salvages or recovers an audio container with zero frames")
+func voiceRecorderDoesNotSalvageZeroFrameAudio() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueVoiceLibraryRoot(), arguments: [])
+    defer { try? FileManager.default.removeItem(at: paths.libraryRoot) }
+    let store = await LibraryStore.open(paths: paths)
+    let id = UUID()
+    let original = try emptyM4AData()
+    let recorder = VoiceRecorder(backend: StubRecordingBackend(fixedID: id,
+        result: .writesThenThrows(audioData: original, error: VoiceRecorderError.encoderFailed)))
+
+    await recorder.start(library: store, mode: .micOnly)
+    #expect(await recorder.finish(library: store) == nil)
+    #expect(!recorder.hasPendingRecording)
+    #expect(await recorder.recoverRecordings(library: store) == [])
+    #expect(store.recordings.isEmpty)
+    #expect(try Data(contentsOf: audioURL(for: id, paths: paths)) == original)
+    #expect(!FileManager.default.fileExists(atPath: paths.metadataURL(for: id).path))
+}
+
+@MainActor
 @Test("VoiceRecorder finalizes a playable microphone note into the library")
 func voiceRecorderFinalizesPlayableMicrophoneNoteIntoLibrary() async throws {
     let paths = LibraryPaths(libraryRoot: uniqueVoiceLibraryRoot(), arguments: [])
@@ -201,6 +266,26 @@ func voiceRecorderSavesInterruptedRecordingThroughActiveLibrary() async throws {
 }
 
 @MainActor
+@Test("an old interruption callback cannot finalize a newer recording")
+func voiceRecorderIgnoresPreviousRecordingInterruption() async throws {
+    let paths = LibraryPaths(libraryRoot: uniqueVoiceLibraryRoot(), arguments: [])
+    defer { try? FileManager.default.removeItem(at: paths.libraryRoot) }
+    let store = await LibraryStore.open(paths: paths)
+    let backend = InterruptingRecordingBackend(result: .success(duration: 3, audioData: try validSilentM4AData()))
+    let recorder = VoiceRecorder(backend: backend)
+    await recorder.start(library: store, mode: .micOnly)
+    _ = try #require(await recorder.finish(library: store))
+    await recorder.start(library: store, mode: .micOnly)
+
+    await backend.interrupt(at: 0)
+    #expect(recorder.isRecording)
+    #expect(store.recordings.count == 1)
+    await backend.interrupt(at: 1)
+    #expect(!recorder.isRecording)
+    #expect(store.recordings.count == 2)
+}
+
+@MainActor
 @Test("VoicePlayer pauses same recording and replaces different recording")
 func voicePlayerPausesSameRecordingAndReplacesDifferentRecording() throws {
     let engine = StubPlaybackEngine()
@@ -301,6 +386,19 @@ private func validSilentM4AData() throws -> Data {
     return data
 }
 
+private func emptyM4AData() throws -> Data {
+    let url = FileManager.default.temporaryDirectory.appending(path: "NoteTakerVoiceTests-empty-\(UUID()).m4a")
+    defer { try? FileManager.default.removeItem(at: url) }
+    try autoreleasepool {
+        _ = try AVAudioFile(forWriting: url, settings: [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC), AVSampleRateKey: 44_100, AVNumberOfChannelsKey: 1,
+        ])
+    }
+    let readable = try AVAudioFile(forReading: url)
+    #expect(readable.length == 0)
+    return try Data(contentsOf: url)
+}
+
 @MainActor
 private final class StubRecordingBackend: VoiceRecordingBackend {
     let fixedID: UUID
@@ -340,7 +438,7 @@ private final class StubRecordingBackend: VoiceRecordingBackend {
 @MainActor
 private final class InterruptingRecordingBackend: VoiceRecordingBackend {
     let result: StubRecordingSession.Result
-    private var handler: (@MainActor @Sendable () async -> Void)?
+    private var handlers: [@MainActor @Sendable () async -> Void] = []
 
     init(result: StubRecordingSession.Result) {
         self.result = result
@@ -356,12 +454,12 @@ private final class InterruptingRecordingBackend: VoiceRecordingBackend {
         liveAudioHandler: LiveAudioSampleHandler?,
         interruptionHandler: @escaping @MainActor @Sendable () async -> Void
     ) async throws -> any VoiceRecordingSession {
-        handler = interruptionHandler
+        handlers.append(interruptionHandler)
         return StubRecordingSession(outputURL: outputURL, canPause: true, result: result)
     }
 
-    func interrupt() async {
-        await handler?()
+    func interrupt(at index: Int = 0) async {
+        await handlers[index]()
     }
 }
 

@@ -184,7 +184,7 @@ final class LibraryAppModel {
     }
 
     func startRecording() async {
-        guard let library else { return }
+        guard let library, !recorder.isRecording, !recorder.isBusy, !recorder.hasPendingRecording else { return }
         meeting?.cancelEnrollment()
         meeting?.refreshVoiceObservation()
         player.stop()
