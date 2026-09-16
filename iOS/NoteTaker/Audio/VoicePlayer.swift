@@ -173,9 +173,34 @@ nonisolated enum VoicePlayerError: Error, LocalizedError, Sendable {
 }
 
 @MainActor
-private final class AVFoundationPlaybackEngine: NSObject, VoicePlaybackEngine, AVAudioPlayerDelegate {
+final class AVFoundationPlaybackEngine: NSObject, VoicePlaybackEngine, AVAudioPlayerDelegate {
     private var player: AVAudioPlayer?
+    private let makePlayer: (URL) throws -> AVAudioPlayer
+    private let activateAudioSession: () throws -> Void
+    private let deactivateAudioSession: () -> Void
+    private var ownsAudioSession = false
     var finishHandler: (@MainActor @Sendable (Bool, ObjectIdentifier) -> Void)?
+
+    init(
+        makePlayer: @escaping (URL) throws -> AVAudioPlayer = { try AVAudioPlayer(contentsOf: $0) },
+        activateAudioSession: @escaping () throws -> Void = {
+            #if os(iOS)
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .spokenAudio)
+            try session.setActive(true)
+            #endif
+        },
+        deactivateAudioSession: @escaping () -> Void = {
+            #if os(iOS)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            #endif
+        }
+    ) {
+        self.makePlayer = makePlayer
+        self.activateAudioSession = activateAudioSession
+        self.deactivateAudioSession = deactivateAudioSession
+        super.init()
+    }
 
     var isPlaying: Bool {
         player?.isPlaying ?? false
@@ -201,12 +226,9 @@ private final class AVFoundationPlaybackEngine: NSObject, VoicePlaybackEngine, A
             }
         }
 
-        #if os(iOS)
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .spokenAudio)
-        try session.setActive(true)
+        try activateAudioSession()
+        ownsAudioSession = true
         shouldDeactivateSession = true
-        #endif
 
         if player?.url == url {
             if let player, player.currentTime >= player.duration {
@@ -219,7 +241,7 @@ private final class AVFoundationPlaybackEngine: NSObject, VoicePlaybackEngine, A
             return
         }
 
-        let newPlayer = try AVAudioPlayer(contentsOf: url)
+        let newPlayer = try makePlayer(url)
         newPlayer.delegate = self
         newPlayer.prepareToPlay()
         guard newPlayer.play() else {
@@ -234,11 +256,12 @@ private final class AVFoundationPlaybackEngine: NSObject, VoicePlaybackEngine, A
     }
 
     func stop() {
-        player?.stop()
-        player?.currentTime = 0
-        #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
+        let stoppedPlayer = player
+        player = nil
+        stoppedPlayer?.delegate = nil
+        stoppedPlayer?.stop()
+        stoppedPlayer?.currentTime = 0
+        deactivateSession()
     }
 
     func seek(to time: TimeInterval) {
@@ -248,24 +271,24 @@ private final class AVFoundationPlaybackEngine: NSObject, VoicePlaybackEngine, A
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         let token = ObjectIdentifier(player)
         Task { @MainActor [weak self] in
-            guard self?.playbackToken == token else { return }
-            self?.deactivateSession()
-            self?.finishHandler?(flag, token)
+            guard let self, self.ownsAudioSession, self.playbackToken == token else { return }
+            self.deactivateSession()
+            self.finishHandler?(flag, token)
         }
     }
 
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: (any Error)?) {
         let token = ObjectIdentifier(player)
         Task { @MainActor [weak self] in
-            guard self?.playbackToken == token else { return }
-            self?.deactivateSession()
-            self?.finishHandler?(false, token)
+            guard let self, self.ownsAudioSession, self.playbackToken == token else { return }
+            self.deactivateSession()
+            self.finishHandler?(false, token)
         }
     }
 
     private func deactivateSession() {
-        #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
+        guard ownsAudioSession else { return }
+        ownsAudioSession = false
+        deactivateAudioSession()
     }
 }

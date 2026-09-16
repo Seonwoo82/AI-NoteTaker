@@ -22,31 +22,32 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
     private let engine: AVAudioEngine
     private let inputNode: AVAudioInputNode
     private let outputURL: URL
-    private let startedAt: Date
     private let sampleRate: Double
+    private let channelCount: AVAudioChannelCount
     private let audioWorker: ObservedVoiceAudioWorker
-    private let notificationObservers: [NSObjectProtocol]
+    private var notificationObservers: [NSObjectProtocol] = []
     private var interruptionHandler: (@MainActor @Sendable () async -> Void)?
     private var writtenFrames: AVAudioFramePosition = 0
     private var isFinished = false
+    private var isPaused = false
+    #if os(iOS)
+    private var inputPortIDs: Set<String> = []
+    #endif
 
     private init(
         engine: AVAudioEngine,
         inputNode: AVAudioInputNode,
         outputURL: URL,
-        startedAt: Date,
         sampleRate: Double,
         audioWorker: ObservedVoiceAudioWorker,
-        notificationObservers: [NSObjectProtocol],
         interruptionHandler: @escaping @MainActor @Sendable () async -> Void
     ) {
         self.engine = engine
         self.inputNode = inputNode
         self.outputURL = outputURL
-        self.startedAt = startedAt
         self.sampleRate = sampleRate
+        self.channelCount = inputNode.inputFormat(forBus: 0).channelCount
         self.audioWorker = audioWorker
-        self.notificationObservers = notificationObservers
         self.interruptionHandler = interruptionHandler
     }
 
@@ -66,31 +67,6 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
             at: outputURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-
-        #if os(iOS)
-        observers.append(NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: AVAudioSession.sharedInstance(),
-            queue: .main
-        ) { notification in
-            guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  AVAudioSession.InterruptionType(rawValue: typeValue) == .began
-            else { return }
-
-            Task { @MainActor in
-                await interruptionHandler()
-            }
-        })
-        observers.append(NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: AVAudioSession.sharedInstance(),
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                await interruptionHandler()
-            }
-        })
-        #endif
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
@@ -114,26 +90,16 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
                 }
             }
         )
-        observers.append(NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                await interruptionHandler()
-            }
-        })
-
         let session = ObservedVoiceRecordingSession(
             engine: engine,
             inputNode: inputNode,
             outputURL: outputURL,
-            startedAt: Date(),
             sampleRate: sampleRate,
             audioWorker: worker,
-            notificationObservers: observers,
             interruptionHandler: interruptionHandler
         )
+        session.installNotificationObservers()
+        observers = session.notificationObservers
         inputNode.installTap(
             onBus: 0,
             bufferSize: 4_096,
@@ -144,7 +110,12 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
         do {
             engine.prepare()
             try engine.start()
+            #if os(iOS)
+            session.inputPortIDs = Set(AVAudioSession.sharedInstance().currentRoute.inputs.map(\.uid))
+            #endif
         } catch {
+            session.isFinished = true
+            session.cleanup()
             inputNode.removeTap(onBus: 0)
             _ = try? worker.finish()
             throw error
@@ -160,6 +131,7 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
     }
 
     func pause() {
+        isPaused = true
         engine.pause()
     }
 
@@ -168,6 +140,7 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
             throw VoiceRecorderError.encoderFailed
         }
         try engine.start()
+        isPaused = false
     }
 
     func finish() async throws -> VoiceRecordingResult {
@@ -175,13 +148,16 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
             throw VoiceRecorderError.encoderFailed
         }
         isFinished = true
+        cleanup()
         engine.stop()
         inputNode.removeTap(onBus: 0)
-        writtenFrames = try audioWorker.finish()
-        cleanup()
+        defer {
         #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
+        }
+        writtenFrames = try audioWorker.finish()
+        guard writtenFrames > 0 else { throw VoiceRecorderError.noAudioCaptured }
 
         guard FileManager.default.fileExists(atPath: outputURL.path) else {
             throw VoiceRecorderError.fileMissingAfterFinish
@@ -189,9 +165,7 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
 
         let asset = AVURLAsset(url: outputURL)
         let duration = try await asset.load(.duration).seconds
-        let fallbackDuration = writtenFrames > 0
-            ? Double(writtenFrames) / sampleRate
-            : Date().timeIntervalSince(startedAt)
+        let fallbackDuration = Double(writtenFrames) / sampleRate
         return VoiceRecordingResult(
             duration: duration.isFinite && duration > 0 ? duration : fallbackDuration,
             warnings: []
@@ -199,12 +173,12 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
     }
 
     func cancel() async {
-        interruptionHandler = nil
+        guard !isFinished else { return }
         isFinished = true
+        cleanup()
         engine.stop()
         inputNode.removeTap(onBus: 0)
         _ = try? audioWorker.finish()
-        cleanup()
         try? FileManager.default.removeItem(at: outputURL)
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -215,7 +189,63 @@ final class ObservedVoiceRecordingSession: NSObject, VoiceRecordingSession {
         for observer in notificationObservers {
             NotificationCenter.default.removeObserver(observer)
         }
+        notificationObservers.removeAll()
         interruptionHandler = nil
+    }
+
+    private func installNotificationObservers() {
+        #if os(iOS)
+        notificationObservers.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(), queue: .main
+        ) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
+            Task { @MainActor [weak self] in await self?.interruptIfNeeded() }
+        })
+        notificationObservers.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(), queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.checkCaptureHealth() }
+        })
+        #endif
+        notificationObservers.append(NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.checkCaptureHealth() }
+        })
+    }
+
+    private func checkCaptureHealth() async {
+        guard !isFinished else { return }
+        let format = inputNode.inputFormat(forBus: 0)
+        let formatMatches = format.sampleRate == sampleRate && format.channelCount == channelCount
+            && format.commonFormat == .pcmFormatFloat32 && !format.isInterleaved
+        #if os(iOS)
+        let inputs = Set(AVAudioSession.sharedInstance().currentRoute.inputs.map(\.uid))
+        let inputAvailable = !inputs.isEmpty
+        let inputUnchanged = inputs == inputPortIDs
+        #else
+        let inputAvailable = format.channelCount > 0
+        let inputUnchanged = true
+        #endif
+        // setCategory/setActive can notify after start has returned. A healthy
+        // capture must not be finalized just because that notification arrived.
+        if Self.shouldInterrupt(engineRunning: engine.isRunning, paused: isPaused,
+            inputAvailable: inputAvailable, inputUnchanged: inputUnchanged, formatMatches: formatMatches) {
+            await interruptIfNeeded()
+        }
+    }
+
+    nonisolated static func shouldInterrupt(engineRunning: Bool, paused: Bool,
+        inputAvailable: Bool, inputUnchanged: Bool, formatMatches: Bool) -> Bool {
+        !inputAvailable || !inputUnchanged || !formatMatches || (!engineRunning && !paused)
+    }
+
+    private func interruptIfNeeded() async {
+        guard !isFinished else { return }
+        await interruptionHandler?()
     }
 
     nonisolated static func validateInputFormat(_ format: AVAudioFormat) throws {

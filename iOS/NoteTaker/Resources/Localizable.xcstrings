@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "No audio was captured. Check your microphone and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "녹음된 오디오가 없습니다. 마이크 연결과 권한을 확인한 뒤 다시 시도해 주세요."
+          }
+        }
+      }
+    },
     "Cached speaker models are incomplete. Prepare voice models again.": {
       "extractionState": "manual",
       "localizations": {

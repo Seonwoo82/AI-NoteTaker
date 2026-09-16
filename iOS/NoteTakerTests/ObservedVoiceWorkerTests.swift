@@ -3,6 +3,26 @@ import Testing
 
 @testable import NoteTakerIOS
 
+@Test("healthy startup and output route notifications do not end capture")
+func healthyRecordingNotificationsDoNotInterrupt() {
+    #expect(!ObservedVoiceRecordingSession.shouldInterrupt(engineRunning: true, paused: false,
+        inputAvailable: true, inputUnchanged: true, formatMatches: true))
+    #expect(!ObservedVoiceRecordingSession.shouldInterrupt(engineRunning: false, paused: true,
+        inputAvailable: true, inputUnchanged: true, formatMatches: true))
+}
+
+@Test("input loss, input changes, incompatible format and stopped engine interrupt capture")
+func brokenRecordingInputStillInterrupts() {
+    #expect(ObservedVoiceRecordingSession.shouldInterrupt(engineRunning: true, paused: false,
+        inputAvailable: false, inputUnchanged: true, formatMatches: true))
+    #expect(ObservedVoiceRecordingSession.shouldInterrupt(engineRunning: true, paused: false,
+        inputAvailable: true, inputUnchanged: false, formatMatches: true))
+    #expect(ObservedVoiceRecordingSession.shouldInterrupt(engineRunning: true, paused: false,
+        inputAvailable: true, inputUnchanged: true, formatMatches: false))
+    #expect(ObservedVoiceRecordingSession.shouldInterrupt(engineRunning: false, paused: false,
+        inputAvailable: true, inputUnchanged: true, formatMatches: true))
+}
+
 @Test("observed voice worker drains queued buffers and emits live samples on finish")
 func observedVoiceWorkerDrainsQueuedBuffersAndEmitsLiveSamplesOnFinish() throws {
     let sampleRate = 8.0
