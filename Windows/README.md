@@ -14,7 +14,7 @@ Windows 소스·프로젝트 설정·의존성·테스트·문서·배포 스크
 
 ## 실행
 
-최신 upstream 병합, 빈 녹음 보호와 공유 오류 처리를 포함하는 단계 19 후보입니다. 데스크톱 사용 허용 후 새 압축 해제본의 전체 13개 실행 게이트 중 **12개가 통과하고 Windows 시스템 오디오 공유가 실패**했습니다. 파일 탐색기에서도 공유 창이 열리지 않아 원인을 조사 중이며 최종 검증 완료 릴리스는 아닙니다. 버전·해시·실행 결과는 ZIP 옆 `.verification.json`, 파일 무결성 결과는 `.static-verification.json`을 참고하세요. [실행 검증과 공유 비교](docs/implementation/FULL-PORT-STEP20.md)
+최신 upstream 병합, 빈 녹음 보호와 공유 오류 처리를 포함하는 단계 19 후보입니다. 새 압축 해제본의 전체 13개 실행 게이트 중 **12개가 통과하고 Windows 시스템 오디오 공유가 실패**했습니다. 파일 탐색기와 독립 텍스트 공유 진단에서도 창이 열리지 않았으며, 허용받은 공유 호스트 재시작으로 해결되지 않았습니다. 실제 폴더 이동·순서 변경과 재실행 후 보존은 확인했습니다. 최종 검증 완료 릴리스는 아닙니다. 버전·해시·실행 결과는 ZIP 옆 `.verification.json`, 파일 무결성 결과는 `.static-verification.json`을 참고하세요. [실행 검증과 공유 비교](docs/implementation/FULL-PORT-STEP20.md)
 
 ```text
 Windows/artifacts/step19/0.4.0/portable-win-x64/AI-NoteTaker.exe

@@ -31,10 +31,24 @@ Windows 빌드 26200.9457에서 ShellExperienceHost와 Client.CBS 패키지는 �
 
 [Microsoft의 공유 소스 문서](https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/integrate-sharesheet-send)는 WPF의 packaged/unpackaged 앱 모두 HWND별 interop을 사용하도록 설명하며 현재 구현도 이 경로를 따른다. 탐색기에서의 재현은 앱 외부 문제 가능성을 보여주지만 앱 구현의 정상 작동을 대신 증명하지는 않는다.
 
-Windows 공유 UI 프로세스 `ShellExperienceHost`만 한 번 재시작하는 제안을 사용자에게 확인 요청했다. 앱 바깥의 시스템 프로세스에 영향을 주므로 답변 전에는 실행하지 않는다. 현재까지 Windows 프로세스 종료·패키지 재등록·보안/개인정보 설정 변경은 하지 않았다. 원인 해결과 실제 공유 요청 성공 전까지 Draft와 미완료 판정을 유지한다.
+이 시점에는 Windows 공유 UI 프로세스 `ShellExperienceHost`만 한 번 재시작하는 제안을 사용자에게 확인 요청한 상태였고 실행하지 않았다. 이후 허용과 실행 결과는 아래에 기록한다. 원인 해결과 실제 공유 요청 성공 전까지 Draft와 미완료 판정을 유지한다.
 
 ## 추가 수동 검증의 중단
 
 같은 후보를 `Windows/artifacts/native-step21/library`의 격리 무음 fixture로 실행해 녹음을 폴더 A에 드래그했다. UI의 녹음 1개 표시와 저장된 `folderId=a4e75c42-1541-46f8-942d-3a2747b3f01d`를 확인했다. 이어 폴더 순서를 바꾸려던 중 사용자가 물리 Escape 키로 Computer Use를 중단했다. 저장 순서는 A/B/C 그대로였으며 정렬·앱 재실행 후 보존은 확인하지 않았다. 이는 중단된 검증이지 정렬 기능 실패 판정이 아니다.
 
-이후 화면·입력 조작을 멈추고 저장 파일만 읽어 결과를 기록했다. 사용자가 다시 데스크톱 조작을 허용하기 전에는 자동으로 재개하지 않는다. 공유 UI 프로세스 재시작도 승인되지 않았고 실행하지 않았다. 12개 실행 경로의 통과와 시스템 공유 실패, Draft 상태는 유지한다.
+이후 화면·입력 조작을 멈추고 저장 파일만 읽어 결과를 기록했다. 당시 공유 UI 프로세스 재시작도 승인되지 않았고 실행하지 않았다. 12개 실행 경로의 통과와 시스템 공유 실패, Draft 상태를 유지했다.
+
+## 재허용 후 공유 호스트 재시작과 폴더 보존 확인
+
+사용자가 다시 데스크톱 사용을 허용한 뒤 제안했던 `ShellExperienceHost`만 재시작했다. 기존 PID 47184의 실행 경로가 Windows 설치 패키지와 일치함을 확인하고 종료했다. 종료 직후 단독 공유 smoke는 호스트가 자동으로 다시 시작되지 않은 상태에서 timeout이었다(`Windows/artifacts/audio-share-host-restart-164223/error.txt`).
+
+호스트 EXE를 직접 실행한 시도는 16:43:05에 `Windows.UI.Xaml.dll`, 예외 `0xc0000409`로 종료됐다. 이는 직접 실행의 패키지 활성화 맥락 문제일 수 있으므로 기존 공유 실패의 원인으로 확정하지 않는다. 설치 manifest에서 확인한 AUMID `Microsoft.Windows.ShellExperienceHost_cw5n1h2txyewy!App`으로 정상 활성화해 PID 43568이 16:44:27부터 유지되는 것을 확인했다. 전체 Explorer 종료, 패키지 재등록, 보안/개인정보 변경이나 재부팅은 하지 않았다.
+
+호스트 복구 후 최신 EXE의 **오디오 공유…** 버튼을 실제로 클릭했지만 공유 창은 나타나지 않았다. 앱은 timeout 안내 후 다시 조작할 수 있었다. 관련 기존 이벤트 로그에서 이 요청의 원인을 특정할 새 오류는 확인하지 못했다.
+
+WAV 준비와 앱 작업 상태의 영향을 분리하려고 `Windows/artifacts/share-probe/`에 독립 WPF 진단 앱을 만들었다. [Microsoft WPF 예제](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/ShareSource/wpf/MainWindow.xaml.cs) 방식으로 창 로드 때 manager와 이벤트를 유지하고, 실제 버튼 클릭의 UI 스레드에서 `ShowShareUIForWindow`를 호출했다. 파일 대신 생성한 짧은 진단 문구만 공급하도록 했다. 빌드 경고·오류 0, 16:51:51에 owner 활성 상태와 호출 반환을 확인했으나 15초 동안 `DataRequested`와 공유 창은 없었다. 로그는 `share-probe/bin/Release/net10.0-windows10.0.19041.0/probe.log`다. 이 비교는 앱 밖에서도 증상이 발생한다는 근거이며 정확한 OS 원인이나 앱 공유의 성공 증거는 아니다.
+
+같은 최신 EXE와 `native-step21/library`에서 실제 포인터로 폴더 C를 A 앞으로 이동했다. UI와 JSON의 `sortOrder`가 C/A/B인 것을 확인하고 Ctrl+Q로 종료한 뒤 동일 EXE·동일 격리 라이브러리를 재실행했다. C/A/B 순서와 녹음의 폴더 A 배정이 UI와 저장 파일에 유지됐다. `Windows/artifacts/native-step21/manual-verification.json`에 버전·오디오 해시·폴더 ID와 관찰 범위를 기록했다. 화면은 Computer Use 출력으로 확인했다.
+
+진단 창과 테스트 앱은 정상 종료했다. 사용자 마이크, 사용자 파일, 받는 앱 선택·외부 전송은 사용하지 않았다. 제품 코드와 ZIP은 바꾸지 않았으므로 앞선 12개 게이트를 반복 실행하지 않았으며 전체 보고서의 `Passed=false`와 Draft를 유지한다. 다음으로 필요한 증거는 정상 동작하는 Windows 공유 환경에서의 실제 공유 창·`DataRequested`와 최종 배포 게이트다.
