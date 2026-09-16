@@ -14,11 +14,11 @@ Windows 소스·프로젝트 설정·의존성·테스트·문서·배포 스크
 
 ## 실행
 
-이 PC의 최신 검증 후보입니다. Windows 시스템 공유 검증은 아직 통과하지 않았으며, 단계 18의 공유 오류 처리 수정은 아래 ZIP에 포함되지 않습니다.
+최신 upstream 병합, 빈 녹음 보호와 공유 오류 처리를 포함하는 단계 19 후보입니다. Windows 시스템 공유 문제는 미해결이며, 사용자의 데스크톱 사용 요청에 따라 이 후보의 앱 실행 검증은 보류했습니다. 최종 검증 완료 릴리스가 아닙니다. 파일 무결성·버전·해시는 ZIP 옆 `.verification.json`을 참고하세요.
 
 ```text
-Windows/artifacts/step17/0.4.0/portable-win-x64/AI-NoteTaker.exe
-Windows/artifacts/step17/AI-NoteTaker-0.4.0-win-x64.zip
+Windows/artifacts/step19/0.4.0/portable-win-x64/AI-NoteTaker.exe
+Windows/artifacts/step19/AI-NoteTaker-0.4.0-win-x64.zip
 ```
 
 ZIP을 **폴더째 풀고** `AI-NoteTaker.exe`를 실행하세요. 옆의 DLL·runtimes 폴더도 필요합니다. .NET 런타임이 포함되어 별도 SDK 설치는 필요 없습니다. 이전 버전이 열려 있다면 닫고 새 버전을 실행합니다. 서명된 설치 프로그램과 자동 업데이트는 아직 없습니다.
@@ -119,7 +119,7 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 
 # 준비된 합성/공개 음성 파일과 모델로 새 ZIP 검증. 사용자 마이크는 열지 않음
 # 전체 검사에는 Node와 Python이 필요하며 로컬 Worker/SQLite를 사용
-.\Windows\verify-package.ps1 -AllFeatures -Archive .\Windows\artifacts\step17\AI-NoteTaker-0.4.0-win-x64.zip
+.\Windows\verify-package.ps1 -AllFeatures -Archive .\Windows\artifacts\step19\AI-NoteTaker-0.4.0-win-x64.zip
 
 # 실제 장치를 여는 별도 검증 (짧은 테스트음/테스트 녹음)
 .\Windows\build.ps1 audio-smoke
@@ -130,6 +130,6 @@ OpenRouter 전사/요약도 각각 선택할 수 있습니다. 해당 단계에�
 # whisper 대신 qwen, 추가 옵션 small(0.6B), cpu, cancel-resume(120초 초과 파일)
 ```
 
-단계 17 전체 자동 테스트는 230개 통과/장치 6개 건너뜀이며, 생성 무음 파일의 선택 구간 출력 검사는 별도로 통과했습니다. 이후 단계 18 공유 요청 수정은 관련 headless 테스트 12개와 WPF Release 빌드가 통과했고 새 WPF 회귀 검사는 아직 실행하지 않았습니다. 두 테스트 수는 중복을 포함하므로 합산하지 않습니다. 실제 폴더 안팎 이동·앞뒤 정렬은 확인했으며, Windows 시스템 공유 창 timeout은 미해결입니다. 사용자의 데스크톱 사용 요청 이후 창을 여는 검증은 중단했습니다. [단계 18](docs/implementation/FULL-PORT-STEP18.md)에 현재 상태를 기록했습니다.
+최신 소스의 비장치 자동 테스트는 **241개 통과/실패 0**이며 실제 장치 테스트 6개는 필터로 제외했습니다. WPF Release 빌드도 경고·오류 없이 통과했습니다. 최신 완료/복구·공유 수정의 WPF 실행과 새 ZIP의 13개 실행 게이트는 아직 수행하지 않았습니다. 이전 ZIP의 선택 구간 출력·폴더 드래그 결과와 구분하며 Windows 시스템 공유 창 timeout은 미해결입니다. 사용자의 데스크톱 사용 요청 이후 창을 여는 검증은 중단했습니다. [단계 19](docs/implementation/FULL-PORT-STEP19.md)에 최신 병합·빈 녹음 보호·검증 범위를 기록했습니다.
 
 명령·아이콘은 [단계 15](docs/implementation/FULL-PORT-STEP15.md), 녹음 음량과 등록 입력 표시는 [단계 17](docs/implementation/FULL-PORT-STEP17.md), 지속 웹 공유·6시간 화자 처리·WPF 회귀는 [단계 11](docs/implementation/FULL-PORT-STEP11.md), 기존 0.3 검증은 [무료 AI 검증 기록](docs/implementation/FREE-AI-VERIFICATION.md)을 참고하세요. [전체 이식 계획](FULL-PORT-PLAN.md), [0.3 실행 계획](EXECUTION_PLAN.md), [배포 라이선스 고지](THIRD-PARTY-NOTICES.md).

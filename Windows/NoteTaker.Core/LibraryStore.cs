@@ -55,6 +55,14 @@ public sealed partial class LibraryStore
     public string AudioPath(Guid id) => Path.Combine(DirectoryFor(id), "audio.wav");
     public string TranscriptPath(Guid id) => Path.Combine(DirectoryFor(id), "transcript.json");
     public string NotesPath(Guid id) => Path.Combine(DirectoryFor(id), "notes.json");
+    public Recording CompleteRecording(Recording recording, string? warning)
+    {
+        double duration = AudioFiles.RecordedDuration(AudioPath(recording.Id));
+        if (duration <= 0) throw new InvalidDataException("녹음된 오디오가 없습니다. 입력 장치를 확인하고 다시 녹음해 주세요.");
+        var completed = recording with { IsRecording = false, DurationSeconds = duration, Warning = warning };
+        Save(completed);
+        return completed;
+    }
     public void Save(Recording recording)
     {
         lock (JsonDisk.Gate)
@@ -96,10 +104,12 @@ public sealed partial class LibraryStore
                     if (File.Exists(AudioPath(id)))
                     {
                         AudioFiles.RepairInterruptedWave(AudioPath(id));
-                        using var audio = new WaveFileReader(AudioPath(id));
-                        recording = recording with { IsRecording = false, DurationSeconds = audio.TotalTime.TotalSeconds, Warning = "중단된 녹음을 복구했습니다. 마지막 부분을 확인해 주세요." };
+                        double duration = AudioFiles.RecordedDuration(AudioPath(id));
+                        recording = recording with { IsRecording = false, DurationSeconds = duration, Warning = duration > 0
+                            ? "중단된 녹음을 복구했습니다. 마지막 부분을 확인해 주세요."
+                            : "녹음된 오디오가 없어 복구하지 못했습니다. 입력 장치를 확인하고 다시 녹음해 주세요." };
                     }
-                    else recording = recording with { IsRecording = false, Warning = "녹음이 중단되어 오디오 파일을 찾을 수 없습니다." };
+                    else recording = recording with { IsRecording = false, DurationSeconds = 0, Warning = "녹음이 중단되어 오디오 파일을 찾을 수 없습니다." };
                     Save(recording);
                     recording = JsonDisk.Read<Recording>(SafePath(SyncRecordings.MetadataPath(id)))!;
                 }

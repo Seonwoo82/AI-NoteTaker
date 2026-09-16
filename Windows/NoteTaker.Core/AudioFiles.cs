@@ -8,6 +8,27 @@ public static class AudioFiles
     public const int SampleRate = 48000;
     public static WaveFormat RecordingFormat => new(SampleRate, 16, 2);
 
+    // Inspect the finalized PCM file, never the elapsed UI/session clock. Digital
+    // silence with frames is valid (WASAPI loopback can supply no callbacks).
+    public static double RecordedDuration(string path)
+    {
+        using var reader = new WaveFileReader(path);
+        var format = reader.WaveFormat;
+        if (format.Encoding != WaveFormatEncoding.Pcm || format.SampleRate <= 0 ||
+            format.Channels <= 0 || format.BitsPerSample != 16 || format.BlockAlign != format.Channels * 2)
+            throw new InvalidDataException("녹음 파일의 PCM 형식이 올바르지 않습니다.");
+        if (reader.Length == 0) return 0;
+        if (reader.Length % format.BlockAlign != 0)
+            throw new InvalidDataException("녹음 파일의 마지막 오디오 프레임이 불완전합니다.");
+        var frame = new byte[format.BlockAlign];
+        if (reader.Read(frame, 0, frame.Length) != frame.Length)
+            throw new InvalidDataException("녹음 파일의 오디오 데이터를 읽을 수 없습니다.");
+        double duration = (double)(reader.Length / format.BlockAlign) / format.SampleRate;
+        if (!double.IsFinite(duration) || duration <= 0)
+            throw new InvalidDataException("녹음 파일의 길이가 올바르지 않습니다.");
+        return duration;
+    }
+
     public static double ConvertToWave(string source, string destination, CancellationToken token)
     {
         using var reader = new AudioFileReader(source);

@@ -412,9 +412,9 @@ public partial class MainWindow : Window
         Recording? completedRecording = null;
         try
         {
-            double duration = await session.StopAsync();
-            var completed = activeRecording! with { IsRecording = false, DurationSeconds = duration, Warning = session.Failure };
-            library.Save(completed);
+            await session.StopAsync();
+            var completed = library.CompleteRecording(activeRecording!, session.Failure);
+            double duration = completed.DurationSeconds;
             completedRecording = completed;
             SetStatus(session.Failure ?? $"녹음을 저장했습니다 · {Recording.FormatTime(duration)}", session.Failure is not null);
             // Session must be cleared before library reload updates enabled controls.

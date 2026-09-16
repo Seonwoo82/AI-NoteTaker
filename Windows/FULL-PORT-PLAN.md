@@ -1,6 +1,6 @@
 # 최신 Apple 앱 전체 Windows 이식
 
-기준: upstream `2aaf0532e48016b32571c7929984a8f474e812ee` (2026-09-16 원격 main 재확인).
+기준: upstream `14172b2ee89fe26e6dd16ccb7619654629a40491` (2026-09-16 원격 main 재확인·병합).
 브랜치: `codex/windows-complete-port`. 기존 Windows PR이 합쳐진 최신 main을 fast-forward로 반영했다.
 이 문서는 0.3의 완료 기록인 EXECUTION_PLAN.md와 별개다. 기존 기능의 테스트 통과로 아래 전체 이식의 완료를 주장하지 않는다.
 
@@ -8,7 +8,7 @@
 
 | 영역 | 현재 상태 | 완료에 필요한 구현 및 증거 |
 | --- | --- | --- |
-| 녹음·가져오기·재생·삭제/복원·무료 AI·Clova 파일 연동 | 구현·230개 회귀·새 ZIP 핵심 10개 검사 통과 | 원본과 이전 성공 문서 보존, 개별 소스 음량·모드/장치 재시작 보존. 생성 PCM/공개 음성 fixture와 실제 사용자 장치를 구분. [단계 17](docs/implementation/FULL-PORT-STEP17.md) |
+| 녹음·가져오기·재생·삭제/복원·무료 AI·Clova 파일 연동 | 구현·최신 비장치 테스트 241개 통과 | 최신 iOS 수정의 빈 녹음 보호를 Windows에 반영. 실제 PCM 프레임 기반 완료/복구·유효 무음 보존. 단계 17 ZIP 핵심 10개 실행은 이전 버전 증거. [단계 19](docs/implementation/FULL-PORT-STEP19.md) |
 | 영구 삭제·30일 삭제 보관·오디오 내보내기 | 구현·221개 전체 테스트·WPF/Worker·후보 패키지 검증 | 기기 로컬 purge 표식과 삭제 메타데이터 보존, 원격 오디오/회의록/참여자 수정 이력 복원, 확인/취소/오래된 확인 거부, 저장된 WAV 바이트 복사. [단계 14](docs/implementation/FULL-PORT-STEP14.md) |
 | 오디오 파일 시스템 공유 | 구현·오류 처리 보완, 네이티브 공유 미해결 | 제목 있는 WAV 사본·원본 보존·24시간 정리·영구 삭제 연결. 긴 경로 수정 후 보안 안내창이 없는 상태에서도 DataRequested timeout 재현. 공식 SDK 어댑터와 요청별 timeout/취소/중복 콜백 처리 추가, 관련 headless 12개 통과. 새 WPF 검사는 데스크톱 사용 요청으로 미실행. [단계 18](docs/implementation/FULL-PORT-STEP18.md) |
 | 앱 명령과 배포 아이콘 | 구현·WPF 명령/실제 EXE 아이콘 검증 | LibraryCommands의 완료·내보내기·탐색기·동기화·즐겨찾기·이름 변경·15초 이동에 대응. 편집 중 보호와 휴지통 명령 보호. 원본 AppIcon 자산을 WPF/EXE에 포함. 물리 키 입력은 별도. [단계 15](docs/implementation/FULL-PORT-STEP15.md) |
@@ -31,13 +31,15 @@
 | 6시간 화자 분석 | 구간 처리·실제 모델 fixture 검증 | 5분 구간+2초 문맥, 음성 특징에 의한 전체 참여자 연결, 원본 시간·해시 보존. 자동/4명 지정으로 6시간 파일·구간 경계·4시간 이후·취소 확인, 최대 약 815MiB. 대부분 무음인 검증 파일이며 자연 회의 속도/정확도 증거와 구분 |
 | 배포·문서·PR | 미완료 | 독립 Windows 버전/폴더형 self-contained ZIP, 새 폴더에서 실행 검증, 기능별 증거/제약 문서와 GitHub PR |
 
-현재 `4922af1` 후보 ZIP의 새 압축 해제 폴더에서 핵심 10개 검사와 같은 EXE의 WPF/Worker 동기화·웹 공유 2개 검사가 통과했다. 같은 EXE의 실제 폴더 드래그도 확인했으나 Windows 시스템 공유 게이트가 남아 전체 배포 보고서의 `Passed`는 false다. 해시·버전·증거는 [단계 17](docs/implementation/FULL-PORT-STEP17.md), 이후 공유 오류 처리와 물리 드래그는 [단계 18](docs/implementation/FULL-PORT-STEP18.md), 요구사항별 범위는 [전체 이식 감사](docs/implementation/FULL-PORT-AUDIT.md)에 기록했다. 단계 18 소스와 최신 문서는 현재 ZIP에 포함되지 않는다. 데스크톱을 다시 사용할 수 있을 때 새 WPF 검사·네이티브 공유를 확인하고 새 ZIP으로 `verify-package.ps1 -AllFeatures` 전체 경로를 실행해야 한다.
+단계 19 후보 경로는 `Windows/artifacts/step19/AI-NoteTaker-0.4.0-win-x64.zip`이며 최신 upstream·빈 녹음 보호·공유 요청 수명 수정을 포함한다. 소스의 비장치 테스트 241개와 WPF Release 빌드는 통과했다. 후보의 파일 무결성·정확한 버전·해시는 옆 `.verification.json`에서 확인하며 실행 검증 전에는 `Passed=false`다. 이전 단계 17 ZIP의 핵심 10개·동기화/웹 공유 2개 통과와 실제 폴더 드래그는 그 EXE의 증거로만 유지한다. 데스크톱을 다시 사용할 수 있을 때 새 WPF·네이티브 공유를 확인하고 새 ZIP으로 `verify-package.ps1 -AllFeatures` 전체 경로를 실행해야 한다. [단계 19](docs/implementation/FULL-PORT-STEP19.md), [전체 이식 감사](docs/implementation/FULL-PORT-AUDIT.md).
 
 근거: 루트 README.md, docs/FEATURE-BACKLOG.md (F-001–010과 후속 릴리스), NoteTaker/Playback, Shared/MeetingIntelligence, NoteTaker/Sync, Shared/WebSharing, Cloudflare/README.md.
 
 Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은 사용자 기능을 제공한다. 멀티기기 동시 녹음의 자동 병합·음성 인증은 upstream의 명시적 제외 범위를 따른다. 일반 고객용 회원/결제/다중 고객 서버는 현재 upstream 기능에 없으며 별도 상품화 과제다.
 
 ## 진행 기록
+
+- 2026-09-16: 새 upstream `14172b2`를 병합하고 iOS 녹음 수명 수정과 Windows를 대조했다. 실제 PCM 프레임으로 완료 길이를 계산하고 빈/불완전 WAV의 정상 저장과 빈 파일의 복구 성공 표시를 막았다. 비장치 테스트 241개와 WPF Release 빌드 통과. 최신 소스를 단계 19 후보로 묶으며 데스크톱 검증은 사용자 요청에 따라 미실행이다. [단계 19](docs/implementation/FULL-PORT-STEP19.md).
 
 - 2026-09-16: 실제 폴더 안팎 이동·앞뒤 순서 변경을 확인했다. 보안 안내창 종료 후에도 시스템 공유 timeout이 재현됐다. 공식 SDK 어댑터와 요청별 응답·취소·오류 처리를 추가했고 창 없는 관련 12개 테스트와 Release 빌드가 통과했다. 이후 데스크톱 사용 요청에 따라 네이티브 조작을 멈췄으며 새 WPF 검사·새 ZIP·최종 공유 검증은 남아 있다. [단계 18](docs/implementation/FULL-PORT-STEP18.md).
 
