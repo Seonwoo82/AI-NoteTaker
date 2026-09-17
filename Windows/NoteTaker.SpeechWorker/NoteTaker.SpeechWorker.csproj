@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>AI-NoteTaker.SpeechWorker</AssemblyName></PropertyGroup>
+ <ItemGroup><ProjectReference Include="../NoteTaker.Core/NoteTaker.Core.csproj" /><PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.8" /></ItemGroup>
+</Project>

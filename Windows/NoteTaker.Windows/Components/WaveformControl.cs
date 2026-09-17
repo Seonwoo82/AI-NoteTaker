@@ -19,6 +19,8 @@ public sealed class WaveformControl : Control
     public double Duration { get => (double)GetValue(DurationProperty); set => SetValue(DurationProperty, value); }
     public bool IsOverview { get => (bool)GetValue(IsOverviewProperty); set => SetValue(IsOverviewProperty, value); }
     public event Action<double>? SeekRequested;
+    private WaveformViewport? dragViewport;
+    internal WaveformViewport Viewport => dragViewport ?? new WaveformViewport(Duration, Position, IsOverview ? Duration : 300);
     public WaveformControl()
     {
         Focusable = true; Cursor = Cursors.Hand;
@@ -34,36 +36,55 @@ public sealed class WaveformControl : Control
         double height = Math.Max(2, ActualHeight - reserve - inset * 2), mid = inset + height / 2;
         if (IsOverview) dc.DrawRoundedRectangle((Brush)FindResource("SegmentSurface"), null, new Rect(RenderSize), 9, 9);
         if (Peaks.Length == 0) return;
-        double stride = ActualWidth / Peaks.Length, width = Math.Min(IsOverview ? 2 : 2.4, stride * .6);
-        for (int i = 0; i < Peaks.Length; i++)
+        var viewport = Viewport;
+        var visiblePeaks = IsOverview ? WaveformViewport.OverviewPeaks(Peaks) : viewport.Peaks(Peaks);
+        if (visiblePeaks.Length == 0) return;
+        if (IsOverview && Duration > 0 && double.IsFinite(Duration))
         {
-            double barHeight = Math.Max(2, height * Math.Clamp(Peaks[i], 0, 1));
+            var focused = new WaveformViewport(Duration, Position);
+            var region = new Rect(focused.Start / Duration * ActualWidth, 1, focused.Duration / Duration * ActualWidth, Math.Max(0, ActualHeight - 2));
+            dc.DrawRoundedRectangle((Brush)FindResource("AccentSoft"), new Pen(accent, 1), region, 4, 4);
+        }
+        double stride = ActualWidth / visiblePeaks.Length, width = Math.Min(IsOverview ? 2 : 2.4, stride * .6);
+        for (int i = 0; i < visiblePeaks.Length; i++)
+        {
+            double barHeight = Math.Max(2, height * visiblePeaks[i]);
             dc.DrawRoundedRectangle(Foreground, null, new Rect((i + .5) * stride - width / 2, mid - barHeight / 2, width, barHeight), 1, 1);
         }
         if (Duration <= 0 || !double.IsFinite(Duration)) return;
-        double x = Math.Clamp(Position / Duration, 0, 1) * Math.Max(0, ActualWidth - 2) + 1;
+        double x = viewport.PositionOf(Position) * Math.Max(0, ActualWidth - 2) + 1;
         dc.DrawLine(new Pen(accent, IsOverview ? 1.5 : 2), new Point(x, inset), new Point(x, ActualHeight - reserve - inset));
         if (!IsOverview)
         {
             dc.DrawEllipse(accent, null, new Point(x, 4), 3, 3);
-            double step = Math.Max(15, Math.Ceiling(Duration / 15 / 6) * 15);
-            for (double time = 0; time <= Duration; time += step)
+            double step = Math.Max(15, Math.Ceiling(viewport.Duration / 15 / 6) * 15);
+            for (double time = Math.Ceiling(viewport.Start / step) * step; time <= viewport.End; time += step)
             {
                 var label = new FormattedText(Recording.FormatTime(time), System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Consolas"), 10, muted, VisualTreeHelper.GetDpi(this).PixelsPerDip);
-                double left = Math.Clamp(time / Duration * ActualWidth - label.Width / 2, 0, Math.Max(0, ActualWidth - label.Width));
+                double left = Math.Clamp(viewport.PositionOf(time) * ActualWidth - label.Width / 2, 0, Math.Max(0, ActualWidth - label.Width));
                 dc.DrawText(label, new Point(left, ActualHeight - 16));
             }
         }
     }
-    private void SeekAt(MouseEventArgs e) => RequestSeek(Duration * Math.Clamp(e.GetPosition(this).X / Math.Max(1, ActualWidth), 0, 1));
+    internal void RequestSeekAtFraction(double fraction) => RequestSeek(Viewport.TimeAt(fraction));
+    internal void BeginScrub() => dragViewport = Viewport;
+    internal void EndScrub() { dragViewport = null; InvalidateVisual(); }
+    private void SeekAt(MouseEventArgs e) => RequestSeekAtFraction(e.GetPosition(this).X / Math.Max(1, ActualWidth));
     internal void RequestSeek(double position)
     {
-        if (!IsEnabled || Duration <= 0 || !double.IsFinite(position)) return;
+        if (!IsEnabled || Duration <= 0 || !double.IsFinite(Duration) || !double.IsFinite(position)) return;
         SetCurrentValue(PositionProperty, Math.Clamp(position, 0, Duration)); SeekRequested?.Invoke(Position);
     }
-    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e) { base.OnMouseLeftButtonDown(e); Focus(); CaptureMouse(); SeekAt(e); e.Handled = true; }
+    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonDown(e); Focus();
+        // A drag keeps the interval from pointer-down; recentering during dragging
+        // would turn the same screen coordinate into a different audio time.
+        BeginScrub(); CaptureMouse(); SeekAt(e); e.Handled = true;
+    }
     protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); if (IsMouseCaptured && e.LeftButton == MouseButtonState.Pressed) SeekAt(e); }
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e) { base.OnMouseLeftButtonUp(e); if (IsMouseCaptured) { SeekAt(e); ReleaseMouseCapture(); } }
+    protected override void OnLostMouseCapture(MouseEventArgs e) { base.OnLostMouseCapture(e); EndScrub(); }
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);

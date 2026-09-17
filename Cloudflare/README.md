@@ -50,6 +50,12 @@ After deployment, verify both `/v1/health` and an authenticated `GET /v1/shares/
 
 [2026-09-15 deployment and verification record](../docs/implementation/WEB-SHARING-DEPLOYMENT.md)
 
+### Updating an existing server for Windows sync
+
+Apply migrations through `0008_windows_devices.sql`, then deploy the current Worker before registering Windows devices. This migration preserves existing macOS/iOS device rows, including unknown API-key presence, while allowing the `Windows` platform. It does not transfer any API-key value. A successful health check alone does not establish Windows device support on an older deployment.
+
+The Windows transport and native M4A exchange are covered by a local HTTP test against the actual Worker handlers and SQLite. Its R2 storage is a filesystem stand-in. The Windows library merge engine and sync UI are still in progress; see the [Windows sync implementation record](../Windows/docs/implementation/FULL-PORT-STEP7.md).
+
 ## HTTP Contract
 
 All `/v1/*` routes require `Authorization: Bearer <SYNC_TOKEN>`. Public web-share pages under `/s/<token>` never redirect to authentication.

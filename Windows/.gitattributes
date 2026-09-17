@@ -1,0 +1,2 @@
+# Preserve the publisher's RTF license byte for byte, including its whitespace.
+/licenses/WINDOWS-SDK-LICENSE.rtf binary

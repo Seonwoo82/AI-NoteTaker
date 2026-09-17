@@ -8,15 +8,19 @@ public sealed record Recording
 {
     public int SchemaVersion { get; init; } = 1;
     public Guid Id { get; init; } = Guid.NewGuid();
+    public int AudioVersion { get; init; } = 1;
     public string Title { get; init; } = "새 녹음";
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
     public double DurationSeconds { get; init; }
     public RecordingMode Mode { get; init; }
     public bool IsFavorite { get; init; }
+    public Guid? FolderId { get; init; }
     public DateTimeOffset? DeletedAt { get; init; }
     public bool IsRecording { get; init; }
     public string? Warning { get; init; }
-    [JsonIgnore] public string DisplayTitle => (IsFavorite ? "★  " : "") + Title;
+    public SyncRecording? SyncMetadata { get; init; }
+    [JsonIgnore] public bool IsLocallyPurged { get; init; }
+    [JsonIgnore] public string DisplayTitle => (IsFavorite ? "★  " : "") + (string.IsNullOrWhiteSpace(Title) ? "새 녹음" : Title);
     [JsonIgnore] public string Subtitle => $"{CreatedAt.LocalDateTime:MM.dd HH:mm}  ·  {FormatTime(DurationSeconds)}  ·  {ModeLabel}";
     [JsonIgnore] public string ModeLabel => Mode switch
     {
@@ -40,14 +44,28 @@ public sealed record AppSettings
     public string OllamaAddress { get; init; } = "http://127.0.0.1:11434";
     public string QwenAsrModel { get; init; } = "1.7b";
     public string SummaryModel { get; init; } = "google/gemini-2.5-flash";
+    public string EnhancementModel { get; init; } = "";
+    public string LocalEnhancementModel { get; init; } = "";
+    public AiModel? SummaryModelInfo { get; init; }
+    public AiModel? EnhancementModelInfo { get; init; }
+    public bool TranscriptCleanupEnabled { get; init; } = true;
     public string TranscriptionModel { get; init; } = "openai/whisper-large-v3";
     public string Language { get; init; } = "ko";
     public string? ProtectedApiKey { get; init; }
     public string SharingServerUrl { get; init; } = "";
     public string? ProtectedSharingSyncToken { get; init; }
+    public bool AutomaticSyncEnabled { get; init; }
+    public bool KeepRunningInTray { get; init; } = true;
+    public bool EnableGlobalShortcuts { get; init; }
+    public bool AutoGenerate { get; init; }
+    public SyncPreferences? SharedSyncPreferences { get; init; }
 }
 
-public sealed record TranscriptSegment(double StartSeconds, double EndSeconds, string Text, string? Speaker = null);
+public sealed record TranscriptWord(double StartSeconds, double EndSeconds, string Text);
+public sealed record TranscriptSegment(double StartSeconds, double EndSeconds, string Text, string? Speaker = null)
+{
+    public List<TranscriptWord> Words { get; init; } = [];
+}
 public sealed record TranscriptCache(string AudioHash, string Model, string Language, List<string> Chunks, bool Complete)
 {
     public int SchemaVersion { get; init; } = 1;
@@ -61,7 +79,13 @@ public sealed record TranscriptCache(string AudioHash, string Model, string Lang
 public sealed record MeetingNotes(string Markdown, DateTimeOffset CreatedAt, string Model, decimal? CostUsd)
 {
     public string? TranscriptHash { get; init; }
+    [JsonPropertyName("transcriptCleanup")] public TranscriptCleanup? Cleanup { get; init; }
+    public MeetingNotesEnhancement? Enhancement { get; init; }
+    public string? CleanupNotice { get; init; }
+    public MeetingNotesSource? Original { get; init; }
 }
+public sealed record MeetingNotesSource(int AudioVersion, string AudioHash, string Transcript, string TranscriptionModelId, MeetingTranscript? Speakers = null);
+public sealed record MeetingNotesEnhancement([property: JsonPropertyName("modelID")] string ModelId, string Instructions);
 public sealed record AudioDevice(string Id, string Name)
 {
     public override string ToString() => Name;

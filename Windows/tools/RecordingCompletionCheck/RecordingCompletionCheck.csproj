@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.19041.57</WindowsSdkPackageVersion>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <Target Name="RequirePackageRoot" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(PackageRoot)/AI-NoteTaker.dll')" Text="Pass -p:PackageRoot with a verified Windows package directory." />
+  </Target>
+  <ItemGroup>
+    <Reference Include="AI-NoteTaker"><HintPath>$(PackageRoot)/AI-NoteTaker.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="NoteTaker.Core"><HintPath>$(PackageRoot)/NoteTaker.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="NAudio.Core"><HintPath>$(PackageRoot)/NAudio.Core.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

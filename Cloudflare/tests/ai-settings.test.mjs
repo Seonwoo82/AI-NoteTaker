@@ -17,7 +17,7 @@ else: rows=[dict(r) for r in c.execute(x['sql'],x.get('values',[]))]
 c.commit(); print(json.dumps(rows))`;
 function database(path) {
   const execute = (sql, values = [], script = false) => {
-    const r = spawnSync('python3', ['-c', python], { input: JSON.stringify({ path, sql, values, script }), encoding: 'utf8' });
+    const r = spawnSync(process.env.PYTHON ?? 'python3', ['-X', 'utf8', '-c', python], { input: JSON.stringify({ path, sql, values, script }), encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
     return JSON.parse(r.stdout);
   };
@@ -176,4 +176,29 @@ test('device identifiers and oversized settings requests are bounded', async t =
   const env = environment(t);
   assert.equal((await request(env, { id: 'bad' })).status, 400);
   assert.equal((await request(env, { method: 'PUT', payload: { padding: 'x'.repeat(20000) } })).status, 413);
+});
+
+test('Windows registers beside Apple devices without receiving their API keys', async t => {
+  const env = environment(t);
+  assert.equal((await request(env, { method: 'PUT', payload: upload() })).status, 200);
+  const response = await request(env, { method: 'PUT', payload: upload(null, { id: PHONE, platform: 'Windows', hasAPIKey: false }) });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { preferences: preferences(), otherDevicesHaveAPIKey: true });
+  assert.deepEqual(await env.DB.prepare('SELECT device_id, platform, has_api_key FROM ai_devices WHERE device_id = ?').bind(PHONE).first(), { device_id: PHONE, platform: 'Windows', has_api_key: 0 });
+});
+
+test('Windows migration preserves existing device rows and null key presence', () => {
+  const files = readdirSync(new URL('../migrations/', import.meta.url)).sort();
+  const before = files.filter(name => name < '0008').map(name => readFileSync(new URL(`../migrations/${name}`, import.meta.url), 'utf8')).join('\n');
+  const after = readFileSync(new URL('../migrations/0008_windows_devices.sql', import.meta.url), 'utf8');
+  const program = `import json,sqlite3,sys
+x=json.load(sys.stdin); c=sqlite3.connect(':memory:'); c.executescript(x['before'])
+c.execute("INSERT INTO ai_devices VALUES ('mac','macOS',1)"); c.execute("INSERT INTO ai_devices VALUES ('phone','iOS',NULL)"); c.commit()
+c.executescript(x['after']); c.execute("INSERT INTO ai_devices VALUES ('win','Windows',0)")
+assert c.execute('SELECT * FROM ai_devices ORDER BY device_id').fetchall()==[('mac','macOS',1),('phone','iOS',None),('win','Windows',0)]
+try: c.execute("INSERT INTO ai_devices VALUES ('bad','other',1)")
+except sqlite3.IntegrityError: pass
+else: raise AssertionError('Platform check was lost')`;
+  const result = spawnSync(process.env.PYTHON ?? 'python3', ['-X', 'utf8', '-c', program], { input: JSON.stringify({ before, after }), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
 });

@@ -1,0 +1,73 @@
+# 최신 Apple 앱 전체 Windows 이식
+
+기준: upstream `14172b2ee89fe26e6dd16ccb7619654629a40491` (2026-09-16 원격 main 재확인·병합).
+브랜치: `codex/windows-complete-port`. 기존 Windows PR이 합쳐진 최신 main을 fast-forward로 반영했다.
+이 문서는 0.3의 완료 기록인 EXECUTION_PLAN.md와 별개다. 기존 기능의 테스트 통과로 아래 전체 이식의 완료를 주장하지 않는다.
+
+## 범위와 검증 증거
+
+| 영역 | 현재 상태 | 완료에 필요한 구현 및 증거 |
+| --- | --- | --- |
+| 녹음·가져오기·재생·삭제/복원·무료 AI·Clova 파일 연동 | 구현·최신 비장치 테스트 241개 통과 | 최신 iOS 수정의 빈 녹음 보호를 Windows에 반영. 실제 PCM 프레임 기반 완료/복구·유효 무음 보존. 단계 17 ZIP 핵심 10개 실행은 이전 버전 증거. [단계 19](docs/implementation/FULL-PORT-STEP19.md) |
+| 영구 삭제·30일 삭제 보관·오디오 내보내기 | 구현·221개 전체 테스트·WPF/Worker·후보 패키지 검증 | 기기 로컬 purge 표식과 삭제 메타데이터 보존, 원격 오디오/회의록/참여자 수정 이력 복원, 확인/취소/오래된 확인 거부, 저장된 WAV 바이트 복사. [단계 14](docs/implementation/FULL-PORT-STEP14.md) |
+| 오디오 파일 시스템 공유 | 구현·WPF 오류 처리 검증, 네이티브 공유 미해결 | 제목 있는 WAV 사본·원본 보존·24시간 정리·영구 삭제 연결. 최신 후보에서도 DataRequested timeout. 요청별 timeout/취소/중복 콜백 검사와 새 WPF 실패·재시도·COM 안내 검사 통과. 탐색기도 창 미표시, 허용받은 공유 호스트 재시작 후 독립 텍스트 진단에서도 미해결. [단계 20](docs/implementation/FULL-PORT-STEP20.md) |
+| 앱 명령과 배포 아이콘 | 구현·WPF 명령/실제 EXE 아이콘 검증 | LibraryCommands의 완료·내보내기·탐색기·동기화·즐겨찾기·이름 변경·15초 이동에 대응. 편집 중 보호와 휴지통 명령 보호. 원본 AppIcon 자산을 WPF/EXE에 포함. 물리 키 입력은 별도. [단계 15](docs/implementation/FULL-PORT-STEP15.md) |
+| 5분 집중 파형과 전체 개요 | 구현·단위·WPF 검증 | 절대 시간 탐색, 15분 실제 생성 WAV 해상도, 드래그 중 고정 범위, 시작/끝·비정상 값 테스트, 2시간 범위 WPF 렌더링. 아래 검증 기록 참조 |
+| 녹음 폴더 | 구현·저장·WPF·Worker 동기화·물리 드래그 검증 | 생성/이름/삭제/이동/정렬/접기·펼치기, 삭제 시 오디오 보존, 선택·재생 유지, 재시작 후 지속. 폴더 내 녹음은 파일 입력 WPF 캡처 흐름, 가져오기는 Ctrl+O의 가져오기 경로로 검증. 단계 18 실제 포인터로 폴더 안팎 이동·앞뒤 정렬 확인. 단계 20 최신 EXE에서도 실제 이동·정렬 후 앱 재실행과 UI·JSON 보존 확인. OS 파일 선택창 조작은 별도 |
+| 트레이·전역 단축키·자동 AI | 구현·Windows API·실제 AI 검증 | Shell 트레이 등록, 창 숨김/복원, 3개 키 등록/해제, HWND 단축키 메시지, 명시적 종료 확인. 파일 입력의 녹음 중 트레이 유지·pause/resume·폴더 유지, 자동 생성 off/키 실패/종료 제외, 실제 Whisper/Ollama 완료 확인. 실제 장치 장시간 트레이 녹음·물리 키 입력은 별도 |
+| 모델 선택·긴 회의 예산 | 구현·단위/WPF·공개 API 검증 | 텍스트/전사 목록 병합·검색, 별도 보완 모델, 출력/문맥 상한과 reasoning 예산, 분할 입력의 JSON/UTF-8 한도, 키 제거 시 선택 보존. 실제 긴 회의·클라우드 유료 추론은 추가 검증 |
+| F-001 참여자 구분 | 상세 시간·그룹 재연결 구현, 실제 모델/WPF 검증 | Whisper 원본 UTF-8 토큰과 상세 시간 조합, cloud verbose timestamps/fallback, 기존 전사 보존·상세 캐시 재개, 음성 특징에 따른 안정적 화자 ID 구현. 같은 음성의 인원 지정 재분석에서 수동 이름 유지 확인. 애매한 그룹 분할/합침은 미연결 수정으로 표시. 최대 6시간 구간 처리 검증 완료. 한국어 실제 다자 회의·장시간 정확도/성능 검증은 남음 |
+| F-002 목소리 프로필·라이브 본인 표시 | 구현·실제 모델/WPF/포터블 검증, 실제 장치 검증 필요 | 명시적 10–30초 등록·재등록·삭제·취소·실패 보존, 최근 3초 라이브 나/다른 참여자 표시, pause와 소유 worker 취소, 기존 회의 재적용 구현. 공개 음성 파일 입력으로 검증. 한국어 실제 마이크·혼합 녹음 정확도/부하 검증 필요 |
+| F-003 내 발화와 연속 재생 | 구현·PCM 단위·실제 출력 장치·프로필 창 연동 검증 | 내 발화 필터와 선택/전체 내 발화 이어듣기. 선택 프레임만 연결하는 제공자 테스트. 생성 무음으로 출력 장치의 선택 구간 종료·일반 재생 복귀·일시정지 확인. 실제 프로필 창/녹음 전환/삭제 상태에서 대기 중 재생 이벤트 오류를 재현·수정. 실제 등록 마이크와 사람의 음성 청취는 별도. [단계 16](docs/implementation/FULL-PORT-STEP16.md) |
+| F-004–006 약속/요청·질문/답변·결정 흐름 | 서비스·WPF·포터블·4B/9B 비교 검증, 의미 정확도 미확정 | 구간/범주별 구조화 호출, 원자적 저장과 실패 보존, 업무 상태/필터/근거 이동 구현. 실제 자연 대화의 로컬 4B/9B 모두 의미 오류를 확인. 9B 자동 전환 없이 기본 4B 유지. 실제 업무 회의 정답 평가와 음성 청취는 별도. [단계 16](docs/implementation/FULL-PORT-STEP16.md) |
+| F-007 프로젝트 브리핑 | 구현·단위/WPF/포터블·Worker 동기화 검증 | 프로젝트 설정·해제, 최근 결정/미완료 업무/미해결 질문 집계, 단일 프로젝트 자동 선택, 다른 회의 원본 이동 확인. Worker 계약 왕복은 단계 9–10에서 검증. 실제 Apple 기기는 별도 |
+| F-008 이름·별칭·역할·용어 | 구현·단위/WPF·Worker 동기화 검증 | 이름·별칭·역할·용어 편집/저장, 60KiB 계약·12KB 프롬프트 참고, 참여자 발화의 원문 보존 주석. Worker 텍스트 프로필 병합은 단계 9–10에서 검증. 실제 Apple 기기는 별도 |
+| F-009 수동 수정 | 화자·업무 상태·프로젝트 UI와 이력 구현 | 화자명·본인 표시·개별 발화·업무 상태·프로젝트 편집 구현. 같은 근거의 재분석에서 업무 상태 유지 검증. Worker 수정 이력 동기화 검증 완료. 모호한 화자 그룹 변화는 미연결 이력으로 보존하며 실제 다자 회의 재연결 품질은 별도 |
+| 회의록 AI 보완·전사 정리 | 구현·단위/WPF·실제 로컬 모델 검증 | 지시→미리보기→적용/버리기, 취소·동시 변경 보호, 원본 별도 보존, 유지한 발화의 숫자/시간·전체 발화 ID 검증, 원본 비교·자동 실패 시 원문 사용. 정리한 참여자 발화 표시 구현. 실제 다자 회의의 의미 보존은 추가 검증 |
+| 회의록 목차 | 구현·실제 WPF 스크롤 검증 | H1–H6 제목, 같은 제목의 서로 다른 위치 이동, 코드 블록 내부 제목 제외. 밝은/어두운 테마와 작은 창 렌더 확인 |
+| 전체 Cloudflare 동기화 및 F-010 | 전체 core 병합과 WPF 자동/수동 실행 구현·검증 | 녹음/폴더/삭제 상태와 회의록/분석/수정 이력/프로필/AI 설정 병합, 원본 바이트·원문 버전, 영속 대기/수신함·cursor/재시도·중단 복구·동시 변경 검증. 두 WPF 라이브러리의 auto/manual/status UI, 연결 확인, 실패·재시작·취소·설정·녹음·종료 흐름을 실제 Worker HTTP/SQLite로 확인. 실제 Apple 기기/Cloudflare 배포는 별도. [단계 10](docs/implementation/FULL-PORT-STEP10.md) |
+| 동기화 비밀 제외 | core 경로와 WPF 설정·키 보유 안내 검증 | DTO와 실제 JSON 요청 본문에 API 키/토큰/목소리/임베딩 값이 포함되지 않음을 확인. 기기별 키 보유 여부만 전달하며 읽을 수 없으면 unknown. WPF 설정 편집은 실행 중인 동기화를 취소하고 기다린 후 적용 |
+| 지속 웹 공유 | 구현·실제 WPF/Worker 검증 | 생성/반복 복사/앱·서버 재시작 복구/스냅샷 교체/해제/만료, title+Markdown만 전송, 응답 유실·오프라인 새로고침 복구와 종료 대기 검증. [단계 11](docs/implementation/FULL-PORT-STEP11.md) |
+| 6시간 화자 분석 | 구간 처리·실제 모델 fixture 검증 | 5분 구간+2초 문맥, 음성 특징에 의한 전체 참여자 연결, 원본 시간·해시 보존. 자동/4명 지정으로 6시간 파일·구간 경계·4시간 이후·취소 확인, 최대 약 815MiB. 대부분 무음인 검증 파일이며 자연 회의 속도/정확도 증거와 구분 |
+| 배포·문서·PR | 미완료 | 독립 Windows 버전/폴더형 self-contained ZIP, 새 폴더에서 실행 검증, 기능별 증거/제약 문서와 GitHub PR |
+
+단계 19 후보 경로는 `Windows/artifacts/step19/AI-NoteTaker-0.4.0-win-x64.zip`이며 최신 upstream·빈 녹음 보호·공유 요청 수명 수정을 포함한다. 소스의 비장치 테스트 241개와 WPF Release 빌드 통과 후, 데스크톱 사용 허용에 따라 `verify-package.ps1 -AllFeatures`를 실행했다. 같은 새 EXE에서 12개 경로 통과·마지막 시스템 오디오 공유 실패로 종료했고 `.verification.json`의 `Passed=false`를 유지한다. 앞선 파일별 해시 비교는 `.static-verification.json`에 보존했다. 허용받은 공유 호스트 재시작 후에도 앱과 독립 텍스트 공유 진단에서 창이 나타나지 않았다. 최신 EXE의 실제 폴더 이동·정렬과 종료/재실행 후 보존은 완료했다. [단계 20](docs/implementation/FULL-PORT-STEP20.md), [전체 이식 감사](docs/implementation/FULL-PORT-AUDIT.md).
+
+근거: 루트 README.md, docs/FEATURE-BACKLOG.md (F-001–010과 후속 릴리스), NoteTaker/Playback, Shared/MeetingIntelligence, NoteTaker/Sync, Shared/WebSharing, Cloudflare/README.md.
+
+Apple 전용 런타임은 Windows에서 실행 가능한 로컬 모델로 같은 사용자 기능을 제공한다. 멀티기기 동시 녹음의 자동 병합·음성 인증은 upstream의 명시적 제외 범위를 따른다. 일반 고객용 회원/결제/다중 고객 서버는 현재 upstream 기능에 없으며 별도 상품화 과제다.
+
+## 진행 기록
+
+- 2026-09-16: 같은 배포 DLL을 로드하는 독립 WPF 검사 도구를 추가했다. 빈 입력 완료 거부·화면 복귀·재녹음·종료·재시작의 두 시나리오 통과, 어셈블리 경로·해시 일치. 공유 호스트 FullTrustApp 활성화 후에도 네이티브 공유는 timeout. 원격 main 재확인 결과 추가 병합은 없다. [단계 21](docs/implementation/FULL-PORT-STEP21.md).
+
+- 2026-09-16: 데스크톱 사용 허용 후 최신 후보의 전체 배포 스크립트를 실행해 12개 통과·시스템 오디오 공유 실패를 확인했다. 탐색기 공유도 창이 없었고 재허용 후 공유 호스트 재시작·독립 텍스트 진단에서도 해결되지 않았다. 최신 EXE의 실제 폴더 정렬·앱 재실행 보존은 확인했다. [단계 20](docs/implementation/FULL-PORT-STEP20.md).
+
+- 2026-09-16: 새 upstream `14172b2`를 병합하고 iOS 녹음 수명 수정과 Windows를 대조했다. 실제 PCM 프레임으로 완료 길이를 계산하고 빈/불완전 WAV의 정상 저장과 빈 파일의 복구 성공 표시를 막았다. 비장치 테스트 241개와 WPF Release 빌드 통과. 최신 소스를 단계 19 후보로 묶으며 데스크톱 검증은 사용자 요청에 따라 미실행이다. [단계 19](docs/implementation/FULL-PORT-STEP19.md).
+
+- 2026-09-16: 실제 폴더 안팎 이동·앞뒤 순서 변경을 확인했다. 보안 안내창 종료 후에도 시스템 공유 timeout이 재현됐다. 공식 SDK 어댑터와 요청별 응답·취소·오류 처리를 추가했고 창 없는 관련 12개 테스트와 Release 빌드가 통과했다. 이후 데스크톱 사용 요청에 따라 네이티브 조작을 멈췄으며 새 WPF 검사·새 ZIP·최종 공유 검증은 남아 있다. [단계 18](docs/implementation/FULL-PORT-STEP18.md).
+
+- 2026-09-16: 최신 upstream을 다시 대조해 개별 마이크/시스템 음량, 모드·장치 설정 보존, 목소리 등록의 PCM 입력 감지 시간, 회의록 생성 시각·보고 비용 표시를 추가했다. Release 230개 통과/장치 6개 건너뜀. 실제 WPF 설정·파일 입력 녹음·PCM 결과·재시작과 공개 음성의 프로필/실시간 owner/자동 분석이 통과했다. [단계 17](docs/implementation/FULL-PORT-STEP17.md). 새 배포와 남은 네이티브 UI 검증을 진행한다.
+
+- 2026-09-16: 프로필 창 중 대기 중이던 일반/발화 재생과 시간 이동을 거부하고 녹음 전환·삭제 상태의 발화 재생도 보호했다. 수정 전 실제 WPF 실패와 수정 후 무음 출력 장치/프로필 창/기존 UI 통과를 기록했다. Qwen3.5 9B 모델 준비와 같은 자연 대화 비교가 완료됐으나 의미 오류가 남아 기본 모델을 변경하지 않았다. [단계 16](docs/implementation/FULL-PORT-STEP16.md). 단계 15 ZIP에는 이 수정이 없으며 최종 배포/네이티브 공유 검증은 진행 중이다.
+
+- 2026-09-16: Windows 오디오 공유, 원본 명령의 Ctrl 단축키 대응과 편집 중 보호, 가져오기 모달 보호, 원본 앱 아이콘을 추가했다. Release 227개 통과, 5 장치 테스트 건너뜀. 첫 포터블 검사에서 긴 공유 경로 오류를 찾아 짧은 임시 캐시와 purge 재시도 검증으로 수정했다. 이후 네이티브 이벤트 timeout은 조사 중이며 전체 성공으로 취급하지 않는다. [단계 15](docs/implementation/FULL-PORT-STEP15.md). WPF 명령·폴더 가져오기·내보내기와 첫 후보의 Worker 동기화/단축키는 통과했다. 새 ZIP의 나머지 모델/worker 통합 검증과 전체 최종 점검은 진행 중이다.
+
+- 2026-09-16: 영구 삭제·30일 보관·오디오 내보내기와 원격 수정 이력 복원을 구현했다. Release 221개 통과, 5 장치 테스트 건너뜀. 추가 포터블 동기화 검사에서 완료 중 재진입 경합을 재현·수정했고 같은 시점의 요청 거부를 실제 WPF/Worker로 확인했다. [단계 14](docs/implementation/FULL-PORT-STEP14.md). 원본 action bar와 sidebar의 오디오 ShareLink가 저장 내보내기와 별도임을 추가 확인했으므로 Windows 시스템 파일 공유 이식도 남아 있다.
+
+- 2026-09-16: 자연 한국어 대화 평가와 자동 전체 화자 병합, 폴더 앞·뒤 삽입선, 모델 질문/답변 schema 보완을 반영했다. Release 211개와 Worker 93개 통과, 별도 실제 출력 장치 재생 테스트 1개 통과. 0.4.0 후보 ZIP의 새 폴더 WPF/로컬 모델 검증 9개 통과. [단계 12](docs/implementation/FULL-PORT-STEP12.md), [단계 13](docs/implementation/FULL-PORT-STEP13.md). 추가 대조에서 영구 삭제·30일 보관·오디오 내보내기 누락을 확인했으므로 전체 목표와 최종 배포는 계속 진행 중이다.
+
+- 2026-09-16: 원격 main과 현재 HEAD가 일치함을 확인. 이전 질의 응답에서 API 구조와 서비스 한도를 검증했으며 구현 완료로 계산하지 않음. 전체 이식은 진행 중이다.
+- 2026-09-16: 집중 파형, 폴더 관리, 트레이·단축키·자동 생성 구현. [첫 이식 단계 검증](docs/implementation/FULL-PORT-STEP1.md). 화자/프로필/회의 분석/정리·보완/전체 동기화/최종 배포는 계속 미완료다.
+- 2026-09-16: 로컬 참여자 분석, 수동 수정 이력, 내 발화/정확한 PCM 이어듣기, 구조화 회의 계약 추가. 테스트 98 통과/5 하드웨어 건너뜀, 실제 Whisper+Sherpa WPF 및 포터블 EXE 검증. [두 번째 이식 단계 검증](docs/implementation/FULL-PORT-STEP2.md). 전체 범위는 아직 미완료다.
+- 2026-09-16: 텍스트/용어 프로필, 로컬 목소리 등록·취소·삭제, 라이브 본인 표시와 자동 참여자 분석 추가. 테스트 107 통과/5 하드웨어 건너뜀. 실제 WPF와 새 self-contained 폴더에서 공개 음성으로 검증. [세 번째 이식 단계 검증](docs/implementation/FULL-PORT-STEP3.md). 상세 시간 정렬·구조화 분석 UI·프로젝트·정리/보완·전체 동기화·최종 PR은 미완료다.
+- 2026-09-16: 한국어/CJK 토큰 바이트 보존, 상세 발화 시간, 기존 캐시 업그레이드, 인원 변경 시 음성 기반 ID 재연결 추가. 테스트 118 통과/5 하드웨어 건너뜀. [네 번째 이식 단계 검증](docs/implementation/FULL-PORT-STEP4.md). 구조화 분석 서비스/UI·프로젝트·정리/보완·전체 동기화·최종 배포/PR은 계속 진행 중이다.
+- 2026-09-16: 구조화 회의 분석, 업무 상태와 근거 탐색, 프로젝트 편집/브리핑 추가. 테스트 135 통과/5 하드웨어 건너뜀. 실제 로컬 Qwen + WPF와 새 포터블 EXE 검증. [다섯 번째 단계 검증 및 4B 모델의 오분류](docs/implementation/FULL-PORT-STEP5.md). 모델 선택/예산·정리/보완·목차·전체 동기화·장시간/의미 정확도·최종 배포/PR은 미완료다.
+
+## 다음 단계 조사 메모
+
+- 오디오 파일 공유의 조사 메모는 단계 15 구현으로 대체했다. WPF 앱에만 Windows SDK 타깃을 적용하며 Core/음성 worker는 기존 타깃을 유지한다. 새 ZIP의 WinRT DLL과 worker 전달 경로까지 확인한다.
+
+- Windows 런타임은 NuGet `org.k2fsa.sherpa.onnx` 1.13.8, ONNX Runtime 1.28.2, Pyannote segmentation-3.0과 3D-Speaker ERes2Net-Base다. 512차원 모델 ID를 명시하며 Apple의 기기 로컬 음성 벡터와 상호 교환하지 않는다. 취소는 소유 worker 프로세스 종료로 처리한다.
+- 공식 예제: https://github.com/k2-fsa/sherpa-onnx/blob/master/dotnet-examples/offline-speaker-diarization/Program.cs . 바인딩 소스는 `scripts/dotnet/OfflineSpeakerDiarization.cs`, `OfflineSpeakerDiarizationConfig.cs`, `SpeakerEmbeddingExtractor.cs`에 있다. 모델·공개 다중 화자 WAV는 공식 `speaker-segmentation-models`, 임베딩은 `speaker-recongition-models` release에 있다.
+- 모델 선택/예산·정리/보완·목차, 전체 동기화, 지속 공유와 6시간 화자 분석을 구현하고 검증했다. [단계 11](docs/implementation/FULL-PORT-STEP11.md): 테스트 208 통과/5 장치 건너뜀, WPF 동기화·기존 UI 회귀 성공. GitHub [Draft PR #5](https://github.com/Seonwoo82/AI-NoteTaker/pull/5)를 생성했다. 다음은 upstream 전체 기능 대조·한국어 자연 음성/의미 품질·최종 배포다. 실제 WPF/Worker/SQLite 왕복과 긴 무음 fixture 결과는 실제 Apple 기기/Cloudflare 배포, 실제 장시간 회의 정확도, 물리 입력·청취 검증과 구분한다.

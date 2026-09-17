@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../NoteTaker.Core/NoteTaker.Core.csproj" /></ItemGroup>
+  <Import Project="../SpeechWorker.targets" />
 </Project>

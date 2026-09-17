@@ -524,9 +524,9 @@ describe("Cloudflare web sharing", () => {
   test("generated web_shares migration enforces one active row per source and unique token hashes", () => {
     const migration = readFileSync(new URL("../migrations/0006_web_shares.sql", import.meta.url), "utf8");
     const child = spawnSync(
-      "python3",
+      process.env.PYTHON ?? "python3",
       [
-        "-c",
+        "-X", "utf8", "-c",
         `
 import sqlite3
 conn = sqlite3.connect(':memory:')

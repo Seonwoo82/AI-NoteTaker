@@ -611,9 +611,9 @@ describe("Cloudflare sync worker", () => {
     const upserts = env.__db.statements.filter(({ sql }) => sql.includes("ON CONFLICT(id) DO UPDATE") && sql.includes("recording_folders"));
     assert.equal(upserts.length, 3);
     const child = spawnSync(
-      "python3",
+      process.env.PYTHON ?? "python3",
       [
-        "-c",
+        "-X", "utf8", "-c",
         `
 import json
 import sqlite3
@@ -838,9 +838,9 @@ print('recording_folders upsert sql ok')
     const upserts = env.__db.statements.filter(({ sql }) => sql.includes("ON CONFLICT(id) DO UPDATE"));
     assert.equal(upserts.length, 3);
     const child = spawnSync(
-      "python3",
+      process.env.PYTHON ?? "python3",
       [
-        "-c",
+        "-X", "utf8", "-c",
         `
 import json
 import sqlite3
@@ -1217,9 +1217,9 @@ print('worker-generated upsert sql ok')
     const upserts = env.__db.statements.filter(({ sql }) => sql.includes("INSERT INTO meeting_notes"));
     assert.equal(upserts.length, 3);
     const child = spawnSync(
-      "python3",
+      process.env.PYTHON ?? "python3",
       [
-        "-c",
+        "-X", "utf8", "-c",
         `
 import sqlite3
 import sys

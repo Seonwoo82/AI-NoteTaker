@@ -1,7 +1,7 @@
 {
   "version": 1,
   "dependencies": {
-    "net10.0-windows7.0": {
+    "net10.0-windows10.0.19041": {
       "Microsoft.Extensions.AI.Abstractions": {
         "type": "Transitive",
         "resolved": "10.2.0",
@@ -65,11 +65,6 @@
           "NAudio.Core": "2.3.0"
         }
       },
-      "System.Security.Cryptography.ProtectedData": {
-        "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "qy6C3gQRTrfhFfuiIYU1jNwWfFdJpBVo1BARW7jgMm1zTEm3LRzLLyOLJGaAuKE+nZCGkEP71y4rj9NWjqLGdQ=="
-      },
       "Whisper.net": {
         "type": "Transitive",
         "resolved": "1.9.1",
@@ -100,13 +95,12 @@
         "type": "Project",
         "dependencies": {
           "NAudio": "[2.3.0, )",
-          "System.Security.Cryptography.ProtectedData": "[10.0.0, )",
           "Whisper.net": "[1.9.1, )",
           "Whisper.net.Runtime": "[1.9.1, )",
           "Whisper.net.Runtime.Cuda12.Windows": "[1.9.1, )"
         }
       }
     },
-    "net10.0-windows7.0/win-x64": {}
+    "net10.0-windows10.0.19041/win-x64": {}
   }
 }

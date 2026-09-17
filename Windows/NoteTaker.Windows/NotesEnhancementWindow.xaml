@@ -1,0 +1,17 @@
+<Window x:Class="NoteTaker.Windows.NotesEnhancementWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:c="clr-namespace:NoteTaker.Windows.Components" Title="회의록 보완" Width="820" Height="760" MinWidth="620" MinHeight="580"
+ WindowStartupLocation="CenterOwner" ShowInTaskbar="False" WindowStyle="None" Style="{StaticResource {x:Type Window}}" Closing="Window_Closing">
+ <WindowChrome.WindowChrome><WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="10" UseAeroCaptionButtons="False" /></WindowChrome.WindowChrome>
+ <Border Background="{DynamicResource WindowSurface}" BorderBrush="{DynamicResource Separator}" BorderThickness="1" CornerRadius="10">
+  <Grid><Grid.RowDefinitions><RowDefinition Height="44" /><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+   <Grid Background="{DynamicResource ToolbarSurface}"><c:WindowControls HorizontalAlignment="Left" WindowChrome.IsHitTestVisibleInChrome="True" /><TextBlock Text="회의록 보완" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid>
+   <StackPanel Grid.Row="1" Margin="22,18,22,12"><TextBlock Text="어떤 내용을 보완할까요?" FontSize="20" FontWeight="SemiBold" /><TextBlock Text="요청에 맞춰 수정안을 만들고, 적용하기 전에 원본과 비교합니다." Foreground="{DynamicResource Muted}" Margin="0,6,0,12" />
+    <TextBox x:Name="InstructionsBox" Height="84" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" AutomationProperties.Name="회의록 보완 요청" TextChanged="Instructions_Changed" />
+    <StackPanel Orientation="Horizontal" Margin="0,10,0,0"><Button x:Name="PreviewButton" Content="수정안 만들기" Style="{StaticResource PrimaryButton}" Click="Preview_Click" /><Button x:Name="CancelPreviewButton" Content="생성 취소" Visibility="Collapsed" Click="Cancel_Click" Margin="8,0,0,0" /></StackPanel>
+   </StackPanel>
+   <TabControl Grid.Row="2" x:Name="PreviewTabs" Margin="22,0,22,12"><TabItem Header="수정안"><FlowDocumentScrollViewer x:Name="PreviewViewer" IsToolBarVisible="False" VerticalScrollBarVisibility="Auto" /></TabItem><TabItem Header="현재 회의록"><FlowDocumentScrollViewer x:Name="OriginalViewer" IsToolBarVisible="False" VerticalScrollBarVisibility="Auto" /></TabItem></TabControl>
+   <Border Grid.Row="3" BorderBrush="{DynamicResource Separator}" BorderThickness="0,1,0,0" Padding="22,12"><StackPanel><TextBlock x:Name="EditorStatus" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10" /><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button x:Name="DiscardButton" Content="적용하지 않고 닫기" Click="Discard_Click" Margin="0,0,8,0" /><Button x:Name="ApplyButton" Content="수정안 적용" Style="{StaticResource PrimaryButton}" Click="Apply_Click" IsEnabled="False" /></StackPanel></StackPanel></Border>
+  </Grid>
+ </Border>
+</Window>

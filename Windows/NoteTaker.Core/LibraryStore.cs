@@ -8,16 +8,24 @@ namespace NoteTaker.Core;
 
 public static class JsonDisk
 {
+    // Short filesystem commits share this gate; network/model work never holds it.
+    public static object Gate { get; } = new();
     public static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true,
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public static T? Read<T>(string path) => File.Exists(path)
-        ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) : default;
+    public static T? Read<T>(string path)
+    {
+        lock (Gate) return File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) : default;
+    }
 
     public static void Write<T>(string path, T value)
+    {
+        lock (Gate) WriteLocked(path, value);
+    }
+    private static void WriteLocked<T>(string path, T value)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -34,7 +42,7 @@ public static class JsonDisk
     }
 }
 
-public sealed class LibraryStore
+public sealed partial class LibraryStore
 {
     public string Root { get; }
     public List<string> LoadWarnings { get; } = [];
@@ -47,33 +55,77 @@ public sealed class LibraryStore
     public string AudioPath(Guid id) => Path.Combine(DirectoryFor(id), "audio.wav");
     public string TranscriptPath(Guid id) => Path.Combine(DirectoryFor(id), "transcript.json");
     public string NotesPath(Guid id) => Path.Combine(DirectoryFor(id), "notes.json");
-    public void Save(Recording recording) => JsonDisk.Write(Path.Combine(DirectoryFor(recording.Id), "meta.json"), recording);
-
-    public IReadOnlyList<Recording> Load()
+    public Recording CompleteRecording(Recording recording, string? warning)
     {
+        double duration = AudioFiles.RecordedDuration(AudioPath(recording.Id));
+        if (duration <= 0) throw new InvalidDataException("녹음된 오디오가 없습니다. 입력 장치를 확인하고 다시 녹음해 주세요.");
+        var completed = recording with { IsRecording = false, DurationSeconds = duration, Warning = warning };
+        Save(completed);
+        return completed;
+    }
+    public void Save(Recording recording)
+    {
+        lock (JsonDisk.Gate)
+        {
+            string path = Path.Combine(DirectoryFor(recording.Id), "meta.json");
+            var previous = JsonDisk.Read<Recording>(path);
+            if (previous?.DeletedAt is not null && recording.DeletedAt is null && File.Exists(PurgePendingPath(recording.Id)))
+                throw new InvalidOperationException("파일 삭제를 완료하지 못한 녹음입니다. 영구 삭제를 다시 시도해 주세요.");
+            var wire = SyncRecordings.FromLocal(recording, previous?.SyncMetadata ?? recording.SyncMetadata,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), stamp: true);
+            JsonDisk.Write(path, recording with { SyncMetadata = wire });
+            if (recording.DeletedAt is null) ClearPurgeMarkers(recording.Id);
+        }
+    }
+
+    public IReadOnlyList<Recording> Load(DateTimeOffset? now = null)
+    {
+        lock (JsonDisk.Gate) return LoadLocked(now ?? DateTimeOffset.UtcNow);
+    }
+    private IReadOnlyList<Recording> LoadLocked(DateTimeOffset now)
+    {
+        SyncFileTransaction.Recover(Root);
         LoadWarnings.Clear();
+        try { PruneExpiredAudioShareCache(); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        { LoadWarnings.Add("오래된 오디오 공유 사본을 정리하지 못했습니다."); }
         var result = new List<Recording>();
         foreach (var directory in Directory.EnumerateDirectories(Path.Combine(Root, "Recordings")))
         {
             if (!Guid.TryParse(Path.GetFileName(directory), out var id)) continue;
             try
             {
-                var recording = JsonDisk.Read<Recording>(Path.Combine(directory, "meta.json"));
+                var recording = JsonDisk.Read<Recording>(SafePath(SyncRecordings.MetadataPath(id)));
                 if (recording is null) continue;
-                if (recording.Id != id || recording.SchemaVersion != 1 || string.IsNullOrWhiteSpace(recording.Title) || !Enum.IsDefined(recording.Mode) || !double.IsFinite(recording.DurationSeconds) || recording.DurationSeconds < 0)
+                if (recording.Id != id || recording.SchemaVersion != 1 || recording.Title is null || !Enum.IsDefined(recording.Mode) || !double.IsFinite(recording.DurationSeconds) || recording.DurationSeconds < 0)
                     throw new InvalidDataException("지원하지 않는 메타데이터입니다.");
                 if (recording.IsRecording)
                 {
                     if (File.Exists(AudioPath(id)))
                     {
                         AudioFiles.RepairInterruptedWave(AudioPath(id));
-                        using var audio = new WaveFileReader(AudioPath(id));
-                        recording = recording with { IsRecording = false, DurationSeconds = audio.TotalTime.TotalSeconds, Warning = "중단된 녹음을 복구했습니다. 마지막 부분을 확인해 주세요." };
+                        double duration = AudioFiles.RecordedDuration(AudioPath(id));
+                        recording = recording with { IsRecording = false, DurationSeconds = duration, Warning = duration > 0
+                            ? "중단된 녹음을 복구했습니다. 마지막 부분을 확인해 주세요."
+                            : "녹음된 오디오가 없어 복구하지 못했습니다. 입력 장치를 확인하고 다시 녹음해 주세요." };
                     }
-                    else recording = recording with { IsRecording = false, Warning = "녹음이 중단되어 오디오 파일을 찾을 수 없습니다." };
+                    else recording = recording with { IsRecording = false, DurationSeconds = 0, Warning = "녹음이 중단되어 오디오 파일을 찾을 수 없습니다." };
                     Save(recording);
+                    recording = JsonDisk.Read<Recording>(SafePath(SyncRecordings.MetadataPath(id)))!;
                 }
-                result.Add(recording);
+                try
+                {
+                    if (recording.DeletedAt is null) ClearPurgeMarkers(id);
+                    if (recording.DeletedAt is { } deleted && !recording.IsRecording &&
+                        (now - deleted >= TrashRetention || File.Exists(PurgePendingPath(id))))
+                        DeletePermanently(recording);
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+                { LoadWarnings.Add($"{recording.Title}: 삭제 파일 정리를 완료하지 못했습니다. 다음에 다시 시도합니다."); }
+                result.Add(recording with { IsLocallyPurged = recording.DeletedAt is not null && File.Exists(PurgeMarkerPath(id)) });
+                try { PruneAudioShareCopies(id, now); }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+                { LoadWarnings.Add($"{recording.Title}: 이전 공유용 임시 파일을 정리하지 못했습니다. 다음에 다시 시도합니다."); }
             }
             catch (Exception ex) when (ex is IOException or JsonException or InvalidDataException or UnauthorizedAccessException)
             {
@@ -115,7 +167,17 @@ public sealed class SettingsStore(string root)
             settings = settings with { TranscriptionProvider = "openrouter", SummaryProvider = "openrouter" };
         return settings;
     }
-    public void Save(AppSettings settings) => JsonDisk.Write(path, settings);
+    public void Save(AppSettings settings)
+    {
+        lock (JsonDisk.Gate)
+        {
+            var previous = Load();
+            var shared = previous.SharedSyncPreferences;
+            if (!SyncAccountData.SamePreferences(settings, previous)) shared = SyncAccountData.Preferences(settings,
+                Math.Max(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), shared is null ? 0 : checked(shared.ModifiedAt + 1)));
+            JsonDisk.Write(path, settings with { SharedSyncPreferences = shared });
+        }
+    }
     public static string? ProtectKey(string key) => string.IsNullOrWhiteSpace(key) ? null : Convert.ToBase64String(
         ProtectedData.Protect(Encoding.UTF8.GetBytes(key.Trim()), null, DataProtectionScope.CurrentUser));
     public static string ReadKey(AppSettings settings)

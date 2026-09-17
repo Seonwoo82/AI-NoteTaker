@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('build','test','audio-smoke','ui-audio-smoke','run','publish','smoke-ui')][string]$Task = 'build',
+    [ValidateSet('build','test','audio-smoke','ui-audio-smoke','run','publish','smoke-ui','smoke-desktop')][string]$Task = 'build',
     [ValidateSet('win-x64','win-arm64')][string]$Runtime = 'win-x64',
     [string]$ArtifactRoot = (Join-Path $PSScriptRoot 'artifacts')
 )
@@ -32,10 +32,11 @@ switch ($Task) {
         if ($LASTEXITCODE -eq 0) {
             Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination $output
             Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'EXECUTION_PLAN.md') -Destination $output
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'FULL-PORT-PLAN.md') -Destination $output
             $docsOutput = Join-Path $output 'docs/implementation'
             New-Item -ItemType Directory -Force $docsOutput | Out-Null
-            foreach ($docName in @('FREE-AI-VERIFICATION.md','FREE-TRANSCRIPTION-RESEARCH.md','WINDOWS-APPLE-UI.md','WINDOWS-PORT.md')) {
-                Copy-Item -LiteralPath (Join-Path $PSScriptRoot "docs/implementation/$docName") -Destination $docsOutput
+            foreach ($doc in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'docs/implementation') -Filter '*.md' -File) {
+                Copy-Item -LiteralPath $doc.FullName -Destination $docsOutput
             }
             $evaluationOutput = $output
             New-Item -ItemType Directory -Force $evaluationOutput | Out-Null
@@ -56,6 +57,10 @@ switch ($Task) {
     'smoke-ui' {
         $output = Join-Path $ArtifactRoot 'ui-smoke'
         & $dotnetPath run --project $project -c Release -- --smoke-ui $output
+    }
+    'smoke-desktop' {
+        $output = Join-Path $ArtifactRoot 'desktop-smoke'
+        & $dotnetPath run --project $project -c Release -- --smoke-desktop $output
     }
     'ui-audio-smoke' {
         $previousUiAudioSmoke = $env:NOTETAKER_UI_AUDIO_SMOKE

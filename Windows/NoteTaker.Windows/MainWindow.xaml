@@ -5,6 +5,15 @@
  Title="AI-NoteTaker" Width="1100" Height="760" MinWidth="840" MinHeight="600"
  Style="{StaticResource {x:Type Window}}" WindowStyle="None" WindowStartupLocation="CenterScreen"
  Closing="Window_Closing" PreviewKeyDown="Window_KeyDown">
+ <Window.Resources>
+  <DataTemplate x:Key="MeetingInsightCard"><StackPanel Margin="2,4">
+   <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+   <TextBlock Text="{Binding Meta}" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,5,0,7" />
+   <TextBlock Text="{Binding Body}" FontSize="13" TextWrapping="Wrap" />
+   <WrapPanel Margin="0,9,0,0"><Button Content="근거 보기" Tag="{Binding}" Click="InsightEvidence_Click" Style="{StaticResource LinkButton}" Margin="0,0,12,0" /><Button Content="근거 듣기" Tag="{Binding}" Click="InsightListen_Click" Style="{StaticResource LinkButton}" /></WrapPanel>
+  </StackPanel></DataTemplate>
+  <Style x:Key="MeetingInsightList" TargetType="ListBox"><Setter Property="ItemTemplate" Value="{StaticResource MeetingInsightCard}" /><Setter Property="Background" Value="{DynamicResource CardSurface}" /><Setter Property="BorderBrush" Value="{DynamicResource Separator}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" /><Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" /><Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" /><Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ListBoxItem" BasedOn="{StaticResource SidebarRow}"><Setter Property="Padding" Value="12" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /></Style></Setter.Value></Setter></Style>
+ </Window.Resources>
  <WindowChrome.WindowChrome><WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="10" UseAeroCaptionButtons="False" /></WindowChrome.WindowChrome>
  <Border BorderBrush="{DynamicResource Separator}" BorderThickness="1" CornerRadius="10" Background="{DynamicResource WindowSurface}">
  <Grid>
@@ -14,6 +23,8 @@
    <Grid Background="{DynamicResource SidebarSurface}"><c:WindowControls HorizontalAlignment="Left" WindowChrome.IsHitTestVisibleInChrome="True" /><TextBlock Text="AI-NoteTaker" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" Margin="90,0,10,0" /></Grid>
    <TextBlock Grid.Column="1" x:Name="WindowSubtitle" Text="모든 녹음 항목" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="20,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0" WindowChrome.IsHitTestVisibleInChrome="True">
+    <Button x:Name="SyncButton" Click="Sync_Click" ToolTip="동기화 상태" AutomationProperties.Name="동기화 상태" Margin="0,0,8,0"><TextBlock x:Name="SyncIndicator" Text="동기화" /></Button>
+    <Button x:Name="ProfileButton" Content="프로필" Click="Profile_Click" ToolTip="나의 이름·용어·목소리" Margin="0,0,8,0" />
     <Button x:Name="ImportButton" Style="{StaticResource ToolbarButton}" Click="Import_Click" ToolTip="오디오 가져오기 (Ctrl+O)" AutomationProperties.Name="오디오 가져오기"><c:AppleIcon Kind="import" Width="18" Height="18" /></Button>
     <Button Style="{StaticResource ToolbarButton}" Click="OpenFolder_Click" ToolTip="저장 폴더 보기" AutomationProperties.Name="저장 폴더 보기"><c:AppleIcon Kind="folder" Width="18" Height="18" /></Button>
     <Button x:Name="SettingsButton" Style="{StaticResource ToolbarButton}" Click="Settings_Click" ToolTip="AI 설정 (Ctrl+,)" AutomationProperties.Name="AI 설정"><c:AppleIcon Kind="settings" Width="18" Height="18" /></Button>
@@ -32,14 +43,20 @@
        <Button x:Name="ClearSearchButton" Style="{StaticResource ToolbarButton}" HorizontalAlignment="Right" Padding="4" MinWidth="20" Click="ClearSearch_Click" ToolTip="검색 지우기" AutomationProperties.Name="검색 지우기"><c:AppleIcon Kind="close" Width="12" Height="12" /></Button>
       </Grid>
      </StackPanel>
-     <ListBox Grid.Row="1" x:Name="FilterBox" SelectedIndex="0" SelectionChanged="Filter_Changed" Margin="6,4,6,6" AutomationProperties.Name="라이브러리 보기">
+     <ListBox Grid.Row="1" x:Name="FilterBox" SelectedIndex="0" SelectionChanged="Filter_Changed" Margin="6,4,6,6" AutomationProperties.Name="라이브러리 보기" AllowDrop="True" DragOver="Library_DragOver" Drop="Library_Drop">
       <ListBoxItem><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="23" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><c:AppleIcon Kind="waveform" Width="16" Height="16" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="모든 녹음 항목" /><TextBlock Grid.Column="2" x:Name="AllCount" FontSize="11" Opacity=".75" /></Grid></ListBoxItem>
       <ListBoxItem><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="23" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><c:AppleIcon Kind="star" Width="16" Height="16" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="즐겨찾기" /><TextBlock Grid.Column="2" x:Name="FavoriteCount" FontSize="11" Opacity=".75" /></Grid></ListBoxItem>
       <ListBoxItem><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="23" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><c:AppleIcon Kind="trash" Width="16" Height="16" HorizontalAlignment="Left" /><TextBlock Grid.Column="1" Text="최근 삭제된 항목" /><TextBlock Grid.Column="2" x:Name="DeletedCount" FontSize="11" Opacity=".75" /></Grid></ListBoxItem>
      </ListBox>
-     <StackPanel Grid.Row="2"><Border Height="1" Background="{DynamicResource Separator}" Margin="10,0" /><TextBlock x:Name="LibraryCount" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="14,13,14,5" /></StackPanel>
-     <ListBox Grid.Row="3" x:Name="RecordingList" SelectionChanged="Recording_Selected" PreviewMouseRightButtonDown="Recording_RightClick" Margin="6,0" AutomationProperties.Name="녹음 목록">
-      <ListBox.ContextMenu><ContextMenu Opened="RecordingMenu_Opened"><MenuItem x:Name="RenameMenuItem" Header="이름 변경" Click="Rename_Click" /><MenuItem x:Name="FavoriteMenuItem" Header="즐겨찾기" Click="Favorite_Click" /><MenuItem x:Name="DeleteMenuItem" Header="삭제" Click="Delete_Click" /></ContextMenu></ListBox.ContextMenu>
+     <StackPanel Grid.Row="2">
+      <Border Height="1" Background="{DynamicResource Separator}" Margin="10,0" />
+      <DockPanel Margin="14,5,10,0"><Button x:Name="CreateFolderButton" DockPanel.Dock="Right" Content="+" Style="{StaticResource ToolbarButton}" Click="CreateFolder_Click" ToolTip="새 폴더" AutomationProperties.Name="새 폴더" /><TextBlock Text="폴더" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" /></DockPanel>
+      <TreeView x:Name="FolderTree" MaxHeight="190" Margin="6,0" SelectedItemChanged="Folder_Selected" PreviewMouseRightButtonDown="Folder_RightClick" PreviewMouseLeftButtonDown="Library_DragStart" PreviewMouseMove="Library_DragMove" AllowDrop="True" DragOver="Library_DragOver" DragLeave="Library_DragLeave" Drop="Library_Drop" AutomationProperties.Name="녹음 폴더" />
+      <Border x:Name="UnfiledDropTarget" Background="{DynamicResource SegmentSurface}" CornerRadius="5" Padding="7" Margin="12,4,12,0" AllowDrop="True" DragOver="Library_DragOver" Drop="Library_Drop"><TextBlock Text="여기로 드래그하여 폴더 밖으로 이동" FontSize="10" Foreground="{DynamicResource Muted}" /></Border>
+      <TextBlock x:Name="LibraryCount" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" Margin="14,9,14,5" />
+     </StackPanel>
+     <ListBox Grid.Row="3" x:Name="RecordingList" SelectionChanged="Recording_Selected" PreviewMouseRightButtonDown="Recording_RightClick" PreviewMouseLeftButtonDown="Library_DragStart" PreviewMouseMove="Library_DragMove" Margin="6,0" AutomationProperties.Name="녹음 목록">
+      <ListBox.ContextMenu><ContextMenu Opened="RecordingMenu_Opened"><MenuItem x:Name="RenameMenuItem" Header="이름 변경" Click="Rename_Click" /><MenuItem x:Name="FavoriteMenuItem" Header="즐겨찾기" Click="Favorite_Click" /><MenuItem x:Name="MoveFolderMenuItem" Header="폴더로 이동" /><MenuItem x:Name="ShareAudioMenuItem" Header="오디오 공유…" Click="ShareAudio_Click" /><MenuItem x:Name="ExportAudioMenuItem" Header="오디오 내보내기…" Click="ExportAudio_Click" /><MenuItem x:Name="DeleteMenuItem" Header="삭제" Click="Delete_Click" /><MenuItem x:Name="PermanentDeleteMenuItem" Header="영구 삭제…" Click="PermanentDelete_Click" Visibility="Collapsed" /></ContextMenu></ListBox.ContextMenu>
       <ListBox.ItemTemplate><DataTemplate><StackPanel>
        <TextBlock Text="{Binding DisplayTitle}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
        <TextBlock Text="{Binding Subtitle}" FontSize="10" Margin="0,3,0,0" Opacity=".7" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
@@ -71,15 +88,16 @@
        </Grid>
        <StackPanel Grid.Row="4" Margin="0,0,0,20">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-         <Button x:Name="BackButton" Style="{StaticResource TransportButton}" Click="Back_Click" ToolTip="15초 뒤로" AutomationProperties.Name="15초 뒤로"><c:AppleIcon Kind="back" Width="25" Height="25" /></Button>
+         <Button x:Name="BackButton" Style="{StaticResource TransportButton}" Click="Back_Click" ToolTip="15초 뒤로 (Ctrl+←)" AutomationProperties.Name="15초 뒤로"><c:AppleIcon Kind="back" Width="25" Height="25" /></Button>
          <Button x:Name="PlayButton" Style="{StaticResource TransportButton}" Background="{DynamicResource SegmentSurface}" Margin="16,0" Click="Play_Click" ToolTip="재생 / 일시정지 (Space)" AutomationProperties.Name="재생"><c:AppleIcon x:Name="PlayIcon" Kind="play" Width="23" Height="23" /></Button>
-         <Button x:Name="ForwardButton" Style="{StaticResource TransportButton}" Click="Forward_Click" ToolTip="15초 앞으로" AutomationProperties.Name="15초 앞으로"><c:AppleIcon Kind="forward" Width="25" Height="25" /></Button>
+         <Button x:Name="ForwardButton" Style="{StaticResource TransportButton}" Click="Forward_Click" ToolTip="15초 앞으로 (Ctrl+→)" AutomationProperties.Name="15초 앞으로"><c:AppleIcon Kind="forward" Width="25" Height="25" /></Button>
         </StackPanel>
         <TextBlock x:Name="PlaybackTime" Text="00:00 / 00:00" FontFamily="Consolas" FontSize="12" TextAlignment="Center" Margin="0,9,0,0" />
        </StackPanel>
        <StackPanel Grid.Row="5"><WrapPanel HorizontalAlignment="Center">
         <Button x:Name="RenameButton" Content="이름 변경" Click="Rename_Click" Margin="0,0,8,8" /><Button x:Name="FavoriteButton" Content="즐겨찾기" Click="Favorite_Click" Margin="0,0,8,8" />
-        <Button x:Name="ClovaExportButton" Content="클로바노트용 내보내기…" Click="ClovaExport_Click" Margin="0,0,8,8" /><Button Content="폴더에서 보기" Click="RevealRecording_Click" Margin="0,0,8,8" /><Button x:Name="DeleteButton" Content="삭제" Click="Delete_Click" Margin="0,0,0,8" Foreground="{DynamicResource RecordRed}" />
+        <Button x:Name="ShareAudioButton" Content="오디오 공유…" Click="ShareAudio_Click" Margin="0,0,8,8" />
+        <Button x:Name="ExportAudioButton" Content="오디오 내보내기…" Click="ExportAudio_Click" Margin="0,0,8,8" /><Button x:Name="ClovaExportButton" Content="클로바노트용 내보내기…" Click="ClovaExport_Click" Margin="0,0,8,8" /><Button x:Name="RevealAudioButton" Content="폴더에서 보기" Click="RevealRecording_Click" Margin="0,0,8,8" /><Button x:Name="DeleteButton" Content="삭제" Click="Delete_Click" Margin="0,0,8,8" Foreground="{DynamicResource RecordRed}" /><Button x:Name="PermanentDeleteButton" Content="영구 삭제…" Click="PermanentDelete_Click" Visibility="Collapsed" Margin="0,0,0,8" Foreground="{DynamicResource RecordRed}" />
        </WrapPanel><Button Content="AI 회의록 보기" Style="{StaticResource LinkButton}" Click="ShowNotes_Click" HorizontalAlignment="Center" /></StackPanel>
       </Grid>
      </TabItem>
@@ -88,15 +106,53 @@
        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="52" /><ColumnDefinition /></Grid.ColumnDefinitions><Border Background="{DynamicResource AccentSoft}" CornerRadius="8" Width="42" Height="42" HorizontalAlignment="Left" VerticalAlignment="Top"><c:AppleIcon Kind="sparkles" Width="24" Height="24" Foreground="{DynamicResource Accent}" /></Border><StackPanel Grid.Column="1"><TextBlock x:Name="NotesTitle" FontSize="17" FontWeight="SemiBold" /><TextBlock x:Name="NotesMeta" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,5,0,0" /></StackPanel></Grid>
        <WrapPanel Grid.Row="1" Margin="0,18,0,4"><Button x:Name="GenerateButton" Content="회의록 생성" Style="{StaticResource PrimaryButton}" Click="Generate_Click" Margin="0,0,8,6" /><Button x:Name="TranscribeOnlyButton" Content="전사만" Click="TranscribeOnly_Click" Margin="0,0,8,6" /><Button x:Name="SummarizeOnlyButton" Content="전사문으로 정리" Click="SummarizeOnly_Click" Margin="0,0,8,6" /><Button x:Name="ImportTranscriptButton" Content="전사문 가져오기…" Click="ImportTranscript_Click" Margin="0,0,8,6" /><Button x:Name="ShareWebButton" Content="웹 공유…" Click="ShareWeb_Click" Margin="0,0,8,6" /><Button x:Name="CancelButton" Content="취소" Click="Cancel_Click" Visibility="Collapsed" Margin="0,0,8,6" /><Button x:Name="CopyButton" Content="복사" Click="Copy_Click" Margin="0,0,8,6" /><Button x:Name="ExportButton" Content="내보내기…" Click="Export_Click" Margin="0,0,0,6" /></WrapPanel>
        <TabControl Grid.Row="2" x:Name="DocumentTabs" SelectionChanged="DocumentTab_Changed">
-        <TabItem Header="회의록"><Border Background="{DynamicResource CardSurface}" BorderBrush="{DynamicResource Separator}" BorderThickness="1" CornerRadius="8"><Grid><FlowDocumentScrollViewer x:Name="NotesViewer" IsToolBarVisible="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" /><StackPanel x:Name="NotesPlaceholder" VerticalAlignment="Center" Margin="24"><c:AppleIcon Kind="document" Width="38" Height="38" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" /><TextBlock Text="회의록을 만들어보세요" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" Margin="0,14,0,7" /><TextBlock Text="녹음을 전사하고 주요 논의와 할 일을 정리합니다." Foreground="{DynamicResource Muted}" TextAlignment="Center" /></StackPanel></Grid></Border></TabItem>
+        <TabItem Header="회의록"><Border Background="{DynamicResource CardSurface}" BorderBrush="{DynamicResource Separator}" BorderThickness="1" CornerRadius="8"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions><WrapPanel Margin="12,10"><TextBlock Text="목차" VerticalAlignment="Center" Margin="0,0,8,0" /><ComboBox x:Name="NotesContents" Width="220" DisplayMemberPath="Label" SelectionChanged="NotesContents_Changed" AutomationProperties.Name="회의록 목차" Margin="0,0,8,4" /><Button x:Name="EnhanceNotesButton" Content="회의록 보완…" Click="EnhanceNotes_Click" Margin="0,0,8,4" /><Button x:Name="CleanTranscriptButton" Content="전사 다시 정리" Click="CleanTranscript_Click" Margin="0,0,0,4" /></WrapPanel><FlowDocumentScrollViewer Grid.Row="1" x:Name="NotesViewer" IsToolBarVisible="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" /><StackPanel Grid.Row="1" x:Name="NotesPlaceholder" VerticalAlignment="Center" Margin="24"><c:AppleIcon Kind="document" Width="38" Height="38" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" /><TextBlock Text="회의록을 만들어보세요" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" Margin="0,14,0,7" /><TextBlock Text="녹음을 전사하고 주요 논의와 할 일을 정리합니다." Foreground="{DynamicResource Muted}" TextAlignment="Center" /></StackPanel></Grid></Border></TabItem>
         <TabItem Header="전사문"><TextBox x:Name="TranscriptBox" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Padding="22" FontSize="14" VerticalContentAlignment="Top" /></TabItem>
+        <TabItem Header="정리한 전사"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions><TextBlock x:Name="CleanupStatus" Margin="12,10" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" /><TextBox Grid.Row="1" x:Name="CleanedTranscriptBox" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Padding="22" FontSize="14" VerticalContentAlignment="Top" /></Grid></TabItem>
+       </TabControl>
+      </Grid>
+     </TabItem>
+     <TabItem Header="참여자">
+      <Grid Margin="24,16,24,20">
+       <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+       <StackPanel><TextBlock Text="참여자와 발화" FontSize="20" FontWeight="SemiBold" /><TextBlock Text="같은 목소리를 묶고, 발화 내용을 원본 녹음과 함께 확인합니다." Foreground="{DynamicResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap" /><CheckBox x:Name="CleanedTurnsBox" Content="정리한 발화 보기" Checked="CleanedTurns_Changed" Unchecked="CleanedTurns_Changed" IsEnabled="False" Margin="0,8,0,0" /></StackPanel>
+       <WrapPanel Grid.Row="1" Margin="0,16,0,0">
+        <Button x:Name="AnalyzeParticipantsButton" Content="참여자 분석" Style="{StaticResource PrimaryButton}" Click="AnalyzeParticipants_Click" Margin="0,0,10,8" />
+        <ComboBox x:Name="ParticipantCount" SelectedIndex="0" Width="116" Margin="0,0,10,8" AutomationProperties.Name="참여자 수" ToolTip="자동 구분이 맞지 않으면 실제 참여자 수를 지정해 다시 분석하세요."><ComboBoxItem Content="인원 자동" /><ComboBoxItem Content="1명" /><ComboBoxItem Content="2명" /><ComboBoxItem Content="3명" /><ComboBoxItem Content="4명" /><ComboBoxItem Content="5명" /><ComboBoxItem Content="6명" /><ComboBoxItem Content="7명" /><ComboBoxItem Content="8명" /><ComboBoxItem Content="9명" /><ComboBoxItem Content="10명" /><ComboBoxItem Content="11명" /><ComboBoxItem Content="12명" /></ComboBox>
+        <Button x:Name="CancelParticipantAnalysisButton" Content="취소" Click="Cancel_Click" Visibility="Collapsed" Margin="0,0,0,8" />
+       </WrapPanel>
+       <TextBlock Grid.Row="2" x:Name="ParticipantsStatus" Foreground="{DynamicResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
+       <Grid Grid.Row="3" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <ComboBox x:Name="ParticipantFilter" DisplayMemberPath="Name" SelectionChanged="ParticipantFilter_Changed" MaxWidth="220" HorizontalAlignment="Left" MinWidth="140" AutomationProperties.Name="발화 필터" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal"><Button x:Name="PlayOwnTurnsButton" Content="내 발화 이어듣기" Click="PlayOwnTurns_Click" Margin="8,0,0,0" /><Button x:Name="StopTurnsButton" Content="듣기 종료" Click="StopTurns_Click" Margin="8,0,0,0" /></StackPanel>
+       </Grid>
+       <ListBox Grid.Row="4" x:Name="ParticipantTurns" BorderThickness="1" BorderBrush="{DynamicResource Separator}" Background="{DynamicResource CardSurface}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" SelectionChanged="ParticipantSelection_Changed" MouseDoubleClick="ParticipantTurn_DoubleClick" AutomationProperties.Name="참여자 발화 목록">
+        <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource SidebarRow}"><Setter Property="Padding" Value="12" /></Style></ListBox.ItemContainerStyle>
+        <ListBox.ItemTemplate><DataTemplate><StackPanel><StackPanel Orientation="Horizontal"><TextBlock Text="{Binding Speaker}" FontWeight="SemiBold" /><TextBlock Text="{Binding Time}" FontFamily="Consolas" Opacity=".7" FontSize="11" Margin="12,1,0,0" /></StackPanel><TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,6,0,0" FontSize="13" /><TextBlock Text="{Binding GlossaryHint}" TextWrapping="Wrap" Opacity=".7" FontSize="11" Margin="0,5,0,0"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding GlossaryHint}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></StackPanel></DataTemplate></ListBox.ItemTemplate>
+       </ListBox>
+       <StackPanel Grid.Row="5" Margin="0,12,0,0"><WrapPanel><Button x:Name="PlayTurnButton" Content="선택 발화 듣기" Click="PlayTurn_Click" Margin="0,0,8,8" /><Button x:Name="AssignTurnButton" Content="발화의 참여자 변경…" Click="AssignTurn_Click" Margin="0,0,8,8" /></WrapPanel>
+        <WrapPanel><ComboBox x:Name="ParticipantPeople" DisplayMemberPath="Name" Width="165" Margin="0,0,8,8" SelectionChanged="ParticipantSelection_Changed" AutomationProperties.Name="수정할 참여자" /><Button x:Name="RenameParticipantButton" Content="이름 변경…" Click="RenameParticipant_Click" Margin="0,0,8,8" /><Button x:Name="MarkOwnerButton" Content="나로 표시 / 해제" Click="MarkOwner_Click" Margin="0,0,0,8" /></WrapPanel>
+        <TextBlock Text="여러 사람이 섞인 발화는 미지정으로 남습니다. 자동 구분 결과를 확인하고 수정해 주세요." TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="11" />
+       </StackPanel>
+      </Grid>
+     </TabItem>
+     <TabItem Header="회의 분석">
+      <Grid Margin="24,16,24,20"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions>
+       <StackPanel><TextBlock Text="회의에서 다음 행동으로" FontSize="20" FontWeight="SemiBold" /><TextBlock Text="약속과 요청, 질문과 답변, 결정 과정을 근거 발화와 함께 확인합니다." Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0" /></StackPanel>
+       <WrapPanel Grid.Row="1" Margin="0,14,0,0"><Button x:Name="AnalyzeMeetingButton" Content="회의 분석" Style="{StaticResource PrimaryButton}" Click="AnalyzeMeeting_Click" Margin="0,0,8,8" /><Button x:Name="CancelMeetingButton" Content="취소" Click="Cancel_Click" Visibility="Collapsed" Margin="0,0,8,8" /><Button x:Name="EditProjectButton" Content="프로젝트 설정…" Click="EditProject_Click" Margin="0,0,8,8" /><ComboBox x:Name="InsightFilter" SelectedIndex="0" SelectionChanged="InsightFilter_Changed" Width="140" Margin="0,0,0,8" AutomationProperties.Name="회의 분석 필터"><ComboBoxItem Content="모든 항목" /><ComboBoxItem Content="내 관련 항목" /><ComboBoxItem Content="확인할 항목" /></ComboBox></WrapPanel>
+       <TextBlock Grid.Row="2" x:Name="MeetingAnalysisStatus" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12" />
+       <TabControl Grid.Row="3" x:Name="MeetingSections">
+        <TabItem Header="약속·요청"><Grid><Grid.RowDefinitions><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions><ListBox x:Name="MeetingActions" Style="{StaticResource MeetingInsightList}" SelectionChanged="MeetingAction_Changed" AutomationProperties.Name="약속과 요청 목록" /><WrapPanel Grid.Row="1" Margin="0,10,0,0"><Button x:Name="ActionOpenButton" Content="미완료" Tag="open" Click="ActionState_Click" Margin="0,0,8,0" /><Button x:Name="ActionDoneButton" Content="완료" Tag="done" Click="ActionState_Click" Margin="0,0,8,0" /><Button x:Name="ActionDismissButton" Content="제외" Tag="dismissed" Click="ActionState_Click" /></WrapPanel></Grid></TabItem>
+        <TabItem Header="질문·답변"><ListBox x:Name="MeetingQuestions" Style="{StaticResource MeetingInsightList}" AutomationProperties.Name="질문과 답변 목록" /></TabItem>
+        <TabItem Header="결정 흐름"><ListBox x:Name="MeetingDecisions" Style="{StaticResource MeetingInsightList}" AutomationProperties.Name="결정 흐름 목록" /></TabItem>
+        <TabItem Header="프로젝트"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition /></Grid.RowDefinitions><ComboBox x:Name="BriefingProject" SelectionChanged="BriefingProject_Changed" AutomationProperties.Name="브리핑 프로젝트" MinWidth="160" HorizontalAlignment="Left" Margin="0,0,0,10" /><TextBlock Grid.Row="1" x:Name="BriefingStatus" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10" /><ListBox Grid.Row="2" x:Name="BriefingItems" Style="{StaticResource MeetingInsightList}" AutomationProperties.Name="프로젝트 브리핑" /></Grid></TabItem>
        </TabControl>
       </Grid>
      </TabItem>
     </TabControl>
     <Grid x:Name="RecordingPanel" Visibility="Collapsed" Margin="24,30,24,28">
      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-     <StackPanel><TextBlock Text="새로운 녹음" FontSize="17" FontWeight="Medium" TextAlignment="Center" /><TextBlock x:Name="RecordingClock" Text="00:00" FontFamily="Consolas" FontSize="31" TextAlignment="Center" Margin="0,7,0,0" /><TextBlock x:Name="RecordingModeLabel" FontSize="11" Foreground="{DynamicResource Muted}" TextAlignment="Center" Margin="0,7,0,0" /><TextBlock x:Name="RecordingStatus" Text="녹음 중" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" Margin="0,7,0,0" /></StackPanel>
+     <StackPanel><TextBlock Text="새로운 녹음" FontSize="17" FontWeight="Medium" TextAlignment="Center" /><TextBlock x:Name="RecordingClock" Text="00:00" FontFamily="Consolas" FontSize="31" TextAlignment="Center" Margin="0,7,0,0" /><TextBlock x:Name="RecordingModeLabel" FontSize="11" Foreground="{DynamicResource Muted}" TextAlignment="Center" Margin="0,7,0,0" /><TextBlock x:Name="RecordingStatus" Text="녹음 중" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" Margin="0,7,0,0" /><TextBlock x:Name="LiveOwnerLabel" FontSize="11" Foreground="{DynamicResource Muted}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0" /></StackPanel>
      <StackPanel Grid.Row="2" MaxWidth="570">
       <StackPanel x:Name="MicRail" Margin="0,0,0,24"><Grid Margin="0,0,0,8"><StackPanel Orientation="Horizontal"><c:AppleIcon Kind="mic" Width="14" Height="14" Margin="0,0,5,0" /><TextBlock Text="마이크" FontSize="11" /></StackPanel><TextBlock x:Name="MicSignal" Text="신호 없음" Foreground="{DynamicResource Muted}" FontSize="11" HorizontalAlignment="Right" /></Grid><ProgressBar x:Name="MicMeter" /></StackPanel>
       <StackPanel x:Name="SystemRail"><Grid Margin="0,0,0,8"><StackPanel Orientation="Horizontal"><c:AppleIcon Kind="speaker" Width="14" Height="14" Margin="0,0,5,0" /><TextBlock Text="시스템 오디오" FontSize="11" /></StackPanel><TextBlock x:Name="SystemSignal" Text="신호 없음" Foreground="{DynamicResource Muted}" FontSize="11" HorizontalAlignment="Right" /></Grid><ProgressBar x:Name="SystemMeter" /></StackPanel>
@@ -106,12 +162,30 @@
    </Grid>
   </Grid>
   <Border Grid.Row="2" Background="{DynamicResource ToolbarSurface}" BorderBrush="{DynamicResource Separator}" BorderThickness="0,1,0,0" Padding="12,5"><TextBlock x:Name="StatusText" Text="준비됨" Foreground="{DynamicResource Muted}" FontSize="10" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" /></Border>
+  <Popup x:Name="SyncPopup" PlacementTarget="{Binding ElementName=SyncButton}" Placement="Bottom" VerticalOffset="8" StaysOpen="False" AllowsTransparency="True">
+   <Border Style="{StaticResource SettingsCard}" Width="370" Padding="20"><StackPanel>
+    <TextBlock Text="기기 간 동기화" FontSize="17" FontWeight="SemiBold" />
+    <TextBlock x:Name="SyncServerText" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,14" />
+    <TextBlock x:Name="SyncStatusText" FontWeight="SemiBold" TextWrapping="Wrap" />
+    <TextBlock x:Name="SyncModeText" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,8,0,0" />
+    <TextBlock x:Name="SyncLastText" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,6,0,0" />
+    <TextBlock x:Name="SyncPendingText" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,6,0,0" />
+    <TextBlock x:Name="SyncIssuesText" FontSize="11" Foreground="{DynamicResource RecordRed}" TextWrapping="Wrap" MaxHeight="150" Margin="0,12,0,0" />
+    <TextBlock x:Name="SyncKeyText" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,14,0,0" />
+    <WrapPanel Margin="0,18,0,0"><Button x:Name="SyncNowButton" Content="지금 동기화" Click="SyncNow_Click" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" /><Button x:Name="CancelSyncButton" Content="중단" Click="CancelSync_Click" Margin="0,0,8,0" Visibility="Collapsed" /><Button x:Name="SyncSettingsButton" Content="설정…" Click="SyncSettings_Click" /></WrapPanel>
+   </StackPanel></Border>
+  </Popup>
   <Popup x:Name="CapturePopup" PlacementTarget="{Binding ElementName=RecordOptionsButton}" Placement="Right" AllowsTransparency="True" StaysOpen="False" Opened="CapturePopup_Opened">
    <Border Style="{StaticResource SettingsCard}" Width="300" Margin="8" Padding="18"><StackPanel x:Name="CaptureOptions">
     <TextBlock Text="녹음 설정" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,15" />
     <TextBlock Text="녹음할 소리" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,0,0,5" /><ComboBox x:Name="ModeBox" SelectedIndex="0" SelectionChanged="Mode_Changed" AutomationProperties.Name="녹음 모드"><ComboBoxItem Content="마이크 + 시스템" /><ComboBoxItem Content="마이크만" /><ComboBoxItem Content="시스템 오디오만" /></ComboBox>
-    <TextBlock Text="마이크" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" /><ComboBox x:Name="MicrophoneBox" DisplayMemberPath="Name" AutomationProperties.Name="마이크 장치" />
-    <TextBlock Text="출력 장치" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" /><ComboBox x:Name="OutputBox" DisplayMemberPath="Name" AutomationProperties.Name="출력 장치" />
+    <TextBlock Text="마이크" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" /><ComboBox x:Name="MicrophoneBox" DisplayMemberPath="Name" SelectionChanged="CaptureDevice_Changed" AutomationProperties.Name="마이크 장치" />
+    <TextBlock Text="출력 장치" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" /><ComboBox x:Name="OutputBox" DisplayMemberPath="Name" SelectionChanged="CaptureDevice_Changed" AutomationProperties.Name="출력 장치" />
+    <TextBlock Text="마이크 음량" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" />
+    <DockPanel><TextBlock DockPanel.Dock="Right" Width="38" TextAlignment="Right" Text="{Binding ElementName=MicrophoneGainSlider, Path=Value, StringFormat={}{0:0.00}}" FontFamily="Consolas" /><Slider x:Name="MicrophoneGainSlider" Minimum="0" Maximum="2" Value="1" TickFrequency="0.05" IsSnapToTickEnabled="True" SmallChange="0.05" LargeChange="0.25" ValueChanged="CaptureGain_Changed" AutomationProperties.Name="마이크 녹음 음량" /></DockPanel>
+    <TextBlock Text="시스템 소리 음량" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,14,0,5" />
+    <DockPanel><TextBlock DockPanel.Dock="Right" Width="38" TextAlignment="Right" Text="{Binding ElementName=SystemGainSlider, Path=Value, StringFormat={}{0:0.00}}" FontFamily="Consolas" /><Slider x:Name="SystemGainSlider" Minimum="0" Maximum="2" Value="1" TickFrequency="0.05" IsSnapToTickEnabled="True" SmallChange="0.05" LargeChange="0.25" ValueChanged="CaptureGain_Changed" AutomationProperties.Name="시스템 녹음 음량" /></DockPanel>
+    <TextBlock Text="1.00은 기본 음량, 0.00은 음소거입니다." FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,8,0,0" />
     <Button x:Name="RefreshDevicesButton" Content="장치 새로고침" Click="RefreshDevices_Click" Margin="0,16,0,0" HorizontalAlignment="Left" />
     <TextBlock Text="선택한 출력 장치의 전체 소리를 녹음합니다." FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,12,0,0" />
    </StackPanel></Border>

@@ -1,26 +1,72 @@
 param(
-    [string]$Archive = (Join-Path $PSScriptRoot 'artifacts/AI-NoteTaker-0.3.0-win-x64.zip'),
+    [string]$Archive,
     [string]$Audio = (Join-Path $PSScriptRoot 'artifacts/evaluation/samples/synthetic-meeting-ko.wav'),
-    [string]$ModelRoot = (Join-Path $env:LOCALAPPDATA 'AI-NoteTaker')
+    [string]$ModelRoot = (Join-Path $env:LOCALAPPDATA 'AI-NoteTaker'),
+    [string]$SpeakerAudio = (Join-Path $PSScriptRoot 'artifacts/voice-research/0-four-speakers-zh.wav'),
+    [switch]$AllFeatures
 )
 $ErrorActionPreference = 'Stop'
+if (!$Archive) {
+    [xml]$projectXml = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'NoteTaker.Windows/NoteTaker.Windows.csproj')
+    $packageVersion = [string]$projectXml.Project.PropertyGroup.Version
+    $Archive = Join-Path $PSScriptRoot "artifacts/AI-NoteTaker-$packageVersion-win-x64.zip"
+}
+$Archive = (Resolve-Path -LiteralPath $Archive).Path
+$Audio = (Resolve-Path -LiteralPath $Audio).Path
+$ModelRoot = (Resolve-Path -LiteralPath $ModelRoot).Path
+if ($AllFeatures) { $SpeakerAudio = (Resolve-Path -LiteralPath $SpeakerAudio).Path }
 $verifyRoot = Join-Path $PSScriptRoot ('artifacts/verify-package-' + [guid]::NewGuid().ToString('N').Substring(0,8))
 Expand-Archive -LiteralPath $Archive -DestinationPath $verifyRoot
 $verifyExe = Join-Path $verifyRoot 'AI-NoteTaker.exe'
-$uiOutput = Join-Path $verifyRoot 'verification/ui'
-$uiProcess = Start-Process -FilePath $verifyExe -ArgumentList @('--smoke-ui', ('"{0}"' -f $uiOutput)) -WindowStyle Hidden -PassThru -Wait
-if ($uiProcess.ExitCode -ne 0) { throw "Extracted ZIP UI failed. See $uiOutput/error.txt" }
+$checks = [ordered]@{}
+$checkFailure = $null
+$script:activeCheck = $null
+function Invoke-PackageCheck([string]$Name, [string]$Mode, [string[]]$Parameters = @()) {
+    $script:activeCheck = $Name
+    $checkOutput = Join-Path $verifyRoot "verification/$Name"
+    $checkArgs = @($Mode, ('"{0}"' -f $checkOutput)) + @($Parameters | ForEach-Object { '"{0}"' -f $_ })
+    Write-Output "Extracted ZIP: $Name"
+    $checkProcess = Start-Process -FilePath $verifyExe -ArgumentList $checkArgs -WorkingDirectory $verifyRoot -WindowStyle Hidden -PassThru -Wait
+    if ($checkProcess.ExitCode -ne 0) { throw "Extracted ZIP $Name failed. See $checkOutput/error.txt" }
+    $checks[$Name] = $true
+}
+try {
+if ($AllFeatures) {
+    $script:activeCheck = 'worker-prerequisites'
+    Get-Command node -ErrorAction Stop | Out-Null
+    $pythonCommand = if ($env:PYTHON) { $env:PYTHON } else { 'python' }
+    Get-Command $pythonCommand -ErrorAction Stop | Out-Null
+}
+Invoke-PackageCheck 'ui' '--smoke-ui'
+if ($AllFeatures) { Invoke-PackageCheck 'playback-guards' '--smoke-playback-guards' }
 foreach ($engine in @('whisper','qwen')) {
-    $aiOutput = Join-Path $verifyRoot "verification/$engine"
-    $testArgs = @('--smoke-ai', ('"{0}"' -f $aiOutput), ('"{0}"' -f ([System.IO.Path]::GetFullPath($Audio))), ('"{0}"' -f ([System.IO.Path]::GetFullPath($ModelRoot))), $engine)
-    $aiProcess = Start-Process -FilePath $verifyExe -ArgumentList $testArgs -WindowStyle Hidden -PassThru -Wait
-    if ($aiProcess.ExitCode -ne 0) { throw "Extracted ZIP $engine failed. See $aiOutput/error.txt" }
+    Invoke-PackageCheck $engine '--smoke-ai' @($Audio, $ModelRoot, $engine)
+}
+if ($AllFeatures) {
+    Invoke-PackageCheck 'desktop' '--smoke-desktop'
+    Invoke-PackageCheck 'capture-flow' '--smoke-capture-flow' @($Audio, $ModelRoot)
+    Invoke-PackageCheck 'participants' '--smoke-participants' @($SpeakerAudio, $ModelRoot)
+    Invoke-PackageCheck 'profile' '--smoke-profile' @($SpeakerAudio, $ModelRoot)
+    Invoke-PackageCheck 'meeting' '--smoke-meeting' @($ModelRoot)
+    Invoke-PackageCheck 'notes' '--smoke-notes' @($ModelRoot)
+    Invoke-PackageCheck 'sync' '--smoke-sync'
+    Invoke-PackageCheck 'sharing' '--smoke-sharing'
+    Invoke-PackageCheck 'audio-share' '--smoke-audio-share'
+}
+}
+catch {
+    $checks[$script:activeCheck] = $false
+    $checkFailure = $_
 }
 $archiveFile = Get-Item -LiteralPath $Archive
 $result = [pscustomobject]@{
-    Passed=$true; ZipSHA256=(Get-FileHash -LiteralPath $Archive).Hash; ZipBytes=$archiveFile.Length
+    Passed=($null -eq $checkFailure); ZipSHA256=(Get-FileHash -LiteralPath $Archive).Hash; ZipBytes=$archiveFile.Length
     Extracted=$verifyRoot; Version=(Get-Item -LiteralPath $verifyExe).VersionInfo.ProductVersion
-    UI=$true; Whisper=$true; Qwen=$true
+    Checks=$checks; ModelRoot=$ModelRoot; Audio=$Audio; AllFeatures=[bool]$AllFeatures
+    Failure=if ($checkFailure) { [string]$checkFailure } else { $null }
+    Scope='Fresh extraction and native WPF/model flows using provided files; no microphone capture. AllFeatures includes playback guards and local Worker/SQLite sync/web-sharing with a filesystem R2 stand-in, requiring Node and Python. Native audio sharing supplies a generated silent WAV to Windows without selecting a target or sending. Models are outside ZIP. Physical folder drag and production Apple/Cloudflare verification are separate.'
 }
-$result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'artifacts/0.3.0/verification.json')
-$result | ConvertTo-Json
+$reportPath = Join-Path (Split-Path -Parent $Archive) ([IO.Path]::GetFileNameWithoutExtension($Archive) + '.verification.json')
+$result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $reportPath
+$result | ConvertTo-Json -Depth 4
+if ($checkFailure) { throw $checkFailure }

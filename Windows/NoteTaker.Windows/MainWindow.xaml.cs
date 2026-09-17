@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -20,10 +21,12 @@ public partial class MainWindow : Window
     private readonly LibraryStore library;
     private readonly string aiModelRoot;
     private readonly SettingsStore settingsStore;
+    private readonly RecordingFolderStore folderStore;
     private AppSettings settings;
     private readonly AudioPlayer player = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
-    private AudioRecorder? recorder;
+    private IRecordingSession? recorder;
+    private readonly Func<IRecordingSession> recordingFactory;
     private Recording? activeRecording;
     private Recording? selected;
     private MeetingNotes? notes;
@@ -32,27 +35,62 @@ public partial class MainWindow : Window
     private CancellationTokenSource? workCancellation;
     private Task? runningWork;
     internal Task CurrentWork => runningWork ?? Task.CompletedTask;
+    internal Task LastStopButtonWork { get; private set; } = Task.CompletedTask;
     internal Exception? LastWorkError { get; private set; }
     private CancellationTokenSource? waveformCancellation;
     internal Task WaveformLoadTask { get; private set; } = Task.CompletedTask;
     private bool loaded, transitioning, finishing, closePending, allowClose, playbackLoaded;
+    private DesktopIntegration? desktop;
+    private bool exitRequested;
+    private WebShareWindow? webShareWindow;
+    internal DesktopIntegration? Desktop => desktop;
 
-    public MainWindow(LibraryStore library, bool discoverDevices = true, string? aiModelRoot = null)
+    public MainWindow(LibraryStore library, bool discoverDevices = true, string? aiModelRoot = null, bool enableDesktopIntegration = true, Func<IRecordingSession>? recordingFactory = null, Func<SyncConfiguration, HttpMessageHandler>? syncHandlerFactory = null)
     {
         this.library = library;
+        this.syncHandlerFactory = syncHandlerFactory;
+        this.recordingFactory = recordingFactory ?? (() => new AudioRecorder());
         this.aiModelRoot = aiModelRoot ?? library.Root;
         settingsStore = new SettingsStore(library.Root);
+        capturePreferencesStore = new CapturePreferencesStore(library.Root);
         settings = settingsStore.Load();
+        folderStore = new RecordingFolderStore(library.Root);
         InitializeComponent();
+        LoadCapturePreferences();
+        LoadFolderAppearance();
         PlaybackSlider.SeekRequested += SeekTo;
         OverviewWaveform.SeekRequested += SeekTo;
         loaded = true;
         if (discoverDevices) RefreshDevices();
         ReloadLibrary();
+        ReadSyncStatus();
         timer.Tick += Timer_Tick;
         timer.Start();
         UpdateControls();
+        if (enableDesktopIntegration) SourceInitialized += (_, _) =>
+        {
+            try
+            {
+                desktop = new DesktopIntegration(this, ShowFromTray, ToggleTrayRecording, () => Pause_Click(this, new RoutedEventArgs()), RequestExit);
+                desktop.ConfigureShortcuts(settings.EnableGlobalShortcuts);
+                if (!desktop.IsAvailable) SetStatus("트레이 아이콘을 만들지 못했습니다. 창을 닫으면 앱을 종료합니다.", true);
+                else if (desktop.ShortcutWarning is not null) SetStatus(desktop.ShortcutWarning, true);
+            }
+            catch (Exception ex) { SetStatus("트레이를 준비하지 못했습니다. " + FriendlyError(ex), true); }
+        };
     }
+
+    internal void ShowFromTray()
+    {
+        Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+    private async void ToggleTrayRecording()
+    {
+        if (recorder is not null) await StopRecordingAsync();
+        else { ShowFromTray(); Record_Click(this, new RoutedEventArgs()); }
+    }
+    internal void RequestExit() { exitRequested = true; Close(); }
 
     private MeetingNotesService MeetingService() => new(library,
         (s, key, progress) => AiProviders.Transcriber(aiModelRoot, s, key, progress), AiProviders.Summarizer);
@@ -65,7 +103,7 @@ public partial class MainWindow : Window
 
     private async Task RunWorkAsync(Func<CancellationToken, Task> action)
     {
-        if (runningWork is not null || recorder is not null || transitioning) return;
+        if (runningWork is not null || recorder is not null || transitioning || closePending || exitRequested) return;
         workCancellation = new CancellationTokenSource();
         LastWorkError = null;
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -78,6 +116,7 @@ public partial class MainWindow : Window
         {
             workCancellation.Dispose(); workCancellation = null;
             runningWork = null;
+            if (!syncing) RequestAutomaticSync();
             UpdateControls(); completion.SetResult();
         }
     }
@@ -85,43 +124,51 @@ public partial class MainWindow : Window
     internal void ReloadLibrary(Guid? selectId = null)
     {
         var id = selectId ?? selected?.Id;
-        recordings = library.Load();
+        recordings = library.Load().Where(r => !r.IsLocallyPurged).ToList();
         AllCount.Text = recordings.Count(r => r.DeletedAt is null).ToString();
         FavoriteCount.Text = recordings.Count(r => r.DeletedAt is null && r.IsFavorite).ToString();
         DeletedCount.Text = recordings.Count(r => r.DeletedAt is not null).ToString();
+        ReloadFolders();
         FilterLibrary(id);
         if (library.LoadWarnings.Count > 0) SetStatus(library.LoadWarnings[0], true);
+        if (folderStore.LoadError is not null) SetStatus(folderStore.LoadError, true);
     }
 
     private void FilterLibrary(Guid? selectId = null)
     {
         if (!loaded) return;
         string query = SearchBox.Text.Trim();
-        string title = FilterBox.SelectedIndex == 2 ? "최근 삭제된 항목" : FilterBox.SelectedIndex == 1 ? "즐겨찾기" : "모든 녹음 항목";
+        string title = folderStore.Active.FirstOrDefault(f => f.Id == selectedFolder)?.Name ?? (FilterBox.SelectedIndex == 2 ? "최근 삭제된 항목" : FilterBox.SelectedIndex == 1 ? "즐겨찾기" : "모든 녹음 항목");
         SidebarTitle.Text = WindowSubtitle.Text = title;
         ClearSearchButton.Visibility = query.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         var list = recordings.Where(r => !r.IsRecording && (FilterBox.SelectedIndex == 2
             ? r.DeletedAt is not null : r.DeletedAt is null && (FilterBox.SelectedIndex != 1 || r.IsFavorite)))
+            .Where(r => selectedFolder is null || r.FolderId == selectedFolder)
             .Where(r => r.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        refreshingLibrary = true;
         RecordingList.ItemsSource = list;
         LibraryCount.Text = list.Count == 0 ? "녹음 없음" : $"{title}  ·  {list.Count}";
         RecordingList.SelectedItem = list.FirstOrDefault(r => r.Id == selectId) ?? list.FirstOrDefault();
-        if (list.Count == 0) SelectRecording(null);
+        refreshingLibrary = false;
+        SelectRecording(RecordingList.SelectedItem as Recording);
     }
-    private void Search_Changed(object sender, TextChangedEventArgs e) { if (loaded) FilterLibrary(selected?.Id); }
-    private void Filter_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) FilterLibrary(selected?.Id); }
+    private void Search_Changed(object sender, TextChangedEventArgs e) { if (loaded && !refreshingLibrary) FilterLibrary(selected?.Id); }
+    private void Filter_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!loaded || refreshingLibrary || FilterBox.SelectedIndex < 0) return;
+        selectedFolder = null; ClearFolderSelection(); FilterLibrary(selected?.Id);
+    }
     private void Recording_Selected(object sender, SelectionChangedEventArgs e)
     {
-        if (loaded) SelectRecording(RecordingList.SelectedItem as Recording);
+        if (loaded && !refreshingLibrary) SelectRecording(RecordingList.SelectedItem as Recording);
     }
 
     private void SelectRecording(Recording? recording)
     {
-        waveformCancellation?.Cancel();
-        player.Dispose(); playbackLoaded = false;
+        bool sameAudio = recording is not null && selected?.Id == recording.Id && selected.AudioVersion == recording.AudioVersion && selected.DurationSeconds == recording.DurationSeconds;
+        if (!sameAudio) { StopTurnPlayback(); waveformCancellation?.Cancel(); player.Dispose(); playbackLoaded = false; }
         selected = recording; notes = null;
-        PlaybackSlider.Peaks = [];
-        PlaybackSlider.Position = 0;
+        if (!sameAudio) { PlaybackSlider.Peaks = []; PlaybackSlider.Position = 0; }
         if (recording is not null)
         {
             DetailTitle.Text = NotesTitle.Text = recording.Title;
@@ -131,11 +178,10 @@ public partial class MainWindow : Window
             FavoriteButton.Content = recording.IsFavorite ? "즐겨찾기 해제" : "즐겨찾기";
             DeleteButton.Content = recording.DeletedAt is null ? "삭제" : "복원";
             PlaybackSlider.Duration = recording.DurationSeconds;
-            PlaybackSlider.Position = 0;
-            PlaybackTime.Text = $"00:00 / {Recording.FormatTime(recording.DurationSeconds)}";
-            ElapsedLabel.Text = "00:00"; TotalLabel.Text = Recording.FormatTime(recording.DurationSeconds);
+            PlaybackTime.Text = $"{Recording.FormatTime(PlaybackSlider.Position)} / {Recording.FormatTime(recording.DurationSeconds)}";
+            ElapsedLabel.Text = Recording.FormatTime(PlaybackSlider.Position); TotalLabel.Text = Recording.FormatTime(recording.DurationSeconds);
             LoadDocuments(recording);
-            WaveformLoadTask = LoadWaveformAsync(recording);
+            if (!sameAudio) WaveformLoadTask = LoadWaveformAsync(recording);
             if (recording.Warning is not null) SetStatus(recording.Warning, true);
         }
         UpdateControls();
@@ -148,7 +194,7 @@ public partial class MainWindow : Window
             notes = JsonDisk.Read<MeetingNotes>(library.NotesPath(recording.Id));
             var transcript = JsonDisk.Read<TranscriptCache>(library.TranscriptPath(recording.Id));
             transcriptText = transcript is null ? "" : (transcript.Complete ? "" : "[부분 전사]\n\n") + string.Join("\n\n", transcript.Chunks);
-            NotesViewer.Document = MarkdownView.Render(notes?.Markdown ?? "");
+            RenderNotes(notes?.Markdown ?? "");
             NotesPlaceholder.Visibility = notes is null ? Visibility.Visible : Visibility.Collapsed;
             TranscriptBox.Text = transcript is null ? "전사문이 아직 없습니다. AI 회의록을 생성하면 오디오를 먼저 전사합니다." :
                 (transcript.Complete ? "" : "[부분 전사 · 다시 생성하면 이어서 처리합니다.]\n\n") + string.Join("\n\n", transcript.Chunks);
@@ -157,26 +203,32 @@ public partial class MainWindow : Window
                 bool stale = transcript is not null && (notes.TranscriptHash is not null
                     ? notes.TranscriptHash != MeetingNotesService.TranscriptContentHash(transcript)
                     : File.GetLastWriteTimeUtc(library.TranscriptPath(recording.Id)) > notes.CreatedAt.UtcDateTime.AddSeconds(1));
-                NotesMeta.Text = recording.Subtitle + $"  ·  {notes.Model}" + (stale ? "  ·  전사문이 바뀌었습니다. 다시 정리해 주세요." : "");
+                string cost = notes.CostUsd is >= 0 ? "  ·  제공자 보고 비용 US$ " + notes.CostUsd.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) : "";
+                NotesMeta.Text = $"생성 {notes.CreatedAt.LocalDateTime:yyyy.MM.dd HH:mm}  ·  녹음 {Recording.FormatTime(recording.DurationSeconds)}  ·  {notes.Model}" + cost +
+                    (stale ? "  ·  전사문이 바뀌었습니다. 다시 정리해 주세요." : "");
             }
             GenerateButton.Content = notes is null ? "회의록 생성" : "다시 생성";
         }
         catch (Exception ex)
         {
-            NotesViewer.Document = MarkdownView.Render(""); notes = null;
+            RenderNotes(""); notes = null;
             transcriptText = "";
             TranscriptBox.Text = "저장된 문서를 읽지 못했습니다. 저장 폴더에서 원본을 확인해 주세요.";
             NotesPlaceholder.Visibility = Visibility.Visible;
             SetStatus(FriendlyError(ex), true);
         }
+        LoadParticipants(recording);
+        try { LoadCleanup(JsonDisk.Read<TranscriptCache>(library.TranscriptPath(recording.Id))); }
+        catch (Exception) { LoadCleanup(null); }
     }
 
     private void RefreshDevices()
     {
+        refreshingDevices = true;
         try
         {
-            string? mic = (MicrophoneBox.SelectedItem as AudioDevice)?.Id;
-            string? output = (OutputBox.SelectedItem as AudioDevice)?.Id;
+            string? mic = (MicrophoneBox.SelectedItem as AudioDevice)?.Id ?? capturePreferences.MicrophoneId;
+            string? output = (OutputBox.SelectedItem as AudioDevice)?.Id ?? capturePreferences.OutputId;
             var microphones = AudioRecorder.GetDevices(DataFlow.Capture);
             var outputs = AudioRecorder.GetDevices(DataFlow.Render);
             MicrophoneBox.ItemsSource = microphones;
@@ -186,10 +238,11 @@ public partial class MainWindow : Window
             SetStatus("오디오 장치 목록을 확인했습니다.");
         }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
+        finally { refreshingDevices = false; }
     }
     private void RefreshDevices_Click(object sender, RoutedEventArgs e) => RefreshDevices();
     private RecordingMode Mode => ModeBox.SelectedIndex switch { 1 => RecordingMode.Microphone, 2 => RecordingMode.SystemAudio, _ => RecordingMode.Mixed };
-    private void Mode_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) UpdateControls(); }
+    private void Mode_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) { SaveCapturePreferences(); UpdateControls(); } }
 
     private async Task LoadWaveformAsync(Recording recording)
     {
@@ -225,7 +278,11 @@ public partial class MainWindow : Window
     private void RevealRecording_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null) return;
-        try { Process.Start(new ProcessStartInfo(library.DirectoryFor(selected.Id)) { UseShellExecute = true }); }
+        try
+        {
+            if (RevealAudioLocation is not null) RevealAudioLocation(library.AudioPath(selected.Id));
+            else Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + library.AudioPath(selected.Id) + "\"") { UseShellExecute = true });
+        }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
     private void Recording_RightClick(object sender, MouseButtonEventArgs e)
@@ -242,31 +299,60 @@ public partial class MainWindow : Window
         DeleteMenuItem.IsEnabled = DeleteButton.IsEnabled;
         FavoriteMenuItem.Header = FavoriteButton.Content;
         DeleteMenuItem.Header = DeleteButton.Content;
+        PermanentDeleteMenuItem.Visibility = PermanentDeleteButton.Visibility;
+        PermanentDeleteMenuItem.IsEnabled = PermanentDeleteButton.IsEnabled;
+        ExportAudioMenuItem.IsEnabled = ExportAudioButton.IsEnabled;
+        ShareAudioMenuItem.IsEnabled = ShareAudioButton.IsEnabled;
+        PopulateMoveMenu(MoveFolderMenuItem);
     }
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (CapturePopup.IsOpen && e.Key == Key.Escape) { CapturePopup.IsOpen = false; RecordOptionsButton.Focus(); e.Handled = true; return; }
-        if (Keyboard.Modifiers == ModifierKeys.Control)
+        if (!e.Handled && !e.IsRepeat) e.Handled = HandleShortcut(e.Key, Keyboard.Modifiers, Keyboard.FocusedElement);
+    }
+    internal bool HandleShortcut(Key key, ModifierKeys modifiers, IInputElement? focus)
+    {
+        bool editing = focus is TextBoxBase or PasswordBox or ComboBox;
+        if (modifiers == ModifierKeys.Control && key == Key.Q) { RequestExit(); return true; }
+        if (CapturePopup.IsOpen && key == Key.Escape) { CapturePopup.IsOpen = false; RecordOptionsButton.Focus(); return true; }
+        if (modifiers == ModifierKeys.Control)
         {
-            if (e.Key == Key.F) { SearchBox.Focus(); SearchBox.SelectAll(); }
-            else if (e.Key == Key.N && RecordButton.IsEnabled) Record_Click(sender, e);
-            else if (e.Key == Key.O && ImportButton.IsEnabled) Import_Click(sender, e);
-            else if (e.Key == Key.OemComma && SettingsButton.IsEnabled) Settings_Click(sender, e);
-            else return;
-            e.Handled = true; return;
+            if (key == Key.F) { SearchBox.Focus(); SearchBox.SelectAll(); }
+            else if (key == Key.Enter && StopButton.IsEnabled) Stop_Click(this, new RoutedEventArgs());
+            else if (key == Key.N && !editing && RecordButton.IsEnabled) Record_Click(this, new RoutedEventArgs());
+            else if (key == Key.Left && !editing && !ModalOperationOpen && BackButton.IsEnabled) Back_Click(this, new RoutedEventArgs());
+            else if (key == Key.Right && !editing && !ModalOperationOpen && ForwardButton.IsEnabled) Forward_Click(this, new RoutedEventArgs());
+            else if (key == Key.O && ImportButton.IsEnabled) Import_Click(this, new RoutedEventArgs());
+            else if (key == Key.OemComma && SettingsButton.IsEnabled) Settings_Click(this, new RoutedEventArgs());
+            else return false;
+            return true;
         }
-        if (Keyboard.FocusedElement is TextBoxBase or PasswordBox or ComboBox or ButtonBase or TabItem or MenuItem || CapturePopup.IsOpen) return;
-        if (e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None)
+        if (editing || CapturePopup.IsOpen || ModalOperationOpen) return false;
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
-            if (recorder is not null && !transitioning) Pause_Click(sender, e);
-            else if (PlayButton.IsEnabled) Play_Click(sender, e);
-            e.Handled = true;
+            if (key == Key.E && ExportAudioButton.IsEnabled) ExportAudio_Click(this, new RoutedEventArgs());
+            else if (key == Key.R && RevealAudioButton.IsEnabled) RevealRecording_Click(this, new RoutedEventArgs());
+            else if (key == Key.L && FavoriteButton.IsEnabled && selected?.DeletedAt is null) Favorite_Click(this, new RoutedEventArgs());
+            else if (key == Key.S && SyncConfigured && !SyncBusy) SyncNow_Click(this, new RoutedEventArgs());
+            else return false;
+            return true;
         }
+        if (modifiers != ModifierKeys.None || focus is ButtonBase or TabItem or MenuItem) return false;
+        if (key is Key.F2 or Key.Enter && RenameButton.IsEnabled && selected?.DeletedAt is null) { Rename_Click(this, new RoutedEventArgs()); return true; }
+        if (key == Key.Delete && DeleteButton.IsEnabled && selected?.DeletedAt is null) { Delete_Click(this, new RoutedEventArgs()); return true; }
+        if (key == Key.Space)
+        {
+            if (recorder is not null && !transitioning) Pause_Click(this, new RoutedEventArgs());
+            else if (PlayButton.IsEnabled) Play_Click(this, new RoutedEventArgs());
+            else return false;
+            return true;
+        }
+        return false;
     }
 
     private async void Record_Click(object sender, RoutedEventArgs e)
     {
-        if (recorder is not null || transitioning || runningWork is not null) return;
+        if (!await StopSyncForForegroundAsync()) return;
+        if (recorder is not null || transitioning || runningWork is not null || ModalOperationOpen) return;
         transitioning = true; UpdateControls();
         CapturePopup.IsOpen = false;
         RecordingClock.Text = "00:00";
@@ -278,17 +364,22 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException("마이크를 연결하고 장치 새로고침을 눌러 주세요.");
             if ((Mode is RecordingMode.SystemAudio or RecordingMode.Mixed) && outputId is null)
                 throw new InvalidOperationException("출력 장치를 연결하고 장치 새로고침을 눌러 주세요.");
-            player.Dispose(); playbackLoaded = false;
-            activeRecording = new Recording { Title = $"회의 {DateTime.Now:MM월 dd일 HH:mm}", Mode = Mode, IsRecording = true };
+            StopTurnPlayback(); player.Dispose(); playbackLoaded = false;
+            activeRecording = new Recording { Title = $"회의 {DateTime.Now:MM월 dd일 HH:mm}", Mode = Mode, IsRecording = true, FolderId = folderStore.IsActive(selectedFolder) ? selectedFolder : null };
             library.Save(activeRecording);
-            recorder = new AudioRecorder();
+            recorder = recordingFactory();
+            if (recorder is IConfigurableRecordingSession configurable) configurable.ConfigureGains((float)MicrophoneGainSlider.Value, (float)SystemGainSlider.Value);
             UpdateControls();
             await recorder.StartAsync(library.AudioPath(activeRecording.Id), Mode, micId, outputId);
+            StartLiveOwner();
             SetStatus("녹음 중 · 선택한 출력 장치의 전체 소리를 녹음합니다.");
-            CaptureHint.Text = "녹음 중입니다. 창을 닫으면 녹음을 저장하고 종료합니다.";
+            CaptureHint.Text = settings.KeepRunningInTray && desktop?.IsAvailable == true
+                ? "창을 닫아도 녹음이 계속됩니다. 트레이에서 녹음을 제어할 수 있습니다."
+                : "녹음 중입니다. 창을 닫으면 녹음을 저장하고 종료합니다.";
         }
         catch (Exception ex)
         {
+            await StopLiveOwnerAsync();
             if (recorder is not null) { await recorder.DisposeAsync(); recorder = null; }
             if (activeRecording is not null)
             {
@@ -304,48 +395,80 @@ public partial class MainWindow : Window
         try
         {
             recorder?.TogglePause();
+            liveOwner?.SetActive(recorder?.IsPaused != true);
+            UpdateLiveOwner();
             SetStatus(recorder?.IsPaused == true ? "녹음 일시정지 · 재개하면 이어서 저장됩니다." : "녹음 중");
             UpdateControls();
         }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
-    private async void Stop_Click(object sender, RoutedEventArgs e) => await StopRecordingAsync();
+    private async void Stop_Click(object sender, RoutedEventArgs e) { LastStopButtonWork = StopRecordingAsync(); await LastStopButtonWork; }
     private async Task StopRecordingAsync()
     {
         if (recorder is null || transitioning) return;
         transitioning = true; finishing = true; UpdateControls();
+        liveOwner?.SetActive(false);
         var session = recorder;
+        Recording? completedRecording = null;
         try
         {
-            double duration = await session.StopAsync();
-            var completed = activeRecording! with { IsRecording = false, DurationSeconds = duration, Warning = session.Failure };
-            library.Save(completed);
+            await session.StopAsync();
+            var completed = library.CompleteRecording(activeRecording!, session.Failure);
+            double duration = completed.DurationSeconds;
+            completedRecording = completed;
             SetStatus(session.Failure ?? $"녹음을 저장했습니다 · {Recording.FormatTime(duration)}", session.Failure is not null);
             // Session must be cleared before library reload updates enabled controls.
             recorder = null; activeRecording = null;
-            FilterBox.SelectedIndex = 0; SearchBox.Text = ""; DetailPanel.SelectedIndex = 0;
+            SelectFolderFilter(completed.FolderId); SearchBox.Text = ""; DetailPanel.SelectedIndex = 0;
             ReloadLibrary(completed.Id);
         }
         catch (Exception ex) { recorder = null; activeRecording = null; SetStatus(FriendlyError(ex) + " 다음 실행에서 녹음 복구를 시도합니다.", true); }
         finally
         {
+            await StopLiveOwnerAsync();
             await session.DisposeAsync();
             transitioning = false; finishing = false;
             CaptureHint.Text = "완료를 누르면 녹음이 라이브러리에 저장됩니다.";
             MicMeter.Value = SystemMeter.Value = 0;
             UpdateControls();
         }
+        if (completedRecording is { Warning: null } && settings.AutoGenerate && !closePending && !exitRequested)
+            await GenerateNotesAsync(completedRecording);
+        if (completedRecording is { Warning: null } && !closePending && !exitRequested && recorder is null && runningWork is null)
+        {
+            try
+            {
+                if (new MeetingProfileStore(library.Root).Load().AutomaticallyAnalyze && await AnalyzeParticipantsAsync(completedRecording) && !closePending && !exitRequested)
+                    await AnalyzeMeetingAsync(completedRecording);
+            }
+            catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
+        }
     }
 
     private async void Import_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "녹음 가져오기", Filter = "오디오 파일|*.wav;*.mp3;*.m4a;*.aac;*.wma;*.aiff|모든 파일|*.*" };
-        if (dialog.ShowDialog(this) != true) return;
+        if (runningWork is not null || recorder is not null || transitioning || ModalOperationOpen || closePending || exitRequested) return;
+        string? source;
+        libraryDialogOpen = true;
+        try
+        {
+            UpdateControls();
+            if (AudioImportSource is not null) source = AudioImportSource();
+            else
+            {
+                var dialog = new OpenFileDialog { Title = "녹음 가져오기", Filter = "오디오 파일|*.wav;*.mp3;*.m4a;*.aac;*.wma;*.aiff|모든 파일|*.*" };
+                source = dialog.ShowDialog(this) == true ? dialog.FileName : null;
+            }
+        }
+        catch (Exception ex) { SetStatus(FriendlyError(ex), true); return; }
+        finally { libraryDialogOpen = false; UpdateControls(); }
+        if (source is null || closePending || exitRequested) return;
         await RunWorkAsync(async token =>
         {
             SetStatus("오디오를 가져오는 중…");
-            var imported = await library.ImportAsync(dialog.FileName, token);
-            FilterBox.SelectedIndex = 0; SearchBox.Text = "";
+            var imported = await library.ImportAsync(source, token);
+            if (folderStore.IsActive(selectedFolder)) imported = folderStore.MoveRecording(library, imported, selectedFolder);
+            SelectFolderFilter(imported.FolderId); SearchBox.Text = "";
             ReloadLibrary(imported.Id); SetStatus("오디오를 라이브러리에 저장했습니다.");
         });
     }
@@ -353,7 +476,10 @@ public partial class MainWindow : Window
     private async void Generate_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null) return;
-        var recording = selected;
+        await GenerateNotesAsync(selected);
+    }
+    private async Task GenerateNotesAsync(Recording recording)
+    {
         await RunWorkAsync(async token =>
         {
             string key = settings.TranscriptionProvider == "openrouter" || settings.SummaryProvider == "openrouter" ? SettingsStore.ReadKey(settings) : "";
@@ -425,15 +551,22 @@ public partial class MainWindow : Window
         });
     }
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
+    private void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings(false);
+    private async void OpenSettings(bool showSync)
     {
+        if (!await StopSyncForForegroundAsync() || recorder is not null || transitioning || runningWork is not null || ModalOperationOpen) return;
         try
         {
-            var dialog = new SettingsWindow(settings, aiModelRoot) { Owner = this };
+            settings = settingsStore.Load();
+            var dialog = new SettingsWindow(settings, aiModelRoot, syncHandlerFactory) { Owner = this };
+            if (showSync) dialog.Loaded += (_, _) => dialog.ShowSyncSettings();
             if (dialog.ShowDialog() != true) return;
             settingsStore.Save(dialog.Result);
-            settings = dialog.Result;
+            settings = settingsStore.Load();
+            LastSyncResult = null; syncSchedule.Reset(); ReadSyncStatus();
+            desktop?.ConfigureShortcuts(settings.EnableGlobalShortcuts);
             SetStatus("AI 설정을 이 Windows 계정에 저장했습니다.");
+            if (desktop?.ShortcutWarning is not null) SetStatus(desktop.ShortcutWarning, true);
         }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
@@ -443,9 +576,12 @@ public partial class MainWindow : Window
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
 
+    private bool CanControlPlayback => selected is not null && recorder is null && runningWork is null &&
+        !transitioning && !ModalOperationOpen && !closePending && !exitRequested;
+
     private void Play_Click(object sender, RoutedEventArgs e)
     {
-        if (selected is null) return;
+        if (!CanControlPlayback) return;
         try
         {
             EnsurePlaybackLoaded();
@@ -464,7 +600,8 @@ public partial class MainWindow : Window
     private void Forward_Click(object sender, RoutedEventArgs e) => SeekTo(PlaybackSlider.Position + 15);
     private void SeekTo(double position)
     {
-        if (selected is null || recorder is not null) return;
+        if (!CanControlPlayback) return;
+        StopTurnPlayback();
         try
         {
             EnsurePlaybackLoaded();
@@ -476,16 +613,16 @@ public partial class MainWindow : Window
 
     private bool SaveEdit(Recording changed)
     {
-        try { library.Save(changed); ReloadLibrary(changed.Id); return true; }
+        try { library.Save(changed); ReloadLibrary(changed.Id); RequestAutomaticSync(); return true; }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); return false; }
     }
     private void Favorite_Click(object sender, RoutedEventArgs e) { if (selected is not null) SaveEdit(selected with { IsFavorite = !selected.IsFavorite }); }
     private void Delete_Click(object sender, RoutedEventArgs e)
     {
-        if (selected is null) return;
+        if (selected is null || runningWork is not null || recorder is not null || transitioning || ModalOperationOpen) return;
         bool restore = selected.DeletedAt is not null;
         if (SaveEdit(selected with { DeletedAt = restore ? null : DateTimeOffset.Now }))
-            SetStatus(restore ? "녹음을 복원했습니다." : "최근 삭제로 이동했습니다. 필터에서 언제든 복원할 수 있습니다.");
+            SetStatus(restore ? "녹음을 복원했습니다." : "최근 삭제로 이동했습니다. 30일 안에 복원할 수 있습니다.");
     }
     private void Rename_Click(object sender, RoutedEventArgs e)
     {
@@ -493,13 +630,13 @@ public partial class MainWindow : Window
         var dialog = new RenameWindow(selected.Title) { Owner = this };
         if (dialog.ShowDialog() == true) SaveEdit(selected with { Title = dialog.Result });
     }
-    private string ExportText() => DocumentTabs.SelectedIndex == 1 ? transcriptText : notes?.Markdown ?? "";
+    private string ExportText() => DocumentTabs.SelectedIndex switch { 1 => transcriptText, 2 => cleanedTranscriptText, _ => notes?.Markdown ?? "" };
     private void DocumentTab_Changed(object sender, SelectionChangedEventArgs e) { if (loaded) UpdateControls(); }
     private void Export_Click(object sender, RoutedEventArgs e)
     {
         if (selected is null || string.IsNullOrWhiteSpace(ExportText())) return;
         string title = string.Concat(selected.Title.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
-        var dialog = new SaveFileDialog { FileName = title + (DocumentTabs.SelectedIndex == 1 ? "-전사문" : "-회의록") + ".md", Filter = "Markdown|*.md", AddExtension = true };
+        var dialog = new SaveFileDialog { FileName = title + (DocumentTabs.SelectedIndex switch { 1 => "-전사문", 2 => "-정리한-전사", _ => "-회의록" }) + ".md", Filter = "Markdown|*.md", AddExtension = true };
         try { if (dialog.ShowDialog(this) == true) { File.WriteAllText(dialog.FileName, ExportText()); SetStatus("Markdown 파일을 내보냈습니다."); } }
         catch (Exception ex) { SetStatus(FriendlyError(ex), true); }
     }
@@ -510,22 +647,30 @@ public partial class MainWindow : Window
     }
     private void ShareWeb_Click(object sender, RoutedEventArgs e)
     {
-        if (selected is null || notes is null) return;
-        var dialog = new WebShareWindow(selected, notes, settings) { Owner = this };
-        _ = dialog.ShowDialog();
-        SetStatus("웹 공유 상태를 확인했습니다.");
+        if (selected is null || notes is null || runningWork is not null || recorder is not null || transitioning || ModalOperationOpen) return;
+        try
+        {
+            webShareWindow = new WebShareWindow(selected, notes, settings, syncHandlerFactory) { Owner = this };
+            _ = webShareWindow.ShowDialog();
+            SetStatus("웹 공유 창을 닫았습니다.");
+        }
+        finally { webShareWindow = null; UpdateControls(); }
     }
 
     private void UpdateControls()
     {
         if (!loaded) return;
-        bool idle = recorder is null && !transitioning && runningWork is null;
+        bool idle = recorder is null && !transitioning && runningWork is null && !ModalOperationOpen;
+        ProfileButton.IsEnabled = idle;
         RecordButton.IsEnabled = RecordOptionsButton.IsEnabled = CaptureOptions.IsEnabled = RefreshDevicesButton.IsEnabled = ImportButton.IsEnabled = SettingsButton.IsEnabled = idle;
+        if (syncing && !syncForegroundPending && !closePending && !exitRequested) RecordButton.IsEnabled = SettingsButton.IsEnabled = true;
         CaptureModeLabel.Text = RecordingModeLabel.Text = Mode switch { RecordingMode.Microphone => "마이크만", RecordingMode.SystemAudio => "시스템 오디오만", _ => "마이크 + 시스템" };
         MicRail.Visibility = Mode == RecordingMode.SystemAudio ? Visibility.Collapsed : Visibility.Visible;
         SystemRail.Visibility = Mode == RecordingMode.Microphone ? Visibility.Collapsed : Visibility.Visible;
         MicrophoneBox.IsEnabled = Mode != RecordingMode.SystemAudio;
         OutputBox.IsEnabled = Mode != RecordingMode.Microphone;
+        MicrophoneGainSlider.IsEnabled = idle && Mode != RecordingMode.SystemAudio;
+        SystemGainSlider.IsEnabled = idle && Mode != RecordingMode.Microphone;
         PauseButton.IsEnabled = recorder is not null && !transitioning && !recorder.IsPaused;
         ResumeButton.IsEnabled = recorder is not null && !transitioning && recorder.IsPaused;
         StopButton.IsEnabled = recorder is not null && !transitioning;
@@ -536,13 +681,25 @@ public partial class MainWindow : Window
         DetailPanel.Visibility = recorder is null && !transitioning && selected is not null ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = recorder is null && !transitioning && selected is null ? Visibility.Visible : Visibility.Collapsed;
         bool editable = idle && selected is not null;
-        FavoriteButton.IsEnabled = RenameButton.IsEnabled = DeleteButton.IsEnabled = editable;
+        DeleteButton.IsEnabled = editable;
+        FavoriteButton.IsEnabled = RenameButton.IsEnabled = editable && selected?.DeletedAt is null;
+        PermanentDeleteButton.Visibility = selected?.DeletedAt is not null ? Visibility.Visible : Visibility.Collapsed;
+        PermanentDeleteButton.IsEnabled = editable && selected?.DeletedAt is not null;
+        ExportAudioButton.IsEnabled = editable && File.Exists(library.AudioPath(selected!.Id));
+        ShareAudioButton.IsEnabled = ExportAudioButton.IsEnabled && selected?.DeletedAt is null;
+        RevealAudioButton.IsEnabled = editable;
+        foreach (var button in new[] { RenameButton, FavoriteButton, ShareAudioButton, ExportAudioButton, ClovaExportButton, RevealAudioButton })
+            button.Visibility = selected?.DeletedAt is null ? Visibility.Visible : Visibility.Collapsed;
         GenerateButton.IsEnabled = TranscribeOnlyButton.IsEnabled = SummarizeOnlyButton.IsEnabled = ImportTranscriptButton.IsEnabled = ClovaExportButton.IsEnabled = editable && selected?.DeletedAt is null;
         ShareWebButton.IsEnabled = editable && selected?.DeletedAt is null && notes is not null;
+        EnhanceNotesButton.IsEnabled = CleanTranscriptButton.IsEnabled = ShareWebButton.IsEnabled;
         CopyButton.IsEnabled = ExportButton.IsEnabled = selected is not null && !string.IsNullOrWhiteSpace(ExportText());
         RecordingList.IsEnabled = SearchBox.IsEnabled = FilterBox.IsEnabled = runningWork is null && !transitioning;
+        FolderTree.IsEnabled = CreateFolderButton.IsEnabled = idle && folderStore.LoadError is null;
         CancelButton.Visibility = runningWork is null ? Visibility.Collapsed : Visibility.Visible;
+        UpdateParticipantControls();
         UpdatePlayIcon();
+        UpdateSyncControls();
     }
 
     private void UpdatePlayIcon()
@@ -553,8 +710,12 @@ public partial class MainWindow : Window
 
     private async void Timer_Tick(object? sender, EventArgs e)
     {
+        AdvanceTurnPlayback();
+        desktop?.Update(recorder is not null, recorder?.IsPaused == true, transitioning || runningWork is not null && !syncing,
+            recorder is null ? "" : Recording.FormatTime(recorder.DurationSeconds));
         if (recorder is not null)
         {
+            if (!transitioning) UpdateLiveOwner();
             RecordingClock.Text = Recording.FormatTime(recorder.DurationSeconds);
             MicMeter.Value = recorder.IsPaused ? 0 : recorder.MicrophoneLevel;
             SystemMeter.Value = recorder.IsPaused ? 0 : recorder.SystemLevel;
@@ -569,13 +730,22 @@ public partial class MainWindow : Window
             PlaybackTime.Text = $"{Recording.FormatTime(player.Position)} / {Recording.FormatTime(player.Duration)}";
             ElapsedLabel.Text = Recording.FormatTime(player.Position); TotalLabel.Text = Recording.FormatTime(player.Duration);
         }
+        if (SyncPopup.IsOpen) UpdateSyncControls();
+        TickAutomaticSync();
     }
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (allowClose) return;
         e.Cancel = true;
+        if (!exitRequested && settings.KeepRunningInTray && desktop?.IsAvailable == true)
+        {
+            Hide(); SetStatus("트레이에서 계속 실행 중입니다. 트레이 메뉴에서 다시 열거나 종료할 수 있습니다."); return;
+        }
         if (closePending) return;
         closePending = true;
+        if (profileWindow is { } profileDialog) await profileDialog.StopAndCloseAsync();
+        if (notesEditingWindow is { } editor) await editor.StopAndCloseAsync();
+        if (webShareWindow is { } share) await share.StopAndCloseAsync();
         SetStatus("진행 중인 작업을 정리하고 종료하는 중…");
         workCancellation?.Cancel();
         if (runningWork is { } work) await work;
@@ -584,6 +754,8 @@ public partial class MainWindow : Window
         waveformCancellation?.Cancel();
         await WaveformLoadTask;
         timer.Stop(); player.Dispose();
+        desktop?.Dispose();
+        audioShare?.Dispose();
         allowClose = true;
         // Closing may run without any incomplete await; defer the second Close
         // until WPF has left the original Closing event.
@@ -605,6 +777,8 @@ internal sealed class WebShareWindow : Window
     private readonly Recording recording;
     private readonly MeetingNotes notes;
     private readonly AppSettings settings;
+    private readonly Func<SyncConfiguration, HttpMessageHandler>? handlerFactory;
+    private readonly Action<string> copyLink;
     private readonly CancellationTokenSource cancellation = new();
     private readonly TextBlock statusText = new() { TextWrapping = TextWrapping.Wrap, LineHeight = 20 };
     private readonly Grid linkRow = new() { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 12, 0, 0) };
@@ -613,15 +787,23 @@ internal sealed class WebShareWindow : Window
     private readonly Button publishButton = new() { Content = "웹 링크 만들기", MinWidth = 110, IsEnabled = false };
     private readonly Button copyButton = new() { Content = "복사", ToolTip = "링크 복사", MinWidth = 56, IsEnabled = false };
     private readonly Button revokeButton = new() { Content = "공유 취소", MinWidth = 90, Visibility = Visibility.Collapsed };
+    private readonly Button refreshButton = new() { Content = "상태 새로고침", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 12, 0, 0) };
+    private bool busy, closing, allowClose;
+    private Task? closingTask;
+    internal Task CurrentOperation { get; private set; } = Task.CompletedTask;
+    internal string? CurrentUrl => currentUrl;
     private bool statusLoaded;
     private bool knownActive;
     private string? currentUrl;
 
-    public WebShareWindow(Recording recording, MeetingNotes notes, AppSettings settings)
+    public WebShareWindow(Recording recording, MeetingNotes notes, AppSettings settings, Func<SyncConfiguration, HttpMessageHandler>? handlerFactory = null, Action<string>? copyLink = null)
     {
         this.recording = recording;
         this.notes = notes;
         this.settings = settings;
+        this.handlerFactory = handlerFactory; this.copyLink = copyLink ?? Clipboard.SetText;
+        NameScope.SetNameScope(this, new NameScope());
+        foreach (var entry in new[] { ("PublishWebShareButton", publishButton), ("RevokeWebShareButton", revokeButton), ("CopyWebShareButton", copyButton), ("RefreshWebShareButton", refreshButton) }) RegisterName(entry.Item1, entry.Item2);
         Title = "웹 공유"; Width = 520; Height = 420; MinWidth = 460; MinHeight = 360;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false; WindowStyle = WindowStyle.None;
         Style = (Style)FindResource(typeof(Window));
@@ -670,8 +852,10 @@ internal sealed class WebShareWindow : Window
         linkRow.Children.Add(urlButton);
         linkRow.Children.Add(copyButton);
         body.Children.Add(linkRow);
-        Grid.SetRow(body, 1);
-        grid.Children.Add(body);
+        body.Children.Add(refreshButton);
+        refreshButton.Click += async (_, _) => await LoadStatusAsync();
+        var scroll = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        Grid.SetRow(scroll, 1); grid.Children.Add(scroll);
 
         var footer = new Border { Padding = new Thickness(24, 14, 24, 14), BorderThickness = new Thickness(0, 1, 0, 0) };
         footer.SetResourceReference(BorderBrushProperty, "Separator");
@@ -690,7 +874,22 @@ internal sealed class WebShareWindow : Window
 
         Content = root;
         Loaded += async (_, _) => await LoadStatusAsync();
-        Closed += (_, _) => cancellation.Cancel();
+        Closing += async (_, e) =>
+        {
+            if (allowClose) return;
+            e.Cancel = true; if (closing) return;
+            await StopAndCloseAsync();
+        };
+        Closed += (_, _) => cancellation.Dispose();
+    }
+
+    internal Task StopAndCloseAsync() => closingTask ??= CloseCoreAsync();
+    private async Task CloseCoreAsync()
+    {
+        if (allowClose) return;
+        closing = true; cancellation.Cancel(); SetBusy(true);
+        await CurrentOperation;
+        allowClose = true; await Dispatcher.Yield(DispatcherPriority.Background); Close();
     }
 
     private WebShareClient CreateClient()
@@ -699,11 +898,13 @@ internal sealed class WebShareWindow : Window
             throw new InvalidOperationException("설정에서 웹 공유 서버 주소를 저장해 주세요.");
         if (!Uri.TryCreate(settings.SharingServerUrl, UriKind.Absolute, out var uri))
             throw new InvalidOperationException("웹 공유 서버 주소를 확인해 주세요.");
-        return new WebShareClient(uri, SettingsStore.ReadSharingToken(settings));
+        var configuration = new SyncConfiguration(uri.AbsoluteUri, SettingsStore.ReadSharingToken(settings));
+        return new WebShareClient(uri, configuration.Token, handlerFactory?.Invoke(configuration));
     }
 
     private async Task LoadStatusAsync()
     {
+        if (busy || closing) return;
         currentUrl = null;
         linkRow.Visibility = Visibility.Collapsed;
         statusLoaded = false;
@@ -725,7 +926,7 @@ internal sealed class WebShareWindow : Window
 
     private async void Publish_Click(object sender, RoutedEventArgs e)
     {
-        if (knownActive || !statusLoaded) return;
+        if (knownActive || !statusLoaded || busy || closing) return;
         await RunAsync("회의록 스냅샷을 업로드하는 중…", async client =>
         {
             var publication = await client.PublishAsync(recording.Id, recording.Title, notes.Markdown, cancellation.Token);
@@ -735,11 +936,12 @@ internal sealed class WebShareWindow : Window
             linkRow.Visibility = Visibility.Visible;
             copyButton.Content = "복사";
             SetStatus("웹 링크가 활성화되어 있습니다." + ExpiryText(publication.ExpiresAt));
-        });
+        }, mutation: true);
     }
 
     private async void Revoke_Click(object sender, RoutedEventArgs e)
     {
+        if (!knownActive || !statusLoaded || busy || closing) return;
         await RunAsync("공유를 취소하는 중…", async client =>
         {
             await client.RevokeAsync(recording.Id, cancellation.Token);
@@ -747,15 +949,15 @@ internal sealed class WebShareWindow : Window
             knownActive = false;
             linkRow.Visibility = Visibility.Collapsed;
             SetStatus("공유를 취소했습니다.");
-        });
+        }, mutation: true);
     }
 
     private void Copy_Click(object sender, RoutedEventArgs e)
     {
-        if (currentUrl is null) return;
+        if (currentUrl is null || busy || closing || !statusLoaded) return;
         try
         {
-            Clipboard.SetText(currentUrl);
+            copyLink(currentUrl);
             copyButton.Content = "복사됨";
             SetStatus("링크를 클립보드에 복사했습니다.");
         }
@@ -765,8 +967,11 @@ internal sealed class WebShareWindow : Window
         }
     }
 
-    private async Task RunAsync(string progress, Func<WebShareClient, Task> action)
+    private async Task RunAsync(string progress, Func<WebShareClient, Task> action, bool mutation = false)
     {
+        if (busy || closing) return;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CurrentOperation = completion.Task;
         SetBusy(true);
         SetStatus(progress);
         try
@@ -775,17 +980,23 @@ internal sealed class WebShareWindow : Window
             await action(client);
         }
         catch (OperationCanceledException) { SetStatus("웹 공유 작업을 취소했습니다.", true); }
-        catch (Exception ex) { SetStatus(ex.Message, true); }
-        finally { SetBusy(false); }
+        catch (Exception ex)
+        {
+            if (mutation) { statusLoaded = false; knownActive = false; currentUrl = null; linkRow.Visibility = Visibility.Collapsed; }
+            SetStatus(ex.Message + (mutation ? " 상태 새로고침으로 서버의 결과를 확인해 주세요." : ""), true);
+        }
+        finally { SetBusy(closing); completion.TrySetResult(); }
     }
 
     private void SetBusy(bool busy)
     {
+        this.busy = busy;
         publishButton.Visibility = knownActive ? Visibility.Collapsed : Visibility.Visible;
         publishButton.IsEnabled = !busy && statusLoaded && !knownActive;
         revokeButton.Visibility = knownActive ? Visibility.Visible : Visibility.Collapsed;
-        revokeButton.IsEnabled = !busy && knownActive;
-        copyButton.IsEnabled = urlButton.IsEnabled = !busy && currentUrl is not null;
+        revokeButton.IsEnabled = !busy && statusLoaded && knownActive;
+        copyButton.IsEnabled = urlButton.IsEnabled = !busy && statusLoaded && currentUrl is not null;
+        refreshButton.IsEnabled = !busy;
     }
 
     private void SetStatus(string text, bool error = false)
