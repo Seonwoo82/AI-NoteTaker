@@ -605,7 +605,11 @@ public actor CaptureSession {
         case .aggregateAliveChanged:
             return .deviceDisconnected
         case .deviceListChanged:
-            return hasSystemAudio ? .deviceDisconnected : nil
+            // Global discovery changes do not imply that our capture devices failed.
+            // Keep recording through unrelated device arrivals/removals (including
+            // network devices); device-specific alive, I/O and format events still
+            // terminate capture when its resources are actually affected.
+            return nil
         case .microphoneAliveChanged:
             return hasMicrophone ? .deviceDisconnected : nil
         case .defaultInputDeviceChanged:
