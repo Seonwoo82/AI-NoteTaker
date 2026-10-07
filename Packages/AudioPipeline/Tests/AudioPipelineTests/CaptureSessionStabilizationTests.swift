@@ -379,7 +379,7 @@ func captureSessionCancellationAfterMonitorWinsObservesCachedTerminalError() asy
         try await session.start(configuration: configuration(mode: .systemOnly))
     }
     await waiter.waitForWaitCount(1)
-    monitorFactory.trigger(.deviceListChanged)
+    monitorFactory.trigger(.aggregateAliveChanged)
     await yieldUntilDeviceStop(log)
     start.cancel()
     waiter.resumeAll()
@@ -437,7 +437,7 @@ func captureSessionMonitorOwnerMakesLaterStopObserveCachedDeviceDisconnected() a
     let session = CaptureSession(dependencies: stabilizationDependencies(log: log, monitorFactory: monitorFactory))
 
     _ = try await session.start(configuration: configuration(mode: .systemOnly))
-    monitorFactory.trigger(.deviceListChanged)
+    monitorFactory.trigger(.aggregateAliveChanged)
     await yieldUntilDeviceStop(log)
 
     do {
@@ -461,7 +461,7 @@ func captureSessionExplicitStopWinsBeforeStaleMonitorCallback() async throws {
 
     _ = try await session.start(configuration: configuration(mode: .systemOnly))
     let output = try await session.stop()
-    monitorFactory.trigger(.deviceListChanged)
+    monitorFactory.trigger(.aggregateAliveChanged)
     await allowScheduledTasksToRunForStabilizationTests()
 
     let cachedOutput = try await session.stop()
@@ -496,7 +496,6 @@ func captureSessionRuntimeFormatEventsStopWithStreamFormatChanged() async throws
 @Test("runtime device events map only when relevant to the active mode")
 func captureSessionRuntimeDeviceEventsRespectModeRelevance() async throws {
     try await assertDeviceEvent(.aggregateAliveChanged, mode: .systemOnly, expectedError: .deviceDisconnected)
-    try await assertDeviceEvent(.deviceListChanged, mode: .systemOnly, expectedError: .deviceDisconnected)
     try await assertDeviceEvent(.defaultOutputDeviceChanged, mode: .systemOnly, expectedError: .deviceDisconnected)
 
     let log = LifecycleLog()
@@ -1088,4 +1087,38 @@ private func allowScheduledTasksToRunForStabilizationTests() async {
     for _ in 0..<20 {
         await Task.yield()
     }
+}
+
+@Test("Device discovery changes during startup do not cancel local system capture", arguments: [CaptureMode.systemOnly, .micAndSystem])
+func captureSessionDeviceDiscoveryDuringStartupIsNonfatal(mode: CaptureMode) async throws {
+    let log = LifecycleLog()
+    let waiter = RecordingStabilizationWaiter(log: log, controlled: true)
+    let monitor = CapturingMonitorFactory(log: log)
+    let session = CaptureSession(dependencies: stabilizationDependencies(
+        log: log, monitorFactory: monitor, stabilizationWaiter: waiter
+    ))
+    let start = Task {
+        try await session.start(configuration: configuration(mode: mode))
+    }
+    await waiter.waitForWaitCount(1)
+    await session.monitorEventReceived(.deviceListChanged, generation: 1)
+    waiter.resumeAll()
+    _ = try await start.value
+    #expect(!log.events().contains(.deviceStop))
+    _ = try await session.stop()
+}
+
+@Test("Device discovery changes while paused preserve resume and save", arguments: [CaptureMode.micOnly, .systemOnly, .micAndSystem])
+func captureSessionDeviceDiscoveryWhilePausedIsNonfatal(mode: CaptureMode) async throws {
+    let log = LifecycleLog()
+    let session = CaptureSession(dependencies: .fake(log: log))
+    let config = configuration(mode: mode)
+    _ = try await session.start(configuration: config)
+    _ = try await session.pause()
+    for _ in 0..<4 {
+        await session.monitorEventReceived(.deviceListChanged, generation: 1)
+    }
+    try await session.resume(outputURL: config.outputURL.deletingLastPathComponent().appendingPathComponent("001.m4a"))
+    #expect(!log.events().contains(.deviceStop))
+    _ = try await session.stop()
 }
